@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
 
 from fluxion.database import get_engine
@@ -55,8 +55,6 @@ async def readiness_check() -> ReadinessResponse:
         return ReadinessResponse(status="ready", database="connected")
     except Exception as e:
         logger.error(f"Database connection check failed: {str(e)}", exc_info=True)
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Database connection failed: {str(e)}",
