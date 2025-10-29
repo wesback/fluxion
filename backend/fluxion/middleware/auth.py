@@ -186,10 +186,11 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         Update last_used timestamp in background.
 
         Args:
-            api_key_id: The API key ID to update
+            api_key_id: The API key ID to update (integer ID, not the actual key)
         """
         try:
             async for session in get_session():
                 await update_last_used(api_key_id, session)
         except Exception as e:
+            # Note: api_key_id is an integer ID, not the sensitive API key itself
             logger.error(f"Failed to update last_used for API key {api_key_id}: {e}")

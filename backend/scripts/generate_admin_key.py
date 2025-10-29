@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""CLI script to generate an initial admin API key."""
+"""CLI script to generate an initial admin API key.
+
+SECURITY NOTE: This script intentionally displays the generated API key in plain text.
+This is necessary because:
+1. It's a CLI tool run by administrators who need to copy the key
+2. The key cannot be retrieved later (only the hash is stored)
+3. Users are explicitly warned to save it securely
+4. This is standard practice for API key generation tools
+
+CodeQL alerts about clear-text logging are expected and acceptable for this use case.
+"""
 
 import asyncio
 import sys
