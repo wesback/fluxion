@@ -181,22 +181,30 @@ async def _get_host_updates_impl(
             detail=f"Host '{hostname}' not found",
         )
 
-    # Build query for updates
-    query = select(PackageUpdate).where(PackageUpdate.host_id == host.id)
+    # Build base query for updates
+    base_query = select(PackageUpdate).where(PackageUpdate.host_id == host.id)
 
     # Apply date filters if provided
     if from_date:
-        query = query.where(PackageUpdate.update_timestamp >= from_date)
+        base_query = base_query.where(PackageUpdate.update_timestamp >= from_date)
     if to_date:
-        query = query.where(PackageUpdate.update_timestamp <= to_date)
+        base_query = base_query.where(PackageUpdate.update_timestamp <= to_date)
 
-    # Get total count with filters
-    count_query = select(func.count()).select_from(query.subquery())
+    # Get total count with filters (optimized - no ORDER BY or LIMIT)
+    count_query = (
+        select(func.count(PackageUpdate.id))
+        .where(PackageUpdate.host_id == host.id)
+    )
+    if from_date:
+        count_query = count_query.where(PackageUpdate.update_timestamp >= from_date)
+    if to_date:
+        count_query = count_query.where(PackageUpdate.update_timestamp <= to_date)
+
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
     # Get paginated results sorted by timestamp descending
-    query = query.order_by(PackageUpdate.update_timestamp.desc()).limit(limit).offset(offset)
+    query = base_query.order_by(PackageUpdate.update_timestamp.desc()).limit(limit).offset(offset)
 
     result = await session.execute(query)
     updates = result.scalars().all()
