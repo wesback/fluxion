@@ -8,8 +8,10 @@ The backend provides:
 - PostgreSQL database schema for tracking hosts and package updates
 - Async SQLAlchemy ORM models
 - Database migrations using Alembic
-- RESTful API endpoints (to be implemented)
-- Background workers for data collection (to be implemented)
+- RESTful API endpoints for receiving package update data (to be implemented)
+- Background workers for data processing (to be implemented)
+
+The backend is designed to receive package update information from APT hooks installed on Linux hosts. When a package is installed or upgraded, the APT hook automatically sends the update information to the Fluxion API.
 
 ## Quick Start
 
@@ -74,7 +76,7 @@ backend/
 ├── fluxion/                  # Main Python package
 │   ├── database/            # Database connection & session management
 │   ├── models/              # SQLAlchemy ORM models
-│   ├── api/                 # API endpoints (to be added)
+│   ├── api/                 # API endpoints for receiving updates (to be added)
 │   ├── services/            # Business logic (to be added)
 │   └── workers/             # Background workers (to be added)
 ├── scripts/                  # Utility scripts

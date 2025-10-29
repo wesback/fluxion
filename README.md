@@ -8,8 +8,15 @@ Fluxion is organized into distinct components:
 
 - **backend/**: PostgreSQL database schema, API services, and data processing
 - **frontend/**: Web UI for visualizing package updates (to be added)
-- **agent/**: Client-side agent for collecting package information (to be added)
+- **apt-hooks/**: APT hook scripts for automatic package update reporting (to be added)
 - **docs/**: Project-wide documentation
+
+## How It Works
+
+1. **APT Hooks**: Lightweight scripts installed on Linux hosts that trigger on package updates
+2. **API**: Receives package update data from apt hooks via HTTP POST
+3. **Database**: Stores host information and package update history
+4. **Frontend**: Visualizes package updates across all hosts
 
 ## Features
 
@@ -194,19 +201,19 @@ fluxion/
 │   ├── requirements.txt     # Python dependencies
 │   └── README.md            # Backend documentation
 ├── frontend/                 # Web UI (to be added)
-├── agent/                    # Package collection agent (to be added)
+├── apt-hooks/               # APT hook scripts (to be added)
 ├── docs/                     # Project-wide documentation
 ├── LICENSE
 └── README.md                 # This file
 ```
 
 **Planned additions:**
-- `backend/fluxion/api/` - RESTful API endpoints
+- `backend/fluxion/api/` - RESTful API endpoints for receiving package updates
 - `backend/fluxion/services/` - Business logic layer
 - `backend/fluxion/workers/` - Background workers for data processing
 - `backend/fluxion/config/` - Configuration management
 - `frontend/` - React/Vue web interface
-- `agent/` - Host agent for collecting package data
+- `apt-hooks/` - Shell scripts installed on hosts via APT hooks (e.g., `/etc/apt/apt.conf.d/`)
 ```
 
 ## Development
