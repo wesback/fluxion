@@ -1,6 +1,5 @@
 """Database connection and session management with async support."""
 
-import os
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -10,13 +9,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from fluxion.config import settings
 from fluxion.models.base import Base
-
-# Database URL from environment variable
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://fluxion:fluxion@localhost:5432/fluxion",
-)
 
 # Global engine instance
 _engine: AsyncEngine | None = None
@@ -33,10 +27,10 @@ def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         _engine = create_async_engine(
-            DATABASE_URL,
-            echo=os.getenv("SQL_ECHO", "false").lower() == "true",
-            pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
+            settings.database_url,
+            echo=settings.sql_echo,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
             pool_pre_ping=True,  # Verify connections before using them
             pool_recycle=3600,  # Recycle connections after 1 hour
         )

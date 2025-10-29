@@ -1,5 +1,5 @@
 """Database connection and session management."""
 
-from .connection import get_engine, get_session, init_db
+from .connection import close_db, get_engine, get_session, init_db
 
-__all__ = ["get_engine", "get_session", "init_db"]
+__all__ = ["get_engine", "get_session", "init_db", "close_db"]
