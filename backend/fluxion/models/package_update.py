@@ -1,11 +1,17 @@
 """PackageUpdate model for tracking package updates on hosts."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from .host import Host
 
 
 class PackageUpdate(Base):
@@ -28,7 +34,7 @@ class PackageUpdate(Base):
     )
 
     # Relationship to host
-    host: Mapped["Host"] = relationship("Host", back_populates="package_updates")
+    host: Mapped[Host] = relationship("Host", back_populates="package_updates")
 
     # Indexes for efficient queries
     __table_args__ = (

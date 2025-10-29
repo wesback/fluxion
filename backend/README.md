@@ -8,8 +8,9 @@ The backend provides:
 - PostgreSQL database schema for tracking hosts and package updates
 - Async SQLAlchemy ORM models
 - Database migrations using Alembic
-- RESTful API endpoints for receiving package update data (to be implemented)
-- Background workers for data processing (to be implemented)
+- **FastAPI REST API** for receiving package update data
+- Health and readiness check endpoints
+- Structured JSON logging
 
 The backend is designed to receive package update information from APT hooks installed on Linux hosts. When a package is installed or upgraded, the APT hook automatically sends the update information to the Fluxion API.
 
@@ -43,6 +44,44 @@ The backend is designed to receive package update information from APT hooks ins
    ```bash
    alembic upgrade head
    ```
+
+5. **Start the API server**:
+   ```bash
+   python -m fluxion.main
+   ```
+
+   The API will be available at http://localhost:8000
+
+### Using Docker
+
+1. **Build the Docker image**:
+   ```bash
+   docker build -t fluxion-api .
+   ```
+
+2. **Run the container**:
+   ```bash
+   docker run -d \
+     --name fluxion-api \
+     -p 8000:8000 \
+     -e DATABASE_URL=postgresql+asyncpg://fluxion:fluxion@localhost:5432/fluxion \
+     fluxion-api
+   ```
+
+### API Documentation
+
+Once the server is running, access the interactive API documentation:
+
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+For detailed API documentation, see [docs/api/README.md](docs/api/README.md)
+
+### API Endpoints
+
+- `POST /api/v1/updates` - Receive package update webhooks
+- `GET /health` - Health check endpoint
+- `GET /ready` - Readiness check (verifies database connection)
 
 ### Database Schema
 

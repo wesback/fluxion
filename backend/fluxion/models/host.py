@@ -1,11 +1,17 @@
 """Host model for tracking Linux hosts."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from .package_update import PackageUpdate
 
 
 class Host(Base):
@@ -30,7 +36,7 @@ class Host(Base):
     )
 
     # Relationship to package updates
-    package_updates: Mapped[list["PackageUpdate"]] = relationship(
+    package_updates: Mapped[list[PackageUpdate]] = relationship(
         "PackageUpdate", back_populates="host", cascade="all, delete-orphan"
     )
 

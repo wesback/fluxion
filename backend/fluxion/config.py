@@ -1,0 +1,28 @@
+"""Application configuration using Pydantic settings."""
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Database settings
+    database_url: str = "postgresql+asyncpg://fluxion:fluxion@localhost:5432/fluxion"
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    sql_echo: bool = False
+
+    # API settings
+    api_port: int = 8000
+    api_host: str = "0.0.0.0"
+    log_level: str = "info"
+
+    # Application metadata
+    app_name: str = "Fluxion"
+    app_version: str = "0.1.0"
+
+
+# Global settings instance
+settings = Settings()
