@@ -1,10 +1,9 @@
 """Authentication utilities for API key management."""
 
 import secrets
-import bcrypt
 from datetime import UTC, datetime
-from typing import Optional
 
+import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,10 +51,10 @@ def verify_api_key(api_key: str, key_hash: str) -> bool:
 
 
 async def validate_api_key(
-    api_key: str, 
-    session: AsyncSession, 
-    required_role: Optional[str] = None
-) -> Optional[APIKey]:
+    api_key: str,
+    session: AsyncSession,
+    required_role: str | None = None
+) -> APIKey | None:
     """
     Validate an API key and optionally check role.
 
@@ -68,7 +67,7 @@ async def validate_api_key(
         The APIKey object if valid and active, None otherwise
     """
     # Get all active API keys
-    stmt = select(APIKey).where(APIKey.is_active == True)
+    stmt = select(APIKey).where(APIKey.is_active)
     result = await session.execute(stmt)
     api_keys = result.scalars().all()
 

@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
     response_model=CreateAPIKeyResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new API key",
-    description="Create a new API key. The key is only returned once and cannot be retrieved later.",
+    description=(
+        "Create a new API key. The key is only returned once and cannot be "
+        "retrieved later."
+    ),
 )
 async def create_api_key(
     key_data: CreateAPIKeyRequest,
@@ -69,7 +72,8 @@ async def create_api_key(
         await session.refresh(api_key_obj)
 
         logger.info(
-            f"Created API key: id={api_key_obj.id}, name={api_key_obj.name}, role={api_key_obj.role}"
+            f"Created API key: id={api_key_obj.id}, name={api_key_obj.name}, "
+            f"role={api_key_obj.role}"
         )
 
         return CreateAPIKeyResponse(
@@ -77,7 +81,10 @@ async def create_api_key(
             name=api_key_obj.name,
             role=api_key_obj.role,
             api_key=api_key,
-            message="API key created successfully. Save this key securely - it cannot be retrieved later.",
+            message=(
+                "API key created successfully. Save this key securely - "
+                "it cannot be retrieved later."
+            ),
         )
 
     except HTTPException:

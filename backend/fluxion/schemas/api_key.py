@@ -1,7 +1,6 @@
 """Schemas for API key management endpoints."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +8,9 @@ from pydantic import BaseModel, Field
 class CreateAPIKeyRequest(BaseModel):
     """Request schema for creating a new API key."""
 
-    name: str = Field(..., min_length=1, max_length=255, description="Name/description for the API key")
+    name: str = Field(
+        ..., min_length=1, max_length=255, description="Name/description for the API key"
+    )
     role: str = Field(default="user", description="Role for the API key (user or admin)")
 
 
@@ -30,7 +31,7 @@ class APIKeyMetadata(BaseModel):
     name: str = Field(..., description="Name/description of the API key")
     role: str = Field(..., description="Role of the API key")
     created_at: datetime = Field(..., description="When the key was created")
-    last_used: Optional[datetime] = Field(None, description="When the key was last used")
+    last_used: datetime | None = Field(None, description="When the key was last used")
     is_active: bool = Field(..., description="Whether the key is active")
 
 

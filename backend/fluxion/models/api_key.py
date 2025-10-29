@@ -38,4 +38,7 @@ class APIKey(Base):
 
     def __repr__(self) -> str:
         """String representation of APIKey."""
-        return f"<APIKey(id={self.id}, name='{self.name}', role='{self.role}', is_active={self.is_active})>"
+        return (
+            f"<APIKey(id={self.id}, name='{self.name}', role='{self.role}', "
+            f"is_active={self.is_active})>"
+        )

@@ -3,7 +3,6 @@
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, Tuple
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
@@ -30,7 +29,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         # Dict mapping api_key_id to (request_count, window_start)
-        self.requests: Dict[int, Tuple[int, datetime]] = defaultdict(lambda: (0, datetime.now()))
+        self.requests: dict[int, tuple[int, datetime]] = defaultdict(lambda: (0, datetime.now()))
 
     def check_rate_limit(self, api_key_id: int) -> bool:
         """
