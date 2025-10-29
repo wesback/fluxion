@@ -1,6 +1,15 @@
 # Fluxion - Linux Package Update Tracking System
 
-A PostgreSQL-based system for tracking Linux package updates across multiple hosts. Designed to run in Kubernetes with support for concurrent writes.
+A comprehensive system for tracking Linux package updates across multiple hosts. Designed to run in Kubernetes with support for concurrent writes.
+
+## Architecture
+
+Fluxion is organized into distinct components:
+
+- **backend/**: PostgreSQL database schema, API services, and data processing
+- **frontend/**: Web UI for visualizing package updates (to be added)
+- **agent/**: Client-side agent for collecting package information (to be added)
+- **docs/**: Project-wide documentation
 
 ## Features
 
@@ -47,7 +56,9 @@ Tracks package updates on each host.
 - `ix_package_updates_host_id_update_timestamp`: Composite index for host-specific queries
 - `ix_package_updates_package_name_update_timestamp`: Composite index for package search
 
-## Setup Instructions
+## Quick Start
+
+For backend setup instructions, see [backend/README.md](backend/README.md).
 
 ### Prerequisites
 
@@ -55,22 +66,17 @@ Tracks package updates on each host.
 - PostgreSQL 14 or higher
 - pip or uv for package management
 
-### Installation
+### Installation (Backend)
 
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/wesback/fluxion.git
-   cd fluxion
+   cd fluxion/backend
    ```
 
 2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
-   ```
-
-   Or using uv:
-   ```bash
-   uv pip install -r requirements.txt
    ```
 
 3. **Set up PostgreSQL**:
@@ -86,7 +92,7 @@ Tracks package updates on each host.
    ```
 
 4. **Configure environment variables**:
-   Create a `.env` file in the project root:
+   Create a `.env` file in the backend directory:
    ```env
    DATABASE_URL=postgresql+asyncpg://fluxion:your_secure_password@localhost:5432/fluxion
    SQL_ECHO=false
@@ -94,54 +100,14 @@ Tracks package updates on each host.
    DB_MAX_OVERFLOW=20
    ```
 
-   For Kubernetes deployment, set these as environment variables or use ConfigMaps/Secrets.
-
-### Database Migration
-
-1. **Run migrations**:
+5. **Run migrations**:
    ```bash
    alembic upgrade head
    ```
-
-2. **Verify migration status**:
-   ```bash
-   alembic current
-   ```
-
-3. **View migration history**:
-   ```bash
-   alembic history
-   ```
-
-### Creating New Migrations
-
-When you modify the models:
-
-1. **Generate a new migration**:
-   ```bash
-   alembic revision --autogenerate -m "Description of changes"
-   ```
-
-2. **Review the generated migration** in `alembic/versions/`
-
-3. **Apply the migration**:
-   ```bash
-   alembic upgrade head
-   ```
-
-### Rollback Migrations
-
-To rollback the last migration:
-```bash
-alembic downgrade -1
-```
-
-To rollback to a specific revision:
-```bash
-alembic downgrade <revision_id>
-```
 
 ## Usage Examples
+
+See [backend/examples/](backend/examples/) for detailed examples.
 
 ### Basic Usage
 
@@ -170,53 +136,14 @@ async def main():
         )
         session.add(update)
         await session.commit()
-        
-        # Query hosts
-        result = await session.execute(select(Host))
-        hosts = result.scalars().all()
-        for host in hosts:
-            print(f"Host: {host.hostname}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Query Examples
-
-```python
-from datetime import datetime, timedelta
-from sqlalchemy import select, and_
-
-# Get recent updates for a specific host
-async def get_recent_updates(session, hostname: str, hours: int = 24):
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    
-    result = await session.execute(
-        select(PackageUpdate)
-        .join(Host)
-        .where(
-            and_(
-                Host.hostname == hostname,
-                PackageUpdate.update_timestamp >= since
-            )
-        )
-        .order_by(PackageUpdate.update_timestamp.desc())
-    )
-    return result.scalars().all()
-
-# Get all updates for a specific package
-async def get_package_history(session, package_name: str):
-    result = await session.execute(
-        select(PackageUpdate)
-        .where(PackageUpdate.package_name == package_name)
-        .order_by(PackageUpdate.update_timestamp.desc())
-    )
-    return result.scalars().all()
-```
-
 ## Kubernetes Deployment
 
-The database connection module is configured for Kubernetes deployment:
+The backend is configured for Kubernetes deployment with:
 
 - **Connection Pooling**: Configurable pool size and max overflow
 - **Connection Health Checks**: `pool_pre_ping=True` verifies connections
@@ -240,42 +167,67 @@ env:
     value: "false"
 ```
 
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 fluxion/
-├── alembic/                    # Alembic migrations
-│   ├── versions/              # Migration files
-│   ├── env.py                 # Alembic environment configuration
-│   └── script.py.mako         # Migration template
-├── fluxion/                   # Main package
-│   ├── __init__.py
-│   ├── database/              # Database connection
-│   │   ├── __init__.py
-│   │   └── connection.py
-│   └── models/                # SQLAlchemy models
-│       ├── __init__.py
-│       ├── base.py
-│       ├── host.py
-│       └── package_update.py
-├── alembic.ini                # Alembic configuration
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+├── backend/                   # Backend services and database
+│   ├── alembic/              # Database migrations
+│   │   ├── versions/         # Migration files
+│   │   └── env.py            # Alembic environment configuration
+│   ├── docs/                 # Backend documentation
+│   ├── examples/             # Code examples
+│   │   └── basic_usage.py   # Basic CRUD operations
+│   ├── fluxion/             # Main Python package
+│   │   ├── database/        # Database connection & session management
+│   │   │   ├── __init__.py
+│   │   │   └── connection.py
+│   │   └── models/          # SQLAlchemy ORM models
+│   │       ├── __init__.py
+│   │       ├── base.py
+│   │       ├── host.py
+│   │       └── package_update.py
+│   ├── scripts/             # Utility scripts for ops
+│   ├── tests/               # Test suite
+│   ├── alembic.ini          # Alembic configuration
+│   ├── pyproject.toml       # Project metadata
+│   ├── requirements.txt     # Python dependencies
+│   └── README.md            # Backend documentation
+├── frontend/                 # Web UI (to be added)
+├── agent/                    # Package collection agent (to be added)
+├── docs/                     # Project-wide documentation
+├── LICENSE
+└── README.md                 # This file
 ```
+
+**Planned additions:**
+- `backend/fluxion/api/` - RESTful API endpoints
+- `backend/fluxion/services/` - Business logic layer
+- `backend/fluxion/workers/` - Background workers for data processing
+- `backend/fluxion/config/` - Configuration management
+- `frontend/` - React/Vue web interface
+- `agent/` - Host agent for collecting package data
+```
+
+## Development
+
+See [backend/README.md](backend/README.md) for backend development instructions.
 
 ### Running Tests
 
 ```bash
-# Install test dependencies
-pip install pytest pytest-asyncio pytest-cov
-
-# Run tests
+cd backend
 pytest
 
-# Run tests with coverage
-pytest --cov=fluxion
+# With coverage
+pytest --cov=fluxion --cov-report=html
+```
+
+### Linting
+
+```bash
+cd backend
+ruff check .
 ```
 
 ## License
