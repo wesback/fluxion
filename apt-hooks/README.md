@@ -27,14 +27,14 @@ The hook will:
 
 ```bash
 # Install the hook script
-sudo wget https://raw.githubusercontent.com/wesback/fluxion/main/apt-hooks/99fluxion \
+sudo wget https://raw.githubusercontent.com/YOUR-ORG/fluxion/main/apt-hooks/99fluxion \
   -O /etc/apt/apt.conf.d/99fluxion
 
 # Make it executable
 sudo chmod +x /etc/apt/apt.conf.d/99fluxion
 
 # Configure the API endpoint
-sudo sed -i 's|FLUXION_API_URL=.*|FLUXION_API_URL=https://your-fluxion-api.com/api/v1/updates|g' \
+sudo sed -i 's|FLUXION_API_URL=.*|FLUXION_API_URL=https://your-fluxion-api.example.com/api/v1/updates|g' \
   /etc/apt/apt.conf.d/99fluxion
 ```
 
@@ -45,8 +45,8 @@ sudo sed -i 's|FLUXION_API_URL=.*|FLUXION_API_URL=https://your-fluxion-api.com/a
 # Fluxion APT Hook
 # Reports package updates to Fluxion API
 
-# Configuration
-FLUXION_API_URL="${FLUXION_API_URL:-http://localhost:8000/api/v1/updates}"
+# Configuration - use HTTPS in production
+FLUXION_API_URL="${FLUXION_API_URL:-https://fluxion-api.example.com/api/v1/updates}"
 HOSTNAME=$(hostname)
 OS_INFO=$(lsb_release -d | cut -f2-)
 

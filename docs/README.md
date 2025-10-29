@@ -66,8 +66,8 @@ The APT hook script will be placed at `/etc/apt/apt.conf.d/99fluxion` on hosts:
 # Example APT hook for Fluxion
 # Triggered automatically by APT on package updates
 
-# Configuration
-FLUXION_API_URL="https://fluxion.example.com/api/v1/updates"
+# Configuration - use your actual Fluxion API endpoint
+FLUXION_API_URL="https://your-fluxion-api.example.com/api/v1/updates"
 HOSTNAME=$(hostname)
 
 # Collect package information from APT
