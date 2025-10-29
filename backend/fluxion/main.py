@@ -10,9 +10,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from fluxion.api.routes import health, query, updates
+from fluxion.api.routes import admin, health, query, updates
 from fluxion.config import settings
 from fluxion.database import close_db, get_engine
+from fluxion.middleware import APIKeyAuthMiddleware
 from fluxion.telemetry import (
     instrument_app,
     instrument_sqlalchemy,
@@ -126,6 +127,9 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# Add API key authentication middleware
+app.add_middleware(APIKeyAuthMiddleware)
+
 
 # Exception handlers
 @app.exception_handler(RequestValidationError)
@@ -170,6 +174,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, tags=["Health"])
 app.include_router(updates.router, prefix="/api/v1", tags=["Package Updates"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query & Analytics"])
+app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
 
 
 # Root endpoint
