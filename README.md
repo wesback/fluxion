@@ -20,11 +20,15 @@ Fluxion is organized into distinct components:
 
 ## Features
 
+- **API Key Authentication**: Secure header-based authentication with bcrypt hashing
+- **Rate Limiting**: 1000 requests per hour per API key
+- **Role-Based Access Control**: Admin and user roles for granular permissions
 - **Async SQLAlchemy ORM**: Full async support for high-performance database operations
 - **Alembic Migrations**: Database schema versioning and migration management
 - **Optimized Indexes**: Composite indexes for efficient querying
 - **Kubernetes-Ready**: Connection pooling and concurrent write support
 - **Foreign Key Constraints**: CASCADE on delete for referential integrity
+- **OpenTelemetry Integration**: Comprehensive tracing and metrics
 
 ## Database Schema
 
@@ -62,6 +66,94 @@ Tracks package updates on each host.
 - `ix_package_updates_update_timestamp`: Index on update_timestamp
 - `ix_package_updates_host_id_update_timestamp`: Composite index for host-specific queries
 - `ix_package_updates_package_name_update_timestamp`: Composite index for package search
+
+#### `api_keys`
+API keys for authentication and authorization.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | INTEGER | PRIMARY KEY | Unique API key identifier |
+| key_hash | TEXT | NOT NULL | Bcrypt hash of the API key |
+| name | VARCHAR(255) | NOT NULL | Human-readable name/description |
+| created_at | TIMESTAMP WITH TIMEZONE | NOT NULL | When the key was created |
+| last_used | TIMESTAMP WITH TIMEZONE | NULLABLE | Last time the key was used |
+| is_active | BOOLEAN | NOT NULL | Whether the key is active |
+| role | VARCHAR(50) | NOT NULL, INDEXED | Role (user or admin) |
+
+## Authentication
+
+All API endpoints (except `/health`, `/ready`, and `/docs`) require API key authentication via the `X-API-Key` header.
+
+### API Key Management
+
+**Generate Initial Admin Key**:
+```bash
+cd backend
+python scripts/generate_admin_key.py
+```
+
+**Create Additional Keys** (requires admin API key):
+```bash
+# Create a user key
+curl -X POST http://localhost:8000/api/v1/admin/api-keys \
+  -H "X-API-Key: YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Host Reporter Key", "role": "user"}'
+
+# Create an admin key
+curl -X POST http://localhost:8000/api/v1/admin/api-keys \
+  -H "X-API-Key: YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Admin Key", "role": "admin"}'
+```
+
+**List API Keys** (requires admin API key):
+```bash
+curl http://localhost:8000/api/v1/admin/api-keys \
+  -H "X-API-Key: YOUR_ADMIN_KEY"
+```
+
+**Delete/Revoke API Key** (requires admin API key):
+```bash
+curl -X DELETE http://localhost:8000/api/v1/admin/api-keys/1 \
+  -H "X-API-Key: YOUR_ADMIN_KEY"
+```
+
+### Security Features
+
+- **Hashed Storage**: API keys are hashed using bcrypt before storage
+- **Rate Limiting**: 1000 requests per hour per API key
+- **Role-Based Access**: Admin endpoints require admin role
+- **Audit Trail**: Last used timestamp tracked for each key
+- **OpenTelemetry Integration**: API key info included in spans
+- **Authentication Logging**: Failed auth attempts are logged
+
+### Using API Keys
+
+**Report Package Update**:
+```bash
+curl -X POST http://localhost:8000/api/v1/updates \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hostname": "server01",
+    "package_name": "nginx",
+    "old_version": "1.18.0",
+    "new_version": "1.22.0"
+  }'
+```
+
+**Query Stats**:
+```bash
+curl http://localhost:8000/api/v1/stats \
+  -H "X-API-Key: YOUR_API_KEY"
+```
+
+**List Hosts**:
+```bash
+curl http://localhost:8000/api/v1/hosts \
+  -H "X-API-Key: YOUR_API_KEY"
+```
 
 ## Quick Start
 
@@ -110,6 +202,20 @@ For backend setup instructions, see [backend/README.md](backend/README.md).
 5. **Run migrations**:
    ```bash
    alembic upgrade head
+   ```
+
+6. **Generate initial admin API key**:
+   ```bash
+   python scripts/generate_admin_key.py
+   ```
+   
+   Save the generated API key securely - it cannot be retrieved later.
+
+7. **Start the API server**:
+   ```bash
+   python -m fluxion.main
+   # Or with uvicorn:
+   uvicorn fluxion.main:app --host 0.0.0.0 --port 8000
    ```
 
 ## Usage Examples
