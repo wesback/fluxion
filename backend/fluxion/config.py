@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_host: str = "0.0.0.0"
     log_level: str = "info"
+    # CORS: Use ["*"] for development only. In production, specify allowed origins:
+    # CORS_ORIGINS=["https://dashboard.example.com","https://admin.example.com"]
+    cors_origins: list[str] = ["*"]
 
     # Application metadata
     app_name: str = "Fluxion"
