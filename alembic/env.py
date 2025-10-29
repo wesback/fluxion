@@ -1,6 +1,10 @@
 import asyncio
 import os
+
+# Import the models and Base
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -8,16 +12,10 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-# Import the models and Base
-import sys
-from pathlib import Path
-
 # Add the project root to the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fluxion.models.base import Base
-from fluxion.models.host import Host
-from fluxion.models.package_update import PackageUpdate
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -79,7 +77,7 @@ async def run_async_migrations() -> None:
     """Run migrations in async mode."""
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = config.get_main_option("sqlalchemy.url")
-    
+
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",

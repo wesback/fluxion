@@ -1,7 +1,6 @@
 """Host model for tracking Linux hosts."""
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -18,20 +17,20 @@ class Host(Base):
     hostname: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     os_info: Mapped[str] = mapped_column(Text, nullable=False)
     last_seen: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # Relationship to package updates
-    package_updates: Mapped[List["PackageUpdate"]] = relationship(
+    package_updates: Mapped[list["PackageUpdate"]] = relationship(
         "PackageUpdate", back_populates="host", cascade="all, delete-orphan"
     )
 

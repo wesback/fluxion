@@ -1,11 +1,12 @@
 """Example usage of Fluxion database models."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+from sqlalchemy import select
 
 from fluxion.database import get_session
 from fluxion.models import Host, PackageUpdate
-from sqlalchemy import select
 
 
 async def create_host_example():
@@ -14,7 +15,7 @@ async def create_host_example():
         host = Host(
             hostname="server01.example.com",
             os_info="Ubuntu 22.04.3 LTS",
-            last_seen=datetime.now(timezone.utc),
+            last_seen=datetime.now(UTC),
         )
         session.add(host)
         await session.commit()
@@ -30,7 +31,7 @@ async def add_package_update_example(host_id: int):
             package_name="nginx",
             old_version="1.18.0-0ubuntu1.4",
             new_version="1.18.0-0ubuntu1.5",
-            update_timestamp=datetime.now(timezone.utc),
+            update_timestamp=datetime.now(UTC),
         )
         session.add(update)
         await session.commit()
@@ -69,27 +70,27 @@ async def query_package_updates_example(package_name: str):
 async def main():
     """Run example usage."""
     print("=== Fluxion Database Examples ===\n")
-    
+
     # Note: This requires a running PostgreSQL database
     # Set DATABASE_URL environment variable before running
-    
+
     try:
         # Create a host
         print("1. Creating a host...")
         host_id = await create_host_example()
-        
+
         # Add some package updates
         print("\n2. Adding package updates...")
         await add_package_update_example(host_id)
-        
+
         # Query hosts
         print("\n3. Querying hosts...")
         await query_hosts_example()
-        
+
         # Query package updates
         print("\n4. Querying package updates...")
         await query_package_updates_example("nginx")
-        
+
         print("\n=== Examples completed successfully ===")
     except Exception as e:
         print(f"\nError: {e}")

@@ -1,7 +1,7 @@
 """Database connection and session management with async support."""
 
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -26,7 +26,7 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 def get_engine() -> AsyncEngine:
     """
     Get or create the async database engine.
-    
+
     Returns:
         AsyncEngine: The SQLAlchemy async engine instance.
     """
@@ -46,7 +46,7 @@ def get_engine() -> AsyncEngine:
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     """
     Get or create the async session maker.
-    
+
     Returns:
         async_sessionmaker: The SQLAlchemy async session maker.
     """
@@ -64,18 +64,18 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Get an async database session (async generator for dependency injection).
-    
+
     Usage:
         async with get_session() as session:
             # Use session here
             pass
-    
+
     Or with FastAPI:
         @app.get("/")
         async def read_root(session: AsyncSession = Depends(get_session)):
             # Use session here
             pass
-    
+
     Yields:
         AsyncSession: An async SQLAlchemy session.
     """
@@ -94,7 +94,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """
     Initialize the database by creating all tables.
-    
+
     Note: This should only be used for development/testing.
     For production, use Alembic migrations.
     """
