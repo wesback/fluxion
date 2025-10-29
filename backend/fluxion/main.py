@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from fluxion.api.routes import health, updates
+from fluxion.api.routes import health, query, updates
 from fluxion.config import settings
 from fluxion.database import close_db, get_engine
 from fluxion.telemetry import (
@@ -115,6 +116,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Configure CORS for frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
 
 # Exception handlers
 @app.exception_handler(RequestValidationError)
@@ -158,6 +169,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(updates.router, prefix="/api/v1", tags=["Package Updates"])
+app.include_router(query.router, prefix="/api/v1", tags=["Query & Analytics"])
 
 
 # Root endpoint

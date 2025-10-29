@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_host: str = "0.0.0.0"
     log_level: str = "info"
+    cors_origins: list[str] = ["*"]  # Configure appropriately for production
 
     # Application metadata
     app_name: str = "Fluxion"
