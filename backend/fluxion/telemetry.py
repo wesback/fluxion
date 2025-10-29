@@ -1,7 +1,6 @@
 """OpenTelemetry instrumentation and configuration."""
 
 import logging
-from typing import Optional
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -28,15 +27,15 @@ from fluxion.config import settings
 logger = logging.getLogger(__name__)
 
 # Global tracer and meter
-_tracer: Optional[trace.Tracer] = None
-_meter: Optional[metrics.Meter] = None
+_tracer: trace.Tracer | None = None
+_meter: metrics.Meter | None = None
 
 # Metrics instruments
-_http_request_counter: Optional[metrics.Counter] = None
-_http_request_duration: Optional[metrics.Histogram] = None
-_db_query_duration: Optional[metrics.Histogram] = None
-_package_updates_counter: Optional[metrics.Counter] = None
-_db_connections: Optional[metrics.UpDownCounter] = None
+_http_request_counter: metrics.Counter | None = None
+_http_request_duration: metrics.Histogram | None = None
+_db_query_duration: metrics.Histogram | None = None
+_package_updates_counter: metrics.Counter | None = None
+_db_connections: metrics.UpDownCounter | None = None
 
 
 def setup_telemetry() -> None:
@@ -196,7 +195,7 @@ def instrument_sqlalchemy(engine) -> None:
     SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 
 
-def get_tracer() -> Optional[trace.Tracer]:
+def get_tracer() -> trace.Tracer | None:
     """
     Get the global tracer instance.
 
@@ -206,7 +205,7 @@ def get_tracer() -> Optional[trace.Tracer]:
     return _tracer
 
 
-def get_meter() -> Optional[metrics.Meter]:
+def get_meter() -> metrics.Meter | None:
     """
     Get the global meter instance.
 

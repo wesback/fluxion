@@ -87,11 +87,21 @@ async def _create_package_update_impl(
                 span.set_attribute("package_name", update_data.package_name)
                 span.set_attribute("host_id", host.id)
                 package_update = await _insert_package_update(
-                    host.id, update_data.package_name, old_version, update_data.new_version, now, session
+                    host.id,
+                    update_data.package_name,
+                    old_version,
+                    update_data.new_version,
+                    now,
+                    session,
                 )
         else:
             package_update = await _insert_package_update(
-                host.id, update_data.package_name, old_version, update_data.new_version, now, session
+                host.id,
+                update_data.package_name,
+                old_version,
+                update_data.new_version,
+                now,
+                session,
             )
 
         # Commit the transaction
@@ -238,11 +248,21 @@ async def _create_batch_package_updates_impl(
                     span.set_attribute("package_name", update_item.package_name)
                     span.set_attribute("host_id", host.id)
                     package_update = await _insert_package_update(
-                        host.id, update_item.package_name, old_version, update_item.new_version, now, session
+                        host.id,
+                        update_item.package_name,
+                        old_version,
+                        update_item.new_version,
+                        now,
+                        session,
                     )
             else:
                 package_update = await _insert_package_update(
-                    host.id, update_item.package_name, old_version, update_item.new_version, now, session
+                    host.id,
+                    update_item.package_name,
+                    old_version,
+                    update_item.new_version,
+                    now,
+                    session,
                 )
 
             created_ids.append(package_update.id)

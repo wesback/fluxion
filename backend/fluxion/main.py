@@ -1,8 +1,8 @@
 """Main FastAPI application for Fluxion package update tracking."""
 
+import json
 import logging
 import sys
-import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -13,9 +13,9 @@ from fluxion.api.routes import health, updates
 from fluxion.config import settings
 from fluxion.database import close_db, get_engine
 from fluxion.telemetry import (
-    setup_telemetry,
     instrument_app,
     instrument_sqlalchemy,
+    setup_telemetry,
     shutdown_telemetry,
 )
 

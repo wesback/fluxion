@@ -1,14 +1,16 @@
 """Tests for OpenTelemetry instrumentation."""
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from fluxion.telemetry import (
-    setup_telemetry,
-    get_tracer,
     get_meter,
+    get_tracer,
+    record_db_connection_change,
     record_http_request,
     record_package_update,
-    record_db_connection_change,
+    setup_telemetry,
     shutdown_telemetry,
 )
 
@@ -96,6 +98,7 @@ def test_shutdown_telemetry_disabled():
 async def test_telemetry_with_fastapi_app():
     """Test that telemetry works with FastAPI app."""
     from httpx import ASGITransport, AsyncClient
+
     from fluxion.main import app
 
     # Make a request to ensure telemetry is initialized via lifespan
@@ -113,12 +116,12 @@ def test_telemetry_config_validation(mock_settings):
     # Test with valid console exporter
     mock_settings.otel_exporter_type = "console"
     setup_telemetry()
-    
+
     # Test with valid otlp exporter
     mock_settings.otel_exporter_type = "otlp"
     mock_settings.otel_exporter_otlp_endpoint = "http://localhost:4317"
     setup_telemetry()
-    
+
     # Test with valid otlp-http exporter
     mock_settings.otel_exporter_type = "otlp-http"
     mock_settings.otel_exporter_otlp_endpoint = "http://localhost:4318"
