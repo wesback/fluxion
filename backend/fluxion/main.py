@@ -1,5 +1,6 @@
 """Main FastAPI application for Fluxion package update tracking."""
 
+import json
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -10,29 +11,66 @@ from fastapi.responses import JSONResponse
 
 from fluxion.api.routes import health, updates
 from fluxion.config import settings
-from fluxion.database import close_db
+from fluxion.database import close_db, get_engine
+from fluxion.telemetry import (
+    instrument_app,
+    instrument_sqlalchemy,
+    setup_telemetry,
+    shutdown_telemetry,
+)
 
 
-# Configure structured logging
+# Configure structured logging with OpenTelemetry integration
 def setup_logging() -> None:
-    """Configure structured JSON logging."""
-    # Create a custom formatter for JSON-like structured logs
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    """Configure structured JSON logging with trace context."""
+
+    class TraceContextFormatter(logging.Formatter):
+        """Custom formatter that adds trace context to log records."""
+
+        def format(self, record: logging.LogRecord) -> str:
+            # Try to get trace context from OpenTelemetry
+            from opentelemetry import trace
+
+            span = trace.get_current_span()
+            if span and span.get_span_context().is_valid:
+                trace_id = format(span.get_span_context().trace_id, "032x")
+                span_id = format(span.get_span_context().span_id, "016x")
+                record.trace_id = trace_id
+                record.span_id = span_id
+            else:
+                record.trace_id = "0" * 32
+                record.span_id = "0" * 16
+
+            # Create structured log entry
+            log_data = {
+                "timestamp": self.formatTime(record, self.datefmt),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": record.getMessage(),
+                "trace_id": record.trace_id,
+                "span_id": record.span_id,
+            }
+
+            # Add exception info if present
+            if record.exc_info:
+                log_data["exception"] = self.formatException(record.exc_info)
+
+            return json.dumps(log_data)
+
+    # Create handler with custom formatter
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = TraceContextFormatter()
+    handler.setFormatter(formatter)
 
     # Configure root logger
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper()),
-        format=log_format,
-        handlers=[logging.StreamHandler(sys.stdout)],
-    )
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, settings.log_level.upper()))
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
 
     # Set uvicorn loggers to match our log level
     logging.getLogger("uvicorn").setLevel(getattr(logging, settings.log_level.upper()))
     logging.getLogger("uvicorn.access").setLevel(getattr(logging, settings.log_level.upper()))
-
-
-setup_logging()
-logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -46,11 +84,28 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Database URL: {settings.database_url.split('@')[-1]}")  # Log without credentials
+
+    # Initialize OpenTelemetry
+    setup_telemetry()
+
+    # Instrument SQLAlchemy
+    engine = get_engine()
+    instrument_sqlalchemy(engine)
+
+    # Instrument FastAPI app
+    instrument_app(app)
+
     yield
+
     # Shutdown
     logger.info("Shutting down application")
+    shutdown_telemetry()
     await close_db()
 
+
+# Initialize logging before creating app
+setup_logging()
+logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(

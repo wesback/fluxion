@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     app_name: str = "Fluxion"
     app_version: str = "0.1.0"
 
+    # OpenTelemetry settings
+    otel_enabled: bool = True
+    otel_exporter_type: str = "console"  # "console", "otlp", or "otlp-http"
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    otel_service_name: str = "fluxion"
+    otel_environment: str = "development"
+
 
 # Global settings instance
 settings = Settings()
