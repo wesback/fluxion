@@ -1,0 +1,37 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluxion.api.configMapName" . }}
+  labels:
+    {{- include "fluxion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  {{- if .Values.argocd.syncWave }}
+  annotations:
+    {{- include "fluxion.argocd.syncWave" (dict "wave" .Values.argocd.syncWave.api) | nindent 4 }}
+  {{- end }}
+data:
+  # Database configuration
+  DB_POOL_SIZE: {{ .Values.config.database.poolSize | quote }}
+  DB_MAX_OVERFLOW: {{ .Values.config.database.maxOverflow | quote }}
+  SQL_ECHO: {{ .Values.config.database.sqlEcho | quote }}
+  
+  # API configuration
+  API_PORT: {{ .Values.config.api.port | quote }}
+  API_HOST: {{ .Values.config.api.host | quote }}
+  LOG_LEVEL: {{ .Values.config.api.logLevel | quote }}
+  CORS_ORIGINS: {{ toJson .Values.config.api.corsOrigins | quote }}
+  
+  # Application metadata
+  APP_NAME: {{ .Values.config.app.name | quote }}
+  APP_VERSION: {{ .Values.config.app.version | default .Chart.AppVersion | quote }}
+  
+  # OpenTelemetry configuration
+  OTEL_ENABLED: {{ .Values.config.otel.enabled | quote }}
+  OTEL_EXPORTER_TYPE: {{ .Values.config.otel.exporterType | quote }}
+  OTEL_SERVICE_NAME: {{ .Values.config.otel.serviceName | quote }}
+  OTEL_ENVIRONMENT: {{ .Values.config.otel.environment | quote }}
+  {{- if .Values.otelCollector.enabled }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ include "fluxion.otlpEndpoint" . | quote }}
+  {{- end }}
+{{- end }}

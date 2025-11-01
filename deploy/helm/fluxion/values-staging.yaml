@@ -1,0 +1,62 @@
+# Staging environment overrides
+api:
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+postgresql:
+  replicaCount: 1
+  persistence:
+    size: 10Gi
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 400m
+      memory: 512Mi
+
+config:
+  api:
+    logLevel: info
+    corsOrigins:
+      - "https://fluxion-staging.example.com"
+  otel:
+    environment: "staging"
+    exporterType: "otlp"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+  hosts:
+    - host: fluxion-staging.example.com
+      paths:
+        - path: /api/v1
+          pathType: Prefix
+  tls:
+    enabled: true
+
+otelCollector:
+  enabled: true
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+argocd:
+  autoSync:
+    enabled: true
+    prune: true
+    selfHeal: true

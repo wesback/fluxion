@@ -1,0 +1,118 @@
+# Production environment overrides
+api:
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - fluxion
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - api
+            topologyKey: kubernetes.io/hostname
+
+postgresql:
+  # For HA, consider using a managed PostgreSQL service or external operator
+  replicaCount: 1
+  persistence:
+    size: 20Gi
+    storageClass: "fast-ssd"
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+  
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - fluxion
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - postgresql
+            topologyKey: kubernetes.io/hostname
+
+config:
+  api:
+    logLevel: warning
+    corsOrigins:
+      - "https://fluxion.example.com"
+      - "https://dashboard.example.com"
+  database:
+    poolSize: 20
+    maxOverflow: 40
+  otel:
+    environment: "production"
+    exporterType: "otlp"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rate-limit: "200"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: fluxion.example.com
+      paths:
+        - path: /api/v1
+          pathType: Prefix
+  tls:
+    enabled: true
+
+otelCollector:
+  enabled: true
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+networkPolicy:
+  enabled: true
+
+argocd:
+  autoSync:
+    enabled: false  # Require manual approval for production
+    prune: false
+    selfHeal: false

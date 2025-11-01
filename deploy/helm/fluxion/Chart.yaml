@@ -1,0 +1,17 @@
+apiVersion: v2
+name: fluxion
+description: A Helm chart for Fluxion - Linux Package Update Tracking System
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - fluxion
+  - package-tracker
+  - linux
+  - monitoring
+home: https://github.com/wesback/fluxion
+sources:
+  - https://github.com/wesback/fluxion
+maintainers:
+  - name: Fluxion Team
+    url: https://github.com/wesback/fluxion
