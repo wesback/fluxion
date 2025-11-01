@@ -41,7 +41,7 @@ async def test_tracing_on_api_request():
 @pytest.mark.asyncio
 async def test_batch_tracing_on_api_request():
     """Test that traces are created for batch API requests.
-    
+
     Note: This test expects 401 since authentication is now required.
     """
     from fluxion.main import app
@@ -92,7 +92,7 @@ async def test_health_endpoint_does_not_require_tracing():
 @pytest.mark.asyncio
 async def test_custom_span_attributes():
     """Test that custom span attributes are set correctly.
-    
+
     Note: This test expects 401 since authentication is now required.
     """
     from fluxion.main import app

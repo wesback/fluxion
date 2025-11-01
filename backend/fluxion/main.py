@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from fluxion.api.routes import admin, health, query, updates
+from fluxion.api.routes import admin, health, query, updates, webhooks
 from fluxion.config import settings
 from fluxion.database import close_db, get_engine
 from fluxion.middleware import APIKeyAuthMiddleware
@@ -175,6 +175,7 @@ app.include_router(health.router, tags=["Health"])
 app.include_router(updates.router, prefix="/api/v1", tags=["Package Updates"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query & Analytics"])
 app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
+app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
 
 
 # Root endpoint
