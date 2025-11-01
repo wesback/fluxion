@@ -2,6 +2,17 @@
 
 This guide covers deploying Fluxion using ArgoCD for GitOps workflows.
 
+## Documentation Index
+
+📖 **Comprehensive Guides:**
+- **[ArgoCD Installation Guide](ARGOCD-INSTALLATION.md)** - Complete installation with ingress, RBAC, and SSO
+- **[GitOps Workflow](GITOPS-WORKFLOW.md)** - End-to-end development and deployment workflow
+- **[Sync Policies](SYNC-POLICIES.md)** - Understanding and configuring sync policies
+- **[Notifications Setup](NOTIFICATIONS.md)** - Configure alerts for Slack, Discord, email, etc.
+- **[Disaster Recovery](DISASTER-RECOVERY.md)** - Backup and recovery procedures
+- **[Image Updater](IMAGE-UPDATER.md)** - Automated image updates configuration
+- **[Secrets Management](../SECRETS.md)** - Managing secrets securely
+
 ## Overview
 
 ArgoCD provides:
@@ -13,12 +24,16 @@ ArgoCD provides:
 
 ## Prerequisites
 
-- Kubernetes cluster with ArgoCD installed
+- Kubernetes cluster with ArgoCD installed (see [ARGOCD-INSTALLATION.md](ARGOCD-INSTALLATION.md))
 - kubectl configured to access your cluster
 - Git repository access (https://github.com/wesback/fluxion)
 - Optional: ArgoCD CLI for command-line operations
 
 ## ArgoCD Installation
+
+For comprehensive installation instructions including ingress, RBAC, and SSO configuration, see **[ARGOCD-INSTALLATION.md](ARGOCD-INSTALLATION.md)**.
+
+### Quick Start
 
 If ArgoCD is not already installed:
 
@@ -508,8 +523,59 @@ kubectl get events -n fluxion-production --sort-by='.lastTimestamp'
 kubectl logs -n fluxion-production -l app.kubernetes.io/name=fluxion
 ```
 
+## App-of-Apps Pattern
+
+Fluxion uses the app-of-apps pattern to manage all applications from a single root application.
+
+### Root Application
+
+The root application (`root-app.yaml`) manages all Fluxion applications:
+
+```bash
+# Deploy the root application
+kubectl apply -f deploy/argocd/root-app.yaml
+
+# This automatically deploys all applications in deploy/argocd/apps/
+```
+
+The root app:
+- Monitors the `deploy/argocd/apps/` directory
+- Automatically discovers and deploys all application manifests
+- Provides centralized management of all Fluxion applications
+- Enables easy addition of new applications by simply adding files to the apps directory
+
+### Bootstrap Process
+
+To bootstrap a new cluster with Fluxion:
+
+```bash
+# 1. Install ArgoCD (see ARGOCD-INSTALLATION.md)
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# 2. Wait for ArgoCD to be ready
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+
+# 3. Create the Fluxion project
+kubectl apply -f deploy/argocd/projects/fluxion-project.yaml
+
+# 4. Deploy the root app (app-of-apps)
+kubectl apply -f deploy/argocd/root-app.yaml
+
+# 5. Monitor deployment
+kubectl get applications -n argocd
+argocd app list
+```
+
+For reference manifests and detailed bootstrap procedures, see the [bootstrap/](bootstrap/) directory.
+
 ## Additional Resources
 
+- **[ArgoCD Installation Guide](ARGOCD-INSTALLATION.md)** - Comprehensive installation with all options
+- **[GitOps Workflow](GITOPS-WORKFLOW.md)** - Complete development workflow
+- **[Sync Policies](SYNC-POLICIES.md)** - Sync policy configuration
+- **[Notifications Setup](NOTIFICATIONS.md)** - Alert configuration
+- **[Disaster Recovery](DISASTER-RECOVERY.md)** - Backup and recovery
 - [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
 - [ArgoCD Best Practices](https://argo-cd.readthedocs.io/en/stable/user-guide/best_practices/)
 - [Helm Chart Documentation](../helm/fluxion/README.md)
