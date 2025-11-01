@@ -1,0 +1,51 @@
+# Development environment overrides
+api:
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+postgresql:
+  replicaCount: 1
+  persistence:
+    size: 5Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+config:
+  api:
+    logLevel: debug
+    corsOrigins:
+      - "*"
+  otel:
+    environment: "development"
+    exporterType: "console"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: fluxion-dev.example.com
+      paths:
+        - path: /api/v1
+          pathType: Prefix
+
+otelCollector:
+  enabled: true
+
+autoscaling:
+  enabled: false
+
+argocd:
+  autoSync:
+    enabled: true
+    prune: true
+    selfHeal: true

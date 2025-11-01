@@ -1,0 +1,70 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluxion-dev
+  namespace: argocd
+  # Add a this finalizer ONLY if you want these to cascade delete.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  # Add labels for better organization
+  labels:
+    environment: dev
+    application: fluxion
+spec:
+  project: fluxion
+  
+  source:
+    repoURL: https://github.com/wesback/fluxion.git
+    targetRevision: HEAD  # or specify a branch like 'main'
+    path: deploy/helm/fluxion
+    helm:
+      # Use the dev values file
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
+      # Additional parameters can be overridden here
+      parameters: []
+      # Release name for Helm
+      releaseName: fluxion
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: fluxion-dev
+  
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true      # Automatically delete resources that are no longer defined
+      selfHeal: true   # Automatically sync when cluster state differs from Git
+      allowEmpty: false
+    
+    syncOptions:
+      - CreateNamespace=true  # Automatically create namespace if it doesn't exist
+      - PruneLast=true        # Prune resources as the last step (safer for dependencies)
+      - RespectIgnoreDifferences=true
+    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Ignore differences in certain fields (useful for dynamic values)
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Ignore if HPA is managing replicas
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates/0/spec/resources/requests/storage  # Can't be updated
+  
+  # Health assessment
+  # ArgoCD will use these to determine if the application is healthy
+  info:
+    - name: Environment
+      value: Development
+    - name: Documentation
+      value: https://github.com/wesback/fluxion

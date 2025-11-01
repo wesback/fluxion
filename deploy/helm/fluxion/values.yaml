@@ -1,0 +1,372 @@
+# Default values for fluxion
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  imagePullSecrets: []
+
+# Image configuration
+image:
+  repository: ghcr.io/wesback/fluxion
+  pullPolicy: IfNotPresent
+  tag: ""  # Overrides the image tag whose default is the chart appVersion
+
+# API deployment configuration
+api:
+  enabled: true
+  replicaCount: 2
+  
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  
+  # Probes configuration
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+    annotations: {}
+  
+  # Pod annotations
+  podAnnotations: {}
+  
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+  
+  # Environment variables (in addition to those from configmap/secrets)
+  env: []
+  
+  # Additional volumes
+  extraVolumes: []
+  
+  # Additional volume mounts
+  extraVolumeMounts: []
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  
+  # StatefulSet configuration
+  replicaCount: 1  # Set to 3 for HA
+  
+  # Image configuration
+  image:
+    repository: postgres
+    tag: "14-alpine"
+    pullPolicy: IfNotPresent
+  
+  # Authentication
+  auth:
+    database: fluxion
+    username: fluxion
+    # Password should be set via external secret or in values override
+    # Never commit passwords to Git!
+    existingSecret: ""  # Name of existing secret containing password
+    secretKey: "postgres-password"  # Key in secret containing password
+    password: ""  # Only use for testing, use existingSecret in production
+  
+  # Persistence configuration
+  persistence:
+    enabled: true
+    storageClass: ""  # Use default storage class
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    annotations: {}
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5432
+    annotations: {}
+  
+  # PostgreSQL configuration
+  config:
+    maxConnections: 100
+    sharedBuffers: "256MB"
+    effectiveCacheSize: "1GB"
+    maintenanceWorkMem: "64MB"
+    checkpointCompletionTarget: 0.9
+    walBuffers: "16MB"
+    defaultStatisticsTarget: 100
+    randomPageCost: 1.1
+    effectiveIoConcurrency: 200
+    workMem: "4MB"
+    minWalSize: "1GB"
+    maxWalSize: "4GB"
+  
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    fsGroup: 70
+  
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Application configuration (stored in ConfigMap)
+config:
+  # Database configuration
+  database:
+    poolSize: 10
+    maxOverflow: 20
+    sqlEcho: false
+  
+  # API configuration
+  api:
+    port: 8000
+    host: "0.0.0.0"
+    logLevel: info
+    corsOrigins:
+      - "*"  # Override with specific origins in production
+  
+  # Application metadata
+  app:
+    name: "Fluxion"
+    version: "0.1.0"
+  
+  # OpenTelemetry configuration
+  otel:
+    enabled: true
+    exporterType: "otlp"  # console, otlp, or otlp-http
+    serviceName: "fluxion"
+    environment: "development"
+
+# Secrets configuration
+# Use external-secrets or sealed-secrets in production
+secrets:
+  # Database password
+  # If postgresql.auth.existingSecret is set, this is ignored
+  postgresPassword: ""  # Set in values override or use external secret
+  
+  # Admin API key for initial setup
+  # Generate with: python backend/scripts/generate_admin_key.py
+  adminApiKey: ""  # Set in values override or use external secret
+  
+  # Use external secret operator
+  externalSecret:
+    enabled: false
+    backendType: ""  # secretsmanager, vault, etc.
+    name: ""
+    data: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    # CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    # Additional annotations can be added here
+  hosts:
+    - host: fluxion.example.com
+      paths:
+        - path: /api/v1
+          pathType: Prefix
+  tls:
+    enabled: false
+    # secretName: fluxion-tls
+    # Uncomment and configure for cert-manager
+    # certManager:
+    #   enabled: true
+    #   issuer: letsencrypt-prod
+    #   issuerKind: ClusterIssuer
+
+# OpenTelemetry Collector configuration
+otelCollector:
+  enabled: false
+  
+  replicaCount: 1
+  
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.91.0"
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  service:
+    type: ClusterIP
+    # OTLP gRPC receiver
+    grpcPort: 4317
+    # OTLP HTTP receiver
+    httpPort: 4318
+    # Prometheus metrics
+    metricsPort: 8888
+    annotations: {}
+  
+  # Collector configuration
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    
+    processors:
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+      
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+    
+    exporters:
+      # Console exporter for debugging
+      logging:
+        loglevel: info
+      
+      # Example: Jaeger exporter
+      # jaeger:
+      #   endpoint: jaeger-collector:14250
+      #   tls:
+      #     insecure: true
+      
+      # Example: Prometheus exporter
+      # prometheus:
+      #   endpoint: 0.0.0.0:8889
+    
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [logging]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [logging]
+  
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Network policies
+networkPolicy:
+  enabled: false
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+
+# ArgoCD specific annotations
+argocd:
+  # Sync wave for deployment ordering
+  syncWave:
+    namespace: "0"
+    secrets: "0"
+    postgresql: "1"
+    api: "2"
+    ingress: "3"
+    otelCollector: "1"
+  
+  # Sync options
+  syncOptions:
+    - CreateNamespace=true
+    - PruneLast=true
+  
+  # Auto-sync policy
+  autoSync:
+    enabled: true
+    prune: true
+    selfHeal: true
+  
+  # Ignore differences
+  ignoreDifferences: []
