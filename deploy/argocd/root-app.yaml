@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluxion-apps
+  namespace: argocd
+  # Finalizer to cascade delete all child applications
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/name: fluxion-root
+    app.kubernetes.io/part-of: fluxion
+spec:
+  project: fluxion
+  
+  source:
+    repoURL: https://github.com/wesback/fluxion
+    targetRevision: main
+    path: deploy/argocd/apps
+    directory:
+      recurse: true
+      # Only include Application manifests, not other files
+      include: '*.yaml'
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  
+  syncPolicy:
+    automated:
+      prune: true      # Automatically delete applications that are no longer defined
+      selfHeal: true   # Automatically sync when cluster state differs from Git
+      allowEmpty: false
+    
+    syncOptions:
+      - CreateNamespace=false  # argocd namespace should already exist
+      - PruneLast=true         # Prune applications as the last step
+    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Ignore differences in certain fields
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      jsonPointers:
+        - /status  # Ignore status differences
+  
+  info:
+    - name: Description
+      value: Root application managing all Fluxion applications
+    - name: Documentation
+      value: https://github.com/wesback/fluxion/blob/main/deploy/argocd/README.md
