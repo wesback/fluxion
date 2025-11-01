@@ -3,7 +3,7 @@
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from fluxion.schemas.package_update import (
     PackageUpdateRequest,
     PackageUpdateResponse,
 )
+from fluxion.services import WebhookService, is_kernel_package
 from fluxion.telemetry import get_tracer, record_package_update
 
 router = APIRouter()
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 )
 async def create_package_update(
     update_data: PackageUpdateRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> PackageUpdateResponse:
     """
@@ -37,6 +39,7 @@ async def create_package_update(
 
     Args:
         update_data: Package update information from the webhook
+        background_tasks: FastAPI background tasks
         session: Database session (injected)
 
     Returns:
@@ -56,13 +59,16 @@ async def create_package_update(
             if update_data.old_version:
                 span.set_attribute("old_version", update_data.old_version)
 
-            return await _create_package_update_impl(update_data, session, tracer)
+            return await _create_package_update_impl(
+                update_data, background_tasks, session, tracer
+            )
     else:
-        return await _create_package_update_impl(update_data, session, None)
+        return await _create_package_update_impl(update_data, background_tasks, session, None)
 
 
 async def _create_package_update_impl(
     update_data: PackageUpdateRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession,
     tracer,
 ) -> PackageUpdateResponse:
@@ -116,6 +122,17 @@ async def _create_package_update_impl(
             f"version={old_version}->{update_data.new_version}, "
             f"id={package_update.id}"
         )
+
+        # Trigger webhooks if this is a kernel package (async, don't block response)
+        if is_kernel_package(update_data.package_name):
+            logger.info(f"Kernel package detected: {update_data.package_name}, triggering webhooks")
+            background_tasks.add_task(
+                _trigger_kernel_webhooks,
+                update_data.hostname,
+                update_data.package_name,
+                old_version,
+                update_data.new_version,
+            )
 
         return PackageUpdateResponse(
             id=package_update.id, message="Package update recorded successfully"
@@ -177,6 +194,36 @@ async def _insert_package_update(
     return package_update
 
 
+async def _trigger_kernel_webhooks(
+    hostname: str,
+    package_name: str,
+    old_version: str | None,
+    new_version: str,
+) -> None:
+    """
+    Trigger webhooks for kernel package updates.
+
+    This is executed as a background task to not block the API response.
+
+    Args:
+        hostname: Host name
+        package_name: Package name
+        old_version: Old version
+        new_version: New version
+    """
+    try:
+        from fluxion.database import get_session
+
+        async for session in get_session():
+            webhook_service = WebhookService(session)
+            await webhook_service.trigger_kernel_update_webhooks(
+                hostname, package_name, old_version, new_version
+            )
+            break  # Only need one iteration
+    except Exception as e:
+        logger.error(f"Error triggering kernel webhooks: {str(e)}", exc_info=True)
+
+
 @router.post(
     "/updates/batch",
     response_model=BatchPackageUpdateResponse,
@@ -188,6 +235,7 @@ async def _insert_package_update(
 )
 async def create_batch_package_updates(
     batch_data: BatchPackageUpdateRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> BatchPackageUpdateResponse:
     """
@@ -198,6 +246,7 @@ async def create_batch_package_updates(
 
     Args:
         batch_data: Batch of package updates from the webhook
+        background_tasks: FastAPI background tasks
         session: Database session (injected)
 
     Returns:
@@ -214,13 +263,16 @@ async def create_batch_package_updates(
             span.set_attribute("hostname", batch_data.hostname)
             span.set_attribute("batch_size", len(batch_data.updates))
 
-            return await _create_batch_package_updates_impl(batch_data, session, tracer)
+            return await _create_batch_package_updates_impl(
+                batch_data, background_tasks, session, tracer
+            )
     else:
-        return await _create_batch_package_updates_impl(batch_data, session, None)
+        return await _create_batch_package_updates_impl(batch_data, background_tasks, session, None)
 
 
 async def _create_batch_package_updates_impl(
     batch_data: BatchPackageUpdateRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession,
     tracer,
 ) -> BatchPackageUpdateResponse:
@@ -236,6 +288,8 @@ async def _create_batch_package_updates_impl(
 
         # Create all package update records
         created_ids: list[int] = []
+        kernel_packages: list[tuple[str, str | None, str]] = []  # (package_name, old_ver, new_ver)
+
         for update_item in batch_data.updates:
             # Normalize old_version: treat "-" as None for new installs
             old_version = update_item.old_version
@@ -267,6 +321,12 @@ async def _create_batch_package_updates_impl(
 
             created_ids.append(package_update.id)
 
+            # Track kernel packages for webhook triggering
+            if is_kernel_package(update_item.package_name):
+                kernel_packages.append(
+                    (update_item.package_name, old_version, update_item.new_version)
+                )
+
             logger.debug(
                 f"Package update queued: host={batch_data.hostname}, "
                 f"package={update_item.package_name}, "
@@ -284,6 +344,20 @@ async def _create_batch_package_updates_impl(
             f"Batch package updates recorded: host={batch_data.hostname}, "
             f"count={len(created_ids)}, ids={created_ids}"
         )
+
+        # Trigger webhooks for kernel packages (async, don't block response)
+        if kernel_packages:
+            logger.info(
+                f"Detected {len(kernel_packages)} kernel package(s), triggering webhooks"
+            )
+            for package_name, old_version, new_version in kernel_packages:
+                background_tasks.add_task(
+                    _trigger_kernel_webhooks,
+                    batch_data.hostname,
+                    package_name,
+                    old_version,
+                    new_version,
+                )
 
         return BatchPackageUpdateResponse(
             hostname=batch_data.hostname,
