@@ -6,9 +6,10 @@ This Helm chart deploys the Fluxion Linux Package Update Tracking System on Kube
 
 The chart deploys the following components:
 
-- **PostgreSQL StatefulSet**: Database for storing package update history
+- **Frontend Deployment**: Next.js web application with Nginx reverse proxy
 - **API Deployment**: FastAPI backend service with configurable replicas
-- **Ingress**: Optional ingress for external access with rate limiting
+- **PostgreSQL StatefulSet**: Database for storing package update history
+- **Ingress**: Optional ingress for external access with rate limiting and path-based routing
 - **OpenTelemetry Collector**: Optional observability collector for traces and metrics
 - **ConfigMaps & Secrets**: Configuration and sensitive data management
 
@@ -103,6 +104,30 @@ Before deploying, you **must** configure:
 
 ### Key Configuration Options
 
+#### Frontend Configuration
+
+```yaml
+frontend:
+  enabled: true  # Enable frontend deployment
+  replicaCount: 2  # Number of frontend replicas
+  image:
+    repository: ghcr.io/wesback/fluxion-frontend
+    tag: "v1.0.0"  # Frontend image tag
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  config:
+    apiUrl: "http://fluxion-api:8000"  # Backend API URL
+  autoscaling:
+    enabled: false  # Enable HPA for production
+    minReplicas: 2
+    maxReplicas: 10
+```
+
 #### API Configuration
 
 ```yaml
@@ -156,8 +181,12 @@ ingress:
   hosts:
     - host: fluxion.example.com
       paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend  # Frontend at root path
         - path: /api/v1
           pathType: Prefix
+          backend: api  # API at /api/v1
   tls:
     enabled: true
 ```
