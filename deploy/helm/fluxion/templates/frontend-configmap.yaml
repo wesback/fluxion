@@ -1,0 +1,27 @@
+{{- if .Values.frontend.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluxion.fullname" . }}-frontend-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fluxion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+  {{- with .Values.argocd.syncWave }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ .configmaps }}"
+  {{- end }}
+data:
+  # API URL for frontend to connect to backend
+  api-url: {{ .Values.frontend.config.apiUrl | quote }}
+  
+  # Application name
+  app-name: {{ .Values.frontend.config.appName | quote }}
+  
+  # Runtime configuration as JSON
+  runtime-config.json: |
+    {
+      "apiUrl": {{ .Values.frontend.config.apiUrl | quote }},
+      "appName": {{ .Values.frontend.config.appName | quote }}
+    }
+{{- end }}

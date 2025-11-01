@@ -9,6 +9,23 @@ api:
       cpu: 100m
       memory: 128Mi
 
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: "dev-latest"
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  config:
+    apiUrl: "http://fluxion-api:8000"
+  autoscaling:
+    enabled: false
+
 postgresql:
   replicaCount: 1
   persistence:
@@ -35,8 +52,12 @@ ingress:
   hosts:
     - host: fluxion-dev.example.com
       paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
         - path: /api/v1
           pathType: Prefix
+          backend: api
 
 otelCollector:
   enabled: true

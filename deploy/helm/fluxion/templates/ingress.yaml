@@ -38,9 +38,15 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
+                {{- if eq .backend "frontend" }}
+                name: {{ include "fluxion.fullname" $ }}-frontend
+                port:
+                  number: {{ $.Values.frontend.service.port }}
+                {{- else }}
                 name: {{ include "fluxion.api.fullname" $ }}
                 port:
                   number: {{ $.Values.api.service.port }}
+                {{- end }}
           {{- end }}
     {{- end }}
 {{- end }}

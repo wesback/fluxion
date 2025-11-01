@@ -9,6 +9,23 @@ api:
       cpu: 200m
       memory: 256Mi
 
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    tag: "staging-latest"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  config:
+    apiUrl: "http://fluxion-api:8000"
+  autoscaling:
+    enabled: false
+
 postgresql:
   replicaCount: 1
   persistence:
@@ -40,8 +57,12 @@ ingress:
   hosts:
     - host: fluxion-staging.example.com
       paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
         - path: /api/v1
           pathType: Prefix
+          backend: api
   tls:
     enabled: true
 
