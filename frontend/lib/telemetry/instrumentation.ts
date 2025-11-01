@@ -29,9 +29,21 @@ let sessionId: string;
 
 /**
  * Generate a unique session ID for the user session
+ * Uses cryptographically secure random values
  */
 function generateSessionId(): string {
-  return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    // Use crypto.randomUUID if available (modern browsers)
+    return `session_${Date.now()}_${crypto.randomUUID()}`;
+  } else if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    // Fallback to crypto.getRandomValues
+    const array = new Uint32Array(2);
+    crypto.getRandomValues(array);
+    return `session_${Date.now()}_${array[0].toString(36)}${array[1].toString(36)}`;
+  } else {
+    // Fallback for environments without crypto (shouldn't happen in browsers)
+    return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  }
 }
 
 /**
