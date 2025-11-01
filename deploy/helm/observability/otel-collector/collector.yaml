@@ -1,0 +1,121 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: fluxion-collector
+  namespace: monitoring
+spec:
+  mode: deployment
+  replicas: 2
+  
+  # Image
+  image: otel/opentelemetry-collector-contrib:0.91.0
+  
+  # Resource configuration
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  
+  # Service configuration
+  config: |
+    receivers:
+      # OTLP receiver for traces and metrics
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+            cors:
+              allowed_origins:
+                - "*"
+              allowed_headers:
+                - "*"
+      
+      # Prometheus receiver for scraping metrics
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'otel-collector'
+              scrape_interval: 30s
+              static_configs:
+                - targets: ['localhost:8888']
+    
+    processors:
+      # Batch processor for performance
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+      
+      # Memory limiter to prevent OOM
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 900
+        spike_limit_mib: 100
+      
+      # Resource processor to add attributes
+      resource:
+        attributes:
+          - key: service.namespace
+            value: fluxion
+            action: insert
+          - key: deployment.environment
+            from_attribute: k8s.namespace.name
+            action: insert
+      
+      # K8s attributes processor
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.deployment.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.node.name
+    
+    exporters:
+      # Export to Prometheus
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        namespace: fluxion
+        const_labels:
+          platform: kubernetes
+      
+      # Export traces to Jaeger
+      otlp/jaeger:
+        endpoint: jaeger-collector.monitoring.svc.cluster.local:4317
+        tls:
+          insecure: true
+      
+      # Logging exporter for debugging
+      logging:
+        loglevel: info
+        sampling_initial: 5
+        sampling_thereafter: 200
+    
+    service:
+      pipelines:
+        # Traces pipeline
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, resource, batch]
+          exporters: [otlp/jaeger, logging]
+        
+        # Metrics pipeline
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, resource, batch]
+          exporters: [prometheus, logging]
+      
+      # Telemetry configuration
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888

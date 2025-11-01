@@ -1,0 +1,209 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-stack
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    environment: production
+    application: observability
+    component: prometheus
+spec:
+  project: fluxion
+  
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 55.0.0
+    helm:
+      releaseName: prometheus-stack
+      valuesObject:
+        # Prometheus configuration
+        prometheus:
+          enabled: true
+          prometheusSpec:
+            retention: 30d
+            retentionSize: "45GB"
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 50Gi
+            resources:
+              requests:
+                cpu: 500m
+                memory: 2Gi
+              limits:
+                cpu: 2000m
+                memory: 4Gi
+            # Service monitors
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            # Enable scraping of Fluxion API
+            additionalScrapeConfigs:
+              - job_name: 'fluxion-api'
+                kubernetes_sd_configs:
+                  - role: pod
+                    namespaces:
+                      names:
+                        - fluxion-dev
+                        - fluxion-staging
+                        - fluxion-production
+                relabel_configs:
+                  - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                    action: keep
+                    regex: fluxion
+                  - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                    action: keep
+                    regex: api
+                  - source_labels: [__address__]
+                    target_label: __address__
+                    regex: ([^:]+)(?::\d+)?
+                    replacement: $1:8000
+                  - source_labels: [__meta_kubernetes_namespace]
+                    target_label: namespace
+                  - source_labels: [__meta_kubernetes_pod_name]
+                    target_label: pod
+        
+        # Grafana configuration
+        grafana:
+          enabled: true
+          adminPassword: "changeme"  # Should be overridden with a secret
+          persistence:
+            enabled: true
+            size: 10Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # Ingress configuration (optional)
+          ingress:
+            enabled: false
+            ingressClassName: nginx
+            hosts:
+              - grafana.example.com
+            tls:
+              - secretName: grafana-tls
+                hosts:
+                  - grafana.example.com
+          # Data sources
+          additionalDataSources:
+            - name: Jaeger
+              type: jaeger
+              access: proxy
+              url: http://jaeger-query.monitoring.svc.cluster.local:16686
+              isDefault: false
+              editable: true
+          # Sidecar for dashboard provisioning
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              labelValue: "1"
+              searchNamespace: ALL
+              provider:
+                allowUiUpdates: false
+                foldersFromFilesStructure: true
+          # Pre-configure dashboard provider
+          dashboardProviders:
+            dashboardproviders.yaml:
+              apiVersion: 1
+              providers:
+                - name: 'fluxion'
+                  orgId: 1
+                  folder: 'Fluxion'
+                  type: file
+                  disableDeletion: false
+                  editable: true
+                  options:
+                    path: /var/lib/grafana/dashboards/fluxion
+        
+        # AlertManager configuration
+        alertmanager:
+          enabled: true
+          alertmanagerSpec:
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 10Gi
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+          config:
+            global:
+              resolve_timeout: 5m
+            route:
+              group_by: ['alertname', 'cluster', 'service']
+              group_wait: 10s
+              group_interval: 10s
+              repeat_interval: 12h
+              receiver: 'null'
+              routes:
+                - match:
+                    alertname: Watchdog
+                  receiver: 'null'
+            receivers:
+              - name: 'null'
+        
+        # Node exporter
+        nodeExporter:
+          enabled: true
+        
+        # Kube-state-metrics
+        kubeStateMetrics:
+          enabled: true
+        
+        # Prometheus operator
+        prometheusOperator:
+          enabled: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
+  
+  info:
+    - name: Component
+      value: Prometheus Stack
+    - name: Description
+      value: Prometheus Operator, Grafana, AlertManager, and exporters

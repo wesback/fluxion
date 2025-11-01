@@ -20,6 +20,10 @@ spec:
       server: '*'
     - namespace: 'fluxion'
       server: '*'
+    - namespace: 'monitoring'
+      server: '*'
+    - namespace: 'opentelemetry-operator-system'
+      server: '*'
   
   # Cluster resource whitelist - what cluster-scoped resources can be deployed
   clusterResourceWhitelist:
