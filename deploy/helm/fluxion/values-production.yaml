@@ -26,6 +26,43 @@ api:
                     - api
             topologyKey: kubernetes.io/hostname
 
+frontend:
+  enabled: true
+  replicaCount: 3
+  image:
+    tag: "v1.0.0"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  config:
+    apiUrl: "http://fluxion-api:8000"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - fluxion
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - frontend
+            topologyKey: kubernetes.io/hostname
+
 postgresql:
   # For HA, consider using a managed PostgreSQL service or external operator
   replicaCount: 1
@@ -81,8 +118,12 @@ ingress:
   hosts:
     - host: fluxion.example.com
       paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
         - path: /api/v1
           pathType: Prefix
+          backend: api
   tls:
     enabled: true
 
