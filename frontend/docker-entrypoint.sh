@@ -5,7 +5,7 @@ set -e
 shutdown() {
     echo "Shutting down gracefully..."
     kill -TERM $NEXTJS_PID $NGINX_PID 2>/dev/null || true
-    wait $NEXTJS_PID $NGINX_PID
+    wait $NEXTJS_PID $NGINX_PID 2>/dev/null || true
     exit 0
 }
 
@@ -40,10 +40,19 @@ echo "Application started successfully"
 echo "Next.js PID: $NEXTJS_PID"
 echo "Nginx PID: $NGINX_PID"
 
-# Wait for either process to exit
-wait -n $NEXTJS_PID $NGINX_PID
-
-# If we get here, one process exited
-EXIT_CODE=$?
-echo "Process exited with code $EXIT_CODE, shutting down..."
-shutdown
+# Monitor both processes - POSIX compliant approach
+while true; do
+    # Check if Next.js is still running
+    if ! kill -0 $NEXTJS_PID 2>/dev/null; then
+        echo "Next.js process exited"
+        shutdown
+    fi
+    
+    # Check if Nginx is still running
+    if ! kill -0 $NGINX_PID 2>/dev/null; then
+        echo "Nginx process exited"
+        shutdown
+    fi
+    
+    sleep 5
+done

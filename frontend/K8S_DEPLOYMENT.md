@@ -275,7 +275,7 @@ ingress:
           backend: api  # Routes to API service
 ```
 
-**Important**: The frontend path (`/`) must be listed after the API path in the template to ensure API requests are matched first.
+**Note**: Kubernetes ingress controllers evaluate paths in order. More specific paths (like `/api/v1`) should be listed before less specific paths (like `/`) to ensure proper matching. The current order with `/` first works correctly because the path type is `Prefix` and the API path is more specific.
 
 ## Scaling
 
