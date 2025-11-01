@@ -1,4 +1,13 @@
+import axios, { AxiosInstance, AxiosError } from 'axios';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+// API key should be stored server-side only, not exposed to client
+// For server-side requests, use the FLUXION_API_KEY environment variable
+const getApiKey = () => {
+  // This will only work in server-side contexts (API routes, server components)
+  return process.env.FLUXION_API_KEY;
+};
 
 export interface Host {
   hostname: string;
@@ -34,42 +43,62 @@ export interface PackageHost {
   last_updated: string;
 }
 
-class ApiClient {
-  private baseUrl: string;
-
-  constructor() {
-    this.baseUrl = API_BASE_URL;
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+    public data?: unknown
+  ) {
+    super(message);
+    this.name = 'ApiError';
   }
+}
 
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
-      });
+class ApiClient {
+  private client: AxiosInstance;
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
+  constructor(apiKey?: string) {
+    this.client = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+      },
+    });
+
+    // Response interceptor for error handling
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error: AxiosError) => {
+        if (error.response) {
+          // Server responded with error status
+          const data = error.response.data as { detail?: string } | undefined
+          const message = data?.detail || error.message
+          throw new ApiError(
+            message,
+            error.response.status,
+            error.response.data
+          );
+        } else if (error.request) {
+          // Request made but no response received
+          throw new ApiError('No response from server. Please check your connection.');
+        } else {
+          // Something else happened
+          throw new ApiError(error.message);
+        }
       }
-
-      return await response.json();
-    } catch (error) {
-      console.error(`API request failed: ${url}`, error);
-      throw error;
-    }
+    );
   }
 
   async getStats(): Promise<Stats> {
-    return this.request<Stats>('/api/v1/stats');
+    const response = await this.client.get<Stats>('/api/v1/stats');
+    return response.data;
   }
 
   async getHosts(): Promise<{ items: Host[] }> {
-    return this.request<{ items: Host[] }>('/api/v1/hosts');
+    const response = await this.client.get<{ items: Host[] }>('/api/v1/hosts');
+    return response.data;
   }
 
   async getHostUpdates(
@@ -81,27 +110,28 @@ class ApiClient {
       to_date?: string;
     }
   ): Promise<{ items: PackageUpdate[]; total: number; limit: number; offset: number }> {
-    const params = new URLSearchParams();
-    if (options?.limit) params.append('limit', options.limit.toString());
-    if (options?.offset) params.append('offset', options.offset.toString());
-    if (options?.from_date) params.append('from_date', options.from_date);
-    if (options?.to_date) params.append('to_date', options.to_date);
-
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return this.request(`/api/v1/hosts/${encodeURIComponent(hostname)}/updates${query}`);
+    const response = await this.client.get(
+      `/api/v1/hosts/${encodeURIComponent(hostname)}/updates`,
+      { params: options }
+    );
+    return response.data;
   }
 
   async getRecentUpdates(limit: number = 20, hours: number = 24): Promise<{ items: HostUpdate[] }> {
-    return this.request<{ items: HostUpdate[] }>(
-      `/api/v1/updates/recent?limit=${limit}&hours=${hours}`
+    const response = await this.client.get<{ items: HostUpdate[] }>(
+      '/api/v1/updates/recent',
+      { params: { limit, hours } }
     );
+    return response.data;
   }
 
   async getPackageHosts(packageName: string): Promise<{ items: PackageHost[] }> {
-    return this.request<{ items: PackageHost[] }>(
+    const response = await this.client.get<{ items: PackageHost[] }>(
       `/api/v1/packages/${encodeURIComponent(packageName)}/hosts`
     );
+    return response.data;
   }
 }
 
-export const apiClient = new ApiClient();
+// Create a singleton instance with API key from environment
+export const apiClient = new ApiClient(getApiKey());
