@@ -45,10 +45,10 @@ async def test_openapi_includes_webhook_endpoints():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/openapi.json")
         assert response.status_code == 200
-        
+
         openapi = response.json()
         paths = openapi["paths"]
-        
+
         # Check webhook endpoints are documented
         assert "/api/v1/admin/webhooks" in paths
         assert "post" in paths["/api/v1/admin/webhooks"]

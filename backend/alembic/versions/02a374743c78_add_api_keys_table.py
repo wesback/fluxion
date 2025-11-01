@@ -5,17 +5,17 @@ Revises: 82fa12c56824
 Create Date: 2025-10-29 15:00:55.177471
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '02a374743c78'
-down_revision: Union[str, Sequence[str], None] = '82fa12c56824'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '82fa12c56824'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column('role', sa.String(length=50), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
-    
+
     # Create indexes
     op.create_index(op.f('ix_api_keys_id'), 'api_keys', ['id'], unique=False)
     op.create_index(op.f('ix_api_keys_role'), 'api_keys', ['role'], unique=False)
@@ -43,6 +43,6 @@ def downgrade() -> None:
     # Drop indexes
     op.drop_index(op.f('ix_api_keys_role'), table_name='api_keys')
     op.drop_index(op.f('ix_api_keys_id'), table_name='api_keys')
-    
+
     # Drop table
     op.drop_table('api_keys')

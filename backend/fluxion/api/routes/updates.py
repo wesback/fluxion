@@ -212,14 +212,18 @@ async def _trigger_kernel_webhooks(
         new_version: New version
     """
     try:
-        from fluxion.database import get_session
+        from sqlalchemy.ext.asyncio import async_sessionmaker
 
-        async for session in get_session():
+        from fluxion.database import get_engine
+
+        engine = get_engine()
+        async_session = async_sessionmaker(engine, expire_on_commit=False)
+
+        async with async_session() as session:
             webhook_service = WebhookService(session)
             await webhook_service.trigger_kernel_update_webhooks(
                 hostname, package_name, old_version, new_version
             )
-            break  # Only need one iteration
     except Exception as e:
         logger.error(f"Error triggering kernel webhooks: {str(e)}", exc_info=True)
 

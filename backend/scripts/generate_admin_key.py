@@ -33,7 +33,7 @@ async def create_admin_key(name: str = "Initial Admin Key") -> tuple[int, str]:
     """
     async for session in get_session():
         # Check if any admin keys already exist
-        stmt = select(APIKey).where(APIKey.role == "admin", APIKey.is_active == True)
+        stmt = select(APIKey).where(APIKey.role == "admin", APIKey.is_active.is_(True))
         result = await session.execute(stmt)
         existing_keys = result.scalars().all()
 
@@ -41,7 +41,7 @@ async def create_admin_key(name: str = "Initial Admin Key") -> tuple[int, str]:
             print(f"\n⚠️  Warning: {len(existing_keys)} active admin key(s) already exist:")
             for key in existing_keys:
                 print(f"  - {key.name} (ID: {key.id}, Created: {key.created_at})")
-            
+
             # Ask for confirmation
             response = input("\nDo you want to create another admin key? (y/N): ")
             if response.lower() != 'y':
@@ -88,7 +88,7 @@ async def main():
         print()
         print(f"Key ID:   {key_id}")
         print(f"Key Name: {name}")
-        print(f"Role:     admin")
+        print("Role:     admin")
         print()
         print("API Key:")
         print("-" * 70)

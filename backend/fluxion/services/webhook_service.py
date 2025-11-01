@@ -58,7 +58,7 @@ class WebhookService:
         """
         result = await self.session.execute(
             select(WebhookConfig).where(
-                WebhookConfig.enabled == True,  # noqa: E712
+                WebhookConfig.enabled.is_(True),
             )
         )
         webhooks = result.scalars().all()

@@ -5,17 +5,17 @@ Revises: 02a374743c78
 Create Date: 2025-11-01 06:26:53.548663
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '19d698aef279'
-down_revision: Union[str, Sequence[str], None] = '02a374743c78'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '02a374743c78'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -69,7 +69,10 @@ def downgrade() -> None:
     """Downgrade schema."""
     # Drop webhook_delivery_history table and its indexes
     op.drop_index('ix_webhook_delivery_history_created_at', table_name='webhook_delivery_history')
-    op.drop_index('ix_webhook_delivery_history_webhook_config_id', table_name='webhook_delivery_history')
+    op.drop_index(
+        'ix_webhook_delivery_history_webhook_config_id',
+        table_name='webhook_delivery_history',
+    )
     op.drop_table('webhook_delivery_history')
 
     # Drop webhook_configs table and its indexes

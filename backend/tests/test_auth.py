@@ -4,9 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from fluxion.auth import generate_api_key, hash_api_key
-from fluxion.database import get_session
 from fluxion.main import app
-from fluxion.models import APIKey
 
 
 @pytest.mark.asyncio
