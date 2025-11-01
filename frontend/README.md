@@ -8,16 +8,23 @@ A modern, responsive Next.js frontend for the Fluxion package update tracking sy
 - 📱 **Responsive Design**: Mobile-first design that works on all screen sizes
 - 📊 **Data Visualization**: Interactive charts using Recharts
 - 🎨 **Modern UI**: Built with Tailwind CSS and shadcn/ui components
-- ⚡ **Fast**: Next.js 14+ with App Router for optimal performance
-- 🔄 **Real-time Updates**: TanStack Query for efficient data fetching (ready for real API)
+- ⚡ **Fast**: Next.js 16 with App Router for optimal performance
+- 🔄 **Real-time Updates**: TanStack Query for efficient data fetching and caching
+- 🔐 **Secure Authentication**: Server-side API key authentication
+- 🚨 **Error Handling**: Comprehensive error boundaries and toast notifications
+- ⏱️ **Auto-refresh**: Recent updates refresh every 30 seconds
+- 🔁 **Retry Logic**: Automatic retry with exponential backoff for failed requests
 
 ## Tech Stack
 
-- **Framework**: Next.js 14+ (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS v4
 - **UI Components**: shadcn/ui
 - **Charts**: Recharts
+- **Data Fetching**: TanStack Query (React Query) v5
+- **HTTP Client**: Axios
+- **Notifications**: Sonner
 - **Theme**: next-themes
 - **Date Handling**: date-fns
 - **Icons**: Lucide React
@@ -28,6 +35,7 @@ A modern, responsive Next.js frontend for the Fluxion package update tracking sy
 
 - Node.js 18+ and npm
 - Backend API running (see `/backend/README.md`)
+- Valid API key from the backend
 
 ### Installation
 
@@ -41,10 +49,13 @@ A modern, responsive Next.js frontend for the Fluxion package update tracking sy
    cp .env.example .env.local
    ```
    
-   Edit `.env.local` and set your API base URL:
+   Edit `.env.local` and set your API configuration:
    ```env
    NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+   FLUXION_API_KEY=your_api_key_here
    ```
+   
+   **IMPORTANT**: The `FLUXION_API_KEY` is stored server-side only and never exposed to the browser.
 
 3. **Run development server**:
    ```bash
@@ -61,28 +72,50 @@ A modern, responsive Next.js frontend for the Fluxion package update tracking sy
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
 
+## API Integration
+
+The frontend integrates with the FastAPI backend using secure, server-side authentication. For detailed documentation on API usage, hooks, and error handling, see [API_INTEGRATION.md](./API_INTEGRATION.md).
+
+### Quick Start with API
+
+```typescript
+import { useStats, useHosts, useRecentUpdates } from '@/lib/hooks/use-api';
+
+function MyComponent() {
+  const { data, isLoading, error, refetch } = useStats();
+  
+  if (isLoading) return <LoadingSkeleton />;
+  if (error) return <ErrorMessage error={error} />;
+  
+  return <DataDisplay data={data} onRefresh={refetch} />;
+}
+```
+
 ## Pages
 
 ### Dashboard (`/`)
 - Stats cards showing total hosts, updates, and recent activity
 - Bar charts for top packages and most active hosts
-- Recent updates feed (last 20 updates)
+- Recent updates feed (auto-refreshes every 30 seconds)
+- Manual refresh button
 
 ### Hosts (`/hosts`)
 - Searchable table of all registered hosts
 - Shows hostname, OS, last seen, and total updates
 - Click hostname to view details
+- Manual refresh button
 
 ### Host Detail (`/hosts/[hostname]`)
 - Host information card
-- Line chart showing updates over time
+- Line chart showing updates over time (last 7 days)
 - Full update history with pagination
-- Filter by date range (ready for implementation)
+- Manual refresh button
 
 ### Packages (`/packages`)
 - Search for packages across all hosts
 - Shows which hosts have the package installed
 - Displays current version per host
+- Real-time search results
 
 ## Project Structure
 
@@ -93,7 +126,7 @@ frontend/
 │   │   ├── [hostname]/      # Dynamic host detail page
 │   │   └── page.tsx         # Host list page
 │   ├── packages/            # Package search page
-│   ├── layout.tsx           # Root layout with theme provider
+│   ├── layout.tsx           # Root layout with providers
 │   ├── page.tsx             # Dashboard page
 │   └── globals.css          # Global styles and theme
 ├── components/
@@ -104,18 +137,24 @@ frontend/
 │   │   ├── button.tsx
 │   │   ├── card.tsx
 │   │   ├── input.tsx
+│   │   ├── skeleton.tsx     # Loading skeletons
 │   │   └── table.tsx
+│   ├── error-boundary.tsx   # Error boundary component
 │   ├── host-card.tsx        # Host information card
 │   ├── navbar.tsx           # Navigation bar
+│   ├── query-provider.tsx   # TanStack Query provider
 │   ├── stats-card.tsx       # Statistics card
 │   ├── theme-provider.tsx   # Theme context provider
 │   ├── theme-toggle.tsx     # Dark/light mode toggle
 │   └── updates-table.tsx    # Reusable updates table
 ├── lib/
-│   ├── api.ts               # API client
-│   ├── mock-data.ts         # Mock data for development
+│   ├── hooks/               # Custom React hooks
+│   │   └── use-api.ts       # TanStack Query API hooks
+│   ├── api.ts               # API client with auth
+│   ├── mock-data.ts         # Mock data (for reference)
 │   └── utils.ts             # Utility functions
 ├── .env.example             # Environment variables template
+├── API_INTEGRATION.md       # API integration documentation
 └── README.md                # This file
 ```
 
@@ -123,14 +162,25 @@ frontend/
 
 The theme is configured in `app/globals.css` using CSS variables. You can customize colors by modifying the variables in the `:root` and `.dark` selectors.
 
-## Development with Mock Data
+## Error Handling
 
-The frontend currently uses mock data defined in `lib/mock-data.ts`. This allows for development and testing without a running backend.
+The frontend includes comprehensive error handling:
 
-To switch to the real API:
-1. Ensure the backend is running
-2. Update `NEXT_PUBLIC_API_BASE_URL` in `.env.local`
-3. The API client in `lib/api.ts` will automatically use the real endpoints
+- **Error Boundaries**: Catch and display React errors gracefully
+- **Toast Notifications**: User-friendly error messages using Sonner
+- **Retry Logic**: Automatic retry with exponential backoff (3 attempts)
+- **Loading States**: Skeleton components for better UX
+- **API Error Messages**: Display backend error details
+
+## Data Management
+
+The frontend uses TanStack Query for efficient data management:
+
+- **Caching**: Data is cached for 5 minutes (configurable per query)
+- **Auto-refresh**: Recent updates refresh every 30 seconds
+- **Stale-while-revalidate**: Show cached data while fetching updates
+- **Manual Refresh**: Refresh buttons on all pages
+- **DevTools**: React Query DevTools in development mode
 
 ## API Client
 
@@ -140,6 +190,12 @@ The API client (`lib/api.ts`) provides methods for:
 - `getHostUpdates(hostname, options)` - Get updates for a specific host
 - `getRecentUpdates(limit, hours)` - Get recent updates across all hosts
 - `getPackageHosts(packageName)` - Get hosts with a specific package
+
+All methods include:
+- Automatic authentication with API key
+- Error handling with typed errors
+- 30-second timeout
+- TypeScript type safety
 
 ## Responsive Design
 
@@ -170,9 +226,17 @@ The build will be optimized and output to `.next/` directory.
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEXT_PUBLIC_API_BASE_URL` | Backend API base URL | `http://localhost:8000` |
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `NEXT_PUBLIC_API_BASE_URL` | Backend API base URL | `http://localhost:8000` | Yes |
+| `FLUXION_API_KEY` | API authentication key (server-side only) | - | Yes |
+
+## Security
+
+- API keys are stored server-side only
+- Never exposed to client browser
+- Automatic inclusion in authenticated requests
+- No localStorage or cookie storage
 
 ## Browser Support
 
@@ -187,7 +251,8 @@ The build will be optimized and output to `.next/` directory.
 2. Make your changes
 3. Test thoroughly on mobile and desktop
 4. Ensure dark mode works correctly
-5. Submit a pull request
+5. Run linting and build
+6. Submit a pull request
 
 ## License
 

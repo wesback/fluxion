@@ -5,20 +5,25 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Search } from "lucide-react"
+import { Search, Loader2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
-import { mockPackageHosts } from "@/lib/mock-data"
+import { usePackageSearch } from "@/lib/hooks/use-api"
+import { TableSkeleton } from "@/components/ui/skeleton"
+import { ErrorBoundary } from "@/components/error-boundary"
 
-export default function PackagesPage() {
-  const [packageName, setPackageName] = useState("nginx")
-  const [hasSearched, setHasSearched] = useState(false)
+function PackagesContent() {
+  const [packageName, setPackageName] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  
+  const { data, isLoading, error } = usePackageSearch(searchQuery)
+  
+  const hosts = data?.items || []
 
   const handleSearch = () => {
-    setHasSearched(true)
-    // In a real app, this would trigger an API call
+    if (packageName.trim()) {
+      setSearchQuery(packageName.trim())
+    }
   }
-
-  const hosts = hasSearched ? mockPackageHosts : []
 
   return (
     <div className="space-y-6">
@@ -46,18 +51,33 @@ export default function PackagesPage() {
                 className="pl-10"
               />
             </div>
-            <Button onClick={handleSearch}>Search</Button>
+            <Button onClick={handleSearch} disabled={isLoading || !packageName.trim()}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Searching
+                </>
+              ) : (
+                "Search"
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Results */}
-      {hasSearched && (
+      {searchQuery && (
         <div>
           <h2 className="text-2xl font-bold tracking-tight mb-4">
-            Hosts with &quot;{packageName}&quot;
+            Hosts with &quot;{searchQuery}&quot;
           </h2>
-          {hosts.length === 0 ? (
+          {isLoading ? (
+            <TableSkeleton rows={3} />
+          ) : error ? (
+            <Card className="p-8">
+              <p className="text-destructive text-center">Failed to search for package. Please try again.</p>
+            </Card>
+          ) : hosts.length === 0 ? (
             <Card className="p-8 text-center text-muted-foreground">
               No hosts found with this package
             </Card>
@@ -92,5 +112,13 @@ export default function PackagesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function PackagesPage() {
+  return (
+    <ErrorBoundary>
+      <PackagesContent />
+    </ErrorBoundary>
   )
 }
