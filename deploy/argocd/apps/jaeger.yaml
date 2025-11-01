@@ -1,0 +1,109 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: jaeger
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    environment: production
+    application: observability
+    component: jaeger
+spec:
+  project: fluxion
+  
+  source:
+    repoURL: https://jaegertracing.github.io/helm-charts
+    chart: jaeger
+    targetRevision: 0.71.13
+    helm:
+      releaseName: jaeger
+      valuesObject:
+        # Use all-in-one deployment for simplicity
+        # For production, consider using the operator or production deployment
+        allInOne:
+          enabled: true
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          # Storage configuration
+          extraEnv:
+            - name: SPAN_STORAGE_TYPE
+              value: badger
+            - name: BADGER_EPHEMERAL
+              value: "false"
+            - name: BADGER_DIRECTORY_VALUE
+              value: /badger/data
+            - name: BADGER_DIRECTORY_KEY
+              value: /badger/key
+          persistence:
+            enabled: true
+            size: 5Gi
+            accessModes:
+              - ReadWriteOnce
+        
+        # Agent disabled (using OTLP collector)
+        agent:
+          enabled: false
+        
+        # Collector disabled (using all-in-one)
+        collector:
+          enabled: false
+        
+        # Query disabled (using all-in-one)
+        query:
+          enabled: false
+        
+        # Storage disabled (using badger in all-in-one)
+        storage:
+          type: none
+        
+        # Service configuration
+        service:
+          type: ClusterIP
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "14269"
+        
+        # Ingress configuration (optional)
+        ingress:
+          enabled: false
+          ingressClassName: nginx
+          hosts:
+            - host: jaeger.example.com
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls:
+            - secretName: jaeger-tls
+              hosts:
+                - jaeger.example.com
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  info:
+    - name: Component
+      value: Jaeger
+    - name: Description
+      value: Distributed tracing system (all-in-one deployment)

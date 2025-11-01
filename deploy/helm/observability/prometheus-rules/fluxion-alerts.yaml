@@ -1,0 +1,170 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: fluxion-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: fluxion-api
+      interval: 30s
+      rules:
+        # API availability
+        - alert: FluxionAPIDown
+          expr: up{job="fluxion-api"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: api
+          annotations:
+            summary: "Fluxion API is down"
+            description: "Fluxion API in namespace {{ $labels.namespace }} has been down for more than 2 minutes."
+        
+        # High error rate
+        - alert: FluxionHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="fluxion-api",status_code=~"5.."}[5m])) 
+            / 
+            sum(rate(http_requests_total{job="fluxion-api"}[5m])) 
+            > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High error rate on Fluxion API"
+            description: "Error rate is {{ $value | humanizePercentage }} in namespace {{ $labels.namespace }}."
+        
+        # High latency
+        - alert: FluxionHighLatency
+          expr: |
+            histogram_quantile(0.95, 
+              sum(rate(http_request_duration_seconds_bucket{job="fluxion-api"}[5m])) 
+              by (le, method, path)
+            ) > 1
+          for: 10m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High API latency detected"
+            description: "P95 latency for {{ $labels.method }} {{ $labels.path }} is {{ $value }}s."
+        
+        # Pod restarts
+        - alert: FluxionPodRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace=~"fluxion.*"}[1h]) > 3
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Fluxion pod is restarting frequently"
+            description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted {{ $value }} times in the last hour."
+        
+        # CPU usage
+        - alert: FluxionHighCPUUsage
+          expr: |
+            100 * sum(rate(container_cpu_usage_seconds_total{namespace=~"fluxion.*",container!=""}[5m])) by (pod, namespace)
+            / 
+            sum(kube_pod_container_resource_limits{namespace=~"fluxion.*",resource="cpu"}) by (pod, namespace)
+            > 80
+          for: 15m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "High CPU usage on Fluxion pod"
+            description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} is using {{ $value | humanize }}% of its CPU limit."
+        
+        # Memory usage
+        - alert: FluxionHighMemoryUsage
+          expr: |
+            100 * sum(container_memory_working_set_bytes{namespace=~"fluxion.*",container!=""}) by (pod, namespace)
+            / 
+            sum(kube_pod_container_resource_limits{namespace=~"fluxion.*",resource="memory"}) by (pod, namespace)
+            > 80
+          for: 15m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "High memory usage on Fluxion pod"
+            description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} is using {{ $value | humanize }}% of its memory limit."
+    
+    - name: fluxion-database
+      interval: 30s
+      rules:
+        # Database connections
+        - alert: FluxionHighDatabaseConnections
+          expr: |
+            sum(pg_stat_database_numbackends{datname="fluxion"}) 
+            > 80
+          for: 10m
+          labels:
+            severity: warning
+            component: database
+          annotations:
+            summary: "High number of database connections"
+            description: "Database has {{ $value }} active connections, approaching the limit."
+        
+        # Slow queries
+        - alert: FluxionSlowDatabaseQueries
+          expr: |
+            histogram_quantile(0.95, 
+              sum(rate(db_query_duration_seconds_bucket{job="fluxion-api"}[5m])) 
+              by (le, query_type)
+            ) > 2
+          for: 10m
+          labels:
+            severity: warning
+            component: database
+          annotations:
+            summary: "Slow database queries detected"
+            description: "P95 query latency for {{ $labels.query_type }} is {{ $value }}s."
+    
+    - name: fluxion-webhooks
+      interval: 30s
+      rules:
+        # Webhook delivery failures
+        - alert: FluxionWebhookDeliveryFailing
+          expr: |
+            100 * sum(rate(webhook_delivery_failed_total[5m])) by (webhook_name)
+            / 
+            sum(rate(webhook_delivery_attempts_total[5m])) by (webhook_name)
+            > 50
+          for: 10m
+          labels:
+            severity: warning
+            component: webhooks
+          annotations:
+            summary: "High webhook delivery failure rate"
+            description: "Webhook {{ $labels.webhook_name }} has a failure rate of {{ $value | humanizePercentage }}."
+    
+    - name: fluxion-updates
+      interval: 1m
+      rules:
+        # Kernel update detection
+        - alert: FluxionKernelUpdateDetected
+          expr: |
+            increase(package_updates_total{package_name=~"linux-.*"}[5m]) > 0
+          labels:
+            severity: info
+            component: packages
+          annotations:
+            summary: "Kernel package update detected"
+            description: "Kernel package {{ $labels.package_name }} was updated on host {{ $labels.hostname }}."
+        
+        # No updates received
+        - alert: FluxionNoUpdatesReceived
+          expr: |
+            (time() - max(package_updates_last_timestamp)) > 86400
+          for: 1h
+          labels:
+            severity: warning
+            component: packages
+          annotations:
+            summary: "No package updates received recently"
+            description: "No package updates have been received for over 24 hours. Check if hosts are reporting correctly."
