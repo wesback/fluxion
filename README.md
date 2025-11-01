@@ -17,12 +17,14 @@ Fluxion is organized into distinct components:
 2. **API**: Receives package update data from apt hooks via HTTP POST
 3. **Database**: Stores host information and package update history
 4. **Frontend**: Visualizes package updates across all hosts
+5. **Webhook Alerts**: Send notifications when kernel packages are updated
 
 ## Features
 
 - **API Key Authentication**: Secure header-based authentication with bcrypt hashing
 - **Rate Limiting**: 1000 requests per hour per API key
 - **Role-Based Access Control**: Admin and user roles for granular permissions
+- **Webhook Notifications**: Trigger webhooks on kernel package updates with retry logic
 - **Async SQLAlchemy ORM**: Full async support for high-performance database operations
 - **Alembic Migrations**: Database schema versioning and migration management
 - **Optimized Indexes**: Composite indexes for efficient querying
@@ -79,6 +81,116 @@ API keys for authentication and authorization.
 | last_used | TIMESTAMP WITH TIMEZONE | NULLABLE | Last time the key was used |
 | is_active | BOOLEAN | NOT NULL | Whether the key is active |
 | role | VARCHAR(50) | NOT NULL, INDEXED | Role (user or admin) |
+
+#### `webhook_configs`
+Webhook configurations for sending notifications on package updates.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | INTEGER | PRIMARY KEY | Unique webhook identifier |
+| name | VARCHAR(255) | NOT NULL | Human-readable name |
+| url | TEXT | NOT NULL | Webhook URL endpoint |
+| enabled | BOOLEAN | NOT NULL | Whether webhook is enabled |
+| event_types | JSON | NOT NULL | Array of event types (e.g., ["kernel_update"]) |
+| headers_json | JSON | NULLABLE | Custom headers for the webhook |
+| created_at | TIMESTAMP WITH TIMEZONE | NOT NULL | Record creation timestamp |
+| updated_at | TIMESTAMP WITH TIMEZONE | NOT NULL | Record update timestamp |
+
+#### `webhook_delivery_history`
+Tracks webhook delivery attempts for debugging.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | INTEGER | PRIMARY KEY | Unique delivery record identifier |
+| webhook_config_id | INTEGER | FOREIGN KEY (webhook_configs.id) CASCADE, NOT NULL | Reference to webhook config |
+| event_type | VARCHAR(100) | NOT NULL | Event type that triggered the webhook |
+| payload | JSON | NOT NULL | Payload sent to the webhook |
+| status_code | INTEGER | NULLABLE | HTTP status code from webhook response |
+| response_body | TEXT | NULLABLE | Response body from webhook |
+| error_message | TEXT | NULLABLE | Error message if delivery failed |
+| attempt_number | INTEGER | NOT NULL | Attempt number (1-3) |
+| delivered_at | TIMESTAMP WITH TIMEZONE | NOT NULL | When delivery was attempted |
+| created_at | TIMESTAMP WITH TIMEZONE | NOT NULL | Record creation timestamp |
+
+## Webhook Alerts
+
+Fluxion can automatically send webhook notifications when kernel packages are updated. This is useful for alerting teams about critical security updates.
+
+### Supported Event Types
+
+- **kernel_update**: Triggered when a kernel package is updated (linux-image*, linux-headers*, linux-modules*)
+
+### Setting Up Webhooks
+
+**1. Create a webhook configuration:**
+
+```bash
+# Example: ntfy.sh webhook for kernel alerts
+curl -X POST http://localhost:8000/api/v1/admin/webhooks \
+  -H "X-API-Key: YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "ntfy.sh kernel alerts",
+    "url": "https://ntfy.sh/my-fluxion-alerts",
+    "enabled": true,
+    "event_types": ["kernel_update"],
+    "headers_json": {
+      "Title": "🚨 Kernel Update Alert",
+      "Priority": "high",
+      "Tags": "warning,package"
+    }
+  }'
+```
+
+**2. Test the webhook:**
+
+```bash
+# Using the API
+curl -X POST http://localhost:8000/api/v1/admin/webhooks/1/test \
+  -H "X-API-Key: YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Using the CLI tool
+cd backend
+python scripts/test_webhook.py --ntfy my-topic --title "Test Alert" --priority high
+```
+
+**3. View webhook delivery history:**
+
+```bash
+curl http://localhost:8000/api/v1/admin/webhooks/1/history \
+  -H "X-API-Key: YOUR_ADMIN_KEY"
+```
+
+### Webhook Payload Format
+
+When a kernel update is detected, the following payload is sent:
+
+```json
+{
+  "event": "kernel_update",
+  "hostname": "server01",
+  "package_name": "linux-image-5.15.0-91-generic",
+  "old_version": "5.15.0-88",
+  "new_version": "5.15.0-91",
+  "timestamp": "2025-10-29T12:00:00Z",
+  "severity": "high"
+}
+```
+
+For ntfy.sh webhooks, an additional `message` field is added for better display.
+
+### Webhook Features
+
+- **Async Delivery**: Webhooks don't block package update processing
+- **Retry Logic**: 3 attempts with exponential backoff (1s, 2s, 4s)
+- **5-Second Timeout**: Each attempt has a 5-second timeout
+- **Delivery History**: All attempts logged in database for debugging
+- **OpenTelemetry**: Webhook calls are traced for observability
+- **Custom Headers**: Support for authentication tokens and custom headers
+
+See [backend/examples/webhooks/README.md](backend/examples/webhooks/README.md) for more webhook configuration examples.
 
 ## Authentication
 
