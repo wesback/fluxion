@@ -2,6 +2,7 @@
 
 import { Component, ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { trackError } from '@/lib/telemetry';
 
 interface Props {
   children: ReactNode;
@@ -25,6 +26,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error boundary caught:', error, errorInfo);
+    
+    // Track error with OpenTelemetry
+    trackError(error, {
+      component: 'ErrorBoundary',
+      componentStack: errorInfo.componentStack?.substring(0, 500) || 'unknown',
+    });
   }
 
   render() {

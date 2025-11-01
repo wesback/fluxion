@@ -4,10 +4,12 @@ import { Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import { useThemeTracking } from "@/lib/telemetry"
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const trackThemeChange = useThemeTracking()
 
   // useEffect only runs on the client, so now we can safely show the UI
   if (typeof window !== 'undefined' && !mounted) {
@@ -22,11 +24,18 @@ export function ThemeToggle() {
     )
   }
 
+  const handleThemeToggle = () => {
+    const previousTheme = theme
+    const newTheme = theme === "dark" ? "light" : "dark"
+    setTheme(newTheme)
+    trackThemeChange(newTheme, previousTheme)
+  }
+
   return (
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      onClick={handleThemeToggle}
     >
       {theme === "dark" ? (
         <Sun className="h-5 w-5" />

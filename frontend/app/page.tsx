@@ -8,10 +8,12 @@ import { useStats, useRecentUpdates } from "@/lib/hooks/use-api"
 import { StatsCardSkeleton, TableSkeleton, ChartSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { toast } from "sonner"
+import { useRefreshTracking } from "@/lib/telemetry"
 
 function DashboardContent() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useStats()
   const { data: recentUpdatesData, isLoading: updatesLoading, error: updatesError, refetch: refetchUpdates } = useRecentUpdates(24, 20)
+  const trackRefresh = useRefreshTracking()
 
   const recentUpdates = recentUpdatesData?.items || []
 
@@ -26,15 +28,20 @@ function DashboardContent() {
     value: host.count
   })) || []
 
-  const handleRefresh = () => {
-    toast.promise(
-      Promise.all([refetchStats(), refetchUpdates()]),
-      {
-        loading: 'Refreshing data...',
-        success: 'Data refreshed successfully',
-        error: 'Failed to refresh data',
-      }
-    )
+  const handleRefresh = async () => {
+    try {
+      await toast.promise(
+        Promise.all([refetchStats(), refetchUpdates()]),
+        {
+          loading: 'Refreshing data...',
+          success: 'Data refreshed successfully',
+          error: 'Failed to refresh data',
+        }
+      )
+      trackRefresh('dashboard', true)
+    } catch {
+      trackRefresh('dashboard', false)
+    }
   }
 
   return (
