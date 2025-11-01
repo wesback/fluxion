@@ -1,33 +1,25 @@
 # Multi-stage Dockerfile for Next.js frontend with Nginx
 
-# Stage 1: Dependencies
-FROM node:20-alpine AS deps
+# Stage 1: Build Next.js application
+FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production && \
-    npm cache clean --force
+# Install all dependencies
+RUN npm ci && npm cache clean --force
 
-# Stage 2: Build Next.js application
-FROM node:20-alpine AS builder
-WORKDIR /app
-
-# Copy dependencies from deps stage
-COPY --from=deps /app/node_modules ./node_modules
+# Copy application files
 COPY . .
 
 # Build Next.js application with standalone output
-# This creates an optimized production build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# Configure Next.js to output standalone
 RUN npm run build
 
-# Stage 3: Production image with Nginx and Node.js
+# Stage 2: Production image with Nginx and Node.js
 FROM node:20-alpine AS runner
 
 WORKDIR /app
