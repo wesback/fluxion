@@ -207,7 +207,7 @@ secrets:
   # Use external secret operator
   externalSecret:
     enabled: false
-    backendType: ""  # secretsmanager, vault, etc.
+    backendType: ""  # azurekv, vault, gcpsm, etc.
     name: ""
     data: {}
 

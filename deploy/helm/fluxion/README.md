@@ -213,7 +213,7 @@ postgresql:
 secrets:
   externalSecret:
     enabled: true
-    backendType: "secretsmanager"  # AWS Secrets Manager
+    backendType: "azurekv"  # Azure Key Vault
     name: "fluxion-secrets"
     data:
       postgresPassword: "postgres-password"

@@ -121,22 +121,20 @@ helm install external-secrets \
   -n external-secrets-system \
   --create-namespace
 
-# Configure SecretStore (example for AWS Secrets Manager)
+# Configure SecretStore (example for Azure Key Vault)
 cat <<EOF | kubectl apply -f -
 apiVersion: external-secrets.io/v1beta1
 kind: SecretStore
 metadata:
-  name: aws-secrets
+  name: azure-keyvault
   namespace: fluxion-production
 spec:
   provider:
-    aws:
-      service: SecretsManager
-      region: us-east-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets-sa
+    azurekv:
+      authType: WorkloadIdentity
+      vaultUrl: "https://fluxion-kv-prod.vault.azure.net/"
+      serviceAccountRef:
+        name: external-secrets-sa
 EOF
 
 # Create ExternalSecret
@@ -149,17 +147,17 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: aws-secrets
+    name: azure-keyvault
     kind: SecretStore
   target:
     name: fluxion-api
   data:
     - secretKey: postgres-password
       remoteRef:
-        key: fluxion/production/postgres-password
+        key: postgres-password
     - secretKey: admin-api-key
       remoteRef:
-        key: fluxion/production/admin-api-key
+        key: admin-api-key
 EOF
 ```
 

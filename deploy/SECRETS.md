@@ -149,81 +149,127 @@ helm install external-secrets \
   --create-namespace
 ```
 
-#### AWS Secrets Manager Example
+#### Azure Key Vault Example
 
-**1. Store secrets in AWS Secrets Manager:**
-
-```bash
-# Using AWS CLI
-aws secretsmanager create-secret \
-  --name fluxion/production/postgres-password \
-  --secret-string "your-secure-password" \
-  --region us-east-1
-
-aws secretsmanager create-secret \
-  --name fluxion/production/admin-api-key \
-  --secret-string "your-admin-api-key" \
-  --region us-east-1
-```
-
-**2. Create IAM role for service account:**
+**1. Create Azure Key Vault and store secrets:**
 
 ```bash
-# Create IAM policy
-cat > policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
-      ],
-      "Resource": "arn:aws:secretsmanager:us-east-1:*:secret:fluxion/*"
-    }
-  ]
-}
-EOF
+# Set variables
+RESOURCE_GROUP="fluxion-rg"
+KEY_VAULT_NAME="fluxion-kv-prod"
+LOCATION="eastus"
 
-aws iam create-policy \
-  --policy-name FluxionSecretsAccess \
-  --policy-document file://policy.json
+# Create resource group
+az group create \
+  --name $RESOURCE_GROUP \
+  --location $LOCATION
 
-# Create service account with IAM role (EKS)
-eksctl create iamserviceaccount \
-  --name external-secrets-sa \
-  --namespace fluxion-production \
-  --cluster my-cluster \
-  --attach-policy-arn arn:aws:iam::ACCOUNT_ID:policy/FluxionSecretsAccess \
-  --approve
+# Create Key Vault
+az keyvault create \
+  --name $KEY_VAULT_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Store secrets in Key Vault
+az keyvault secret set \
+  --vault-name $KEY_VAULT_NAME \
+  --name postgres-password \
+  --value "your-secure-password"
+
+az keyvault secret set \
+  --vault-name $KEY_VAULT_NAME \
+  --name admin-api-key \
+  --value "your-admin-api-key"
 ```
 
-**3. Create SecretStore:**
+**2. Configure Azure Workload Identity (recommended for AKS):**
+
+```bash
+# Enable workload identity on AKS cluster
+az aks update \
+  --resource-group $RESOURCE_GROUP \
+  --name my-aks-cluster \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+
+# Get OIDC issuer URL
+OIDC_ISSUER=$(az aks show \
+  --resource-group $RESOURCE_GROUP \
+  --name my-aks-cluster \
+  --query "oidcIssuerProfile.issuerUrl" \
+  --output tsv)
+
+# Create managed identity
+az identity create \
+  --name fluxion-identity \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Get identity client ID
+IDENTITY_CLIENT_ID=$(az identity show \
+  --name fluxion-identity \
+  --resource-group $RESOURCE_GROUP \
+  --query clientId \
+  --output tsv)
+
+# Grant Key Vault access to managed identity
+az keyvault set-policy \
+  --name $KEY_VAULT_NAME \
+  --object-id $(az identity show --name fluxion-identity --resource-group $RESOURCE_GROUP --query principalId -o tsv) \
+  --secret-permissions get list
+
+# Create federated identity credential
+az identity federated-credential create \
+  --name fluxion-federated-credential \
+  --identity-name fluxion-identity \
+  --resource-group $RESOURCE_GROUP \
+  --issuer $OIDC_ISSUER \
+  --subject system:serviceaccount:fluxion-production:external-secrets-sa
+```
+
+**3. Create Kubernetes ServiceAccount:**
 
 ```yaml
-# deploy/secrets/secretstore-aws.yaml
+# deploy/secrets/serviceaccount-azure.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-secrets-sa
+  namespace: fluxion-production
+  annotations:
+    azure.workload.identity/client-id: "${IDENTITY_CLIENT_ID}"
+  labels:
+    azure.workload.identity/use: "true"
+```
+
+```bash
+# Apply with substitution
+envsubst < deploy/secrets/serviceaccount-azure.yaml | kubectl apply -f -
+```
+
+**4. Create SecretStore:**
+
+```yaml
+# deploy/secrets/secretstore-azure.yaml
 apiVersion: external-secrets.io/v1beta1
 kind: SecretStore
 metadata:
-  name: aws-secrets
+  name: azure-keyvault
   namespace: fluxion-production
 spec:
   provider:
-    aws:
-      service: SecretsManager
-      region: us-east-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets-sa
+    azurekv:
+      authType: WorkloadIdentity
+      vaultUrl: "https://fluxion-kv-prod.vault.azure.net/"
+      serviceAccountRef:
+        name: external-secrets-sa
 ```
 
 ```bash
-kubectl apply -f deploy/secrets/secretstore-aws.yaml
+kubectl apply -f deploy/secrets/secretstore-azure.yaml
 ```
 
-**4. Create ExternalSecret:**
+**5. Create ExternalSecret:**
 
 ```yaml
 # deploy/secrets/externalsecret-fluxion.yaml
@@ -235,7 +281,7 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: aws-secrets
+    name: azure-keyvault
     kind: SecretStore
   target:
     name: fluxion-api
@@ -243,10 +289,10 @@ spec:
   data:
     - secretKey: postgres-password
       remoteRef:
-        key: fluxion/production/postgres-password
+        key: postgres-password
     - secretKey: admin-api-key
       remoteRef:
-        key: fluxion/production/admin-api-key
+        key: admin-api-key
 ---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -256,7 +302,7 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: aws-secrets
+    name: azure-keyvault
     kind: SecretStore
   target:
     name: fluxion-postgresql
@@ -264,11 +310,54 @@ spec:
   data:
     - secretKey: postgres-password
       remoteRef:
-        key: fluxion/production/postgres-password
+        key: postgres-password
 ```
 
 ```bash
 kubectl apply -f deploy/secrets/externalsecret-fluxion.yaml
+```
+
+**Alternative: Service Principal Authentication**
+
+If not using Workload Identity, you can use a Service Principal:
+
+```bash
+# Create service principal
+az ad sp create-for-rbac --name fluxion-sp
+
+# Grant Key Vault access
+az keyvault set-policy \
+  --name $KEY_VAULT_NAME \
+  --spn <service-principal-app-id> \
+  --secret-permissions get list
+
+# Create Kubernetes secret with credentials
+kubectl create secret generic azure-sp-credentials \
+  --namespace fluxion-production \
+  --from-literal=clientid=<service-principal-app-id> \
+  --from-literal=clientsecret=<service-principal-password>
+
+# Update SecretStore to use service principal
+cat <<EOF | kubectl apply -f -
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: azure-keyvault
+  namespace: fluxion-production
+spec:
+  provider:
+    azurekv:
+      authType: ServicePrincipal
+      vaultUrl: "https://fluxion-kv-prod.vault.azure.net/"
+      tenantId: "<your-tenant-id>"
+      authSecretRef:
+        clientId:
+          name: azure-sp-credentials
+          key: clientid
+        clientSecret:
+          name: azure-sp-credentials
+          key: clientsecret
+EOF
 ```
 
 #### HashiCorp Vault Example
