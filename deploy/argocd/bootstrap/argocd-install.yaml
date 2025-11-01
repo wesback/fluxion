@@ -1,0 +1,36 @@
+# ArgoCD Installation Manifest
+# This file provides a reference for installing ArgoCD
+# The actual installation should use the official ArgoCD manifests
+
+---
+# NOTE: This is a reference manifest
+# For actual installation, use the official ArgoCD install command:
+#
+#   kubectl create namespace argocd
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# Or for HA installation:
+#
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+#
+# This file documents the installation process and provides a reference
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+    app.kubernetes.io/part-of: argocd
+
+---
+# After installing ArgoCD, apply the Fluxion project and root app:
+#
+# 1. Install ArgoCD (see above)
+# 2. Wait for ArgoCD to be ready:
+#      kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+# 3. Apply the Fluxion project:
+#      kubectl apply -f ../projects/fluxion-project.yaml
+# 4. Apply the root app:
+#      kubectl apply -f ../root-app.yaml
+# 5. Access ArgoCD UI (see ARGOCD-INSTALLATION.md for details)
