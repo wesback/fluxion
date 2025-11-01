@@ -1,5 +1,5 @@
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { apiClient, ApiError, Stats, Host, PackageUpdate, HostUpdate, PackageHost } from '../api';
+import { instrumentedApiClient as apiClient, ApiError, Stats, Host, PackageUpdate, HostUpdate, PackageHost } from '../telemetry/api-client';
 import { toast } from 'sonner';
 
 // Query keys for cache management
