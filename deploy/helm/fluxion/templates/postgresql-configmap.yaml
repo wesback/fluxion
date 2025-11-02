@@ -8,7 +8,8 @@ metadata:
     app.kubernetes.io/component: postgresql
   {{- if .Values.argocd.syncWave }}
   annotations:
-    {{- include "fluxion.argocd.syncWave" (dict "wave" .Values.argocd.syncWave.postgresql) | nindent 4 }}
+    # ConfigMap must be created before StatefulSet, so use wave 0
+    argocd.argoproj.io/sync-wave: "0"
   {{- end }}
 data:
   postgresql.conf: |
