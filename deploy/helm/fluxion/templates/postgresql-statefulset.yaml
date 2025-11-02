@@ -29,6 +29,29 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.postgresql.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: init-data-permissions
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Ensure data directory exists and has correct permissions
+              mkdir -p /var/lib/postgresql/data
+              chmod 700 /var/lib/postgresql/data
+              chown 70:70 /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 0  # Run as root to create directory
+            allowPrivilegeEscalation: true
+            capabilities:
+              add:
+                - CHOWN
+                - DAC_OVERRIDE
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+              mountPropagation: Bidirectional
       containers:
         - name: postgresql
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
@@ -88,6 +111,7 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+              mountPropagation: Bidirectional
             {{- if .Values.postgresql.config }}
             - name: config
               mountPath: /etc/postgresql/postgresql.conf
