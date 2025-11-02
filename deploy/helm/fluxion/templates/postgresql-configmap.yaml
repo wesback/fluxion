@@ -1,0 +1,55 @@
+{{- if and .Values.postgresql.enabled .Values.postgresql.config }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluxion.postgresql.fullname" . }}-config
+  labels:
+    {{- include "fluxion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  {{- if .Values.argocd.syncWave }}
+  annotations:
+    {{- include "fluxion.argocd.syncWave" (dict "wave" .Values.argocd.syncWave.postgresql) | nindent 4 }}
+  {{- end }}
+data:
+  postgresql.conf: |
+    # PostgreSQL Configuration
+    # Generated from Helm values
+    
+    # Connection Settings
+    max_connections = {{ .Values.postgresql.config.maxConnections | default 100 }}
+    
+    # Memory Settings
+    shared_buffers = {{ .Values.postgresql.config.sharedBuffers | default "256MB" }}
+    effective_cache_size = {{ .Values.postgresql.config.effectiveCacheSize | default "1GB" }}
+    maintenance_work_mem = {{ .Values.postgresql.config.maintenanceWorkMem | default "64MB" }}
+    work_mem = {{ .Values.postgresql.config.workMem | default "4MB" }}
+    
+    # WAL Settings
+    wal_buffers = {{ .Values.postgresql.config.walBuffers | default "16MB" }}
+    min_wal_size = {{ .Values.postgresql.config.minWalSize | default "1GB" }}
+    max_wal_size = {{ .Values.postgresql.config.maxWalSize | default "4GB" }}
+    
+    # Checkpoint Settings
+    checkpoint_completion_target = {{ .Values.postgresql.config.checkpointCompletionTarget | default 0.9 }}
+    
+    # Query Planning
+    default_statistics_target = {{ .Values.postgresql.config.defaultStatisticsTarget | default 100 }}
+    random_page_cost = {{ .Values.postgresql.config.randomPageCost | default 1.1 }}
+    effective_io_concurrency = {{ .Values.postgresql.config.effectiveIoConcurrency | default 200 }}
+    
+    # Logging (optional, add if needed)
+    {{- if .Values.postgresql.config.logging }}
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_min_duration_statement = {{ .Values.postgresql.config.logging.minDurationStatement | default 1000 }}
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    {{- end }}
+    
+    # Additional custom configuration
+    {{- if .Values.postgresql.config.custom }}
+    {{ .Values.postgresql.config.custom | nindent 4 }}
+    {{- end }}
+{{- end }}
