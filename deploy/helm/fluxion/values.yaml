@@ -250,6 +250,7 @@ postgresql:
     runAsNonRoot: true
     runAsUser: 70
     fsGroup: 70
+    fsGroupChangePolicy: "OnRootMismatch"
   
   # Container security context
   securityContext:

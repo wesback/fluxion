@@ -29,20 +29,6 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.postgresql.podSecurityContext | nindent 8 }}
-      initContainers:
-        - name: init-permissions
-          image: busybox:latest
-          command:
-            - sh
-            - -c
-            - |
-              chown -R 70:70 /var/lib/postgresql
-              chmod 700 /var/lib/postgresql
-          securityContext:
-            runAsUser: 0
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql
       containers:
         - name: postgresql
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
