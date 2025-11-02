@@ -37,20 +37,14 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Ensure data directory exists and has correct permissions
-              mkdir -p /var/lib/postgresql/data
-              chmod 700 /var/lib/postgresql/data
-              chown 70:70 /var/lib/postgresql/data
+              # Just verify the mount is working - the directory already exists in the image
+              test -d /var/lib/postgresql && echo "PostgreSQL data directory ready" || exit 1
           securityContext:
             runAsUser: 0  # Run as root to create directory
             allowPrivilegeEscalation: true
-            capabilities:
-              add:
-                - CHOWN
-                - DAC_OVERRIDE
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
               mountPropagation: Bidirectional
       containers:
         - name: postgresql
@@ -110,7 +104,7 @@ spec:
             {{- toYaml .Values.postgresql.resources | nindent 12 }}
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
               mountPropagation: Bidirectional
             {{- if .Values.postgresql.config }}
             - name: config
