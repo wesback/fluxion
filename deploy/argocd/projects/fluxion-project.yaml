@@ -1,0 +1,63 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: fluxion
+  namespace: argocd
+  # Finalizer that ensures that project is not deleted until it is not referenced by any application
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Fluxion - Linux Package Update Tracking System
+  
+  # Allow manifests to deploy from the fluxion repository
+  sourceRepos:
+    - 'https://github.com/wesback/fluxion.git'
+    - '*'  # Allow any source repository for dependencies
+  
+  # Allow deployments to specific namespaces
+  destinations:
+    - namespace: 'fluxion-*'
+      server: '*'
+    - namespace: 'fluxion'
+      server: '*'
+    - namespace: 'monitoring'
+      server: '*'
+    - namespace: 'opentelemetry-operator-system'
+      server: '*'
+    - namespace: 'argocd'
+      server: '*'
+  
+  # Cluster resource whitelist - what cluster-scoped resources can be deployed
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+  
+  # Namespace resource whitelist - what namespace-scoped resources can be deployed
+  # Empty means all namespace-scoped resources are allowed
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  
+  # Roles for fine-grained access control
+  roles:
+    # Developers can view and sync applications
+    - name: developer
+      description: Developer role for viewing and syncing applications
+      policies:
+        - p, proj:fluxion:developer, applications, get, fluxion/*, allow
+        - p, proj:fluxion:developer, applications, sync, fluxion/*, allow
+      groups:
+        - fluxion-developers
+    
+    # Admins have full control
+    - name: admin
+      description: Admin role with full control over applications
+      policies:
+        - p, proj:fluxion:admin, applications, *, fluxion/*, allow
+        - p, proj:fluxion:admin, repositories, *, *, allow
+      groups:
+        - fluxion-admins

@@ -1,0 +1,72 @@
+# Development environment overrides
+api:
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: "dev-latest"
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  config:
+    apiUrl: "http://fluxion-api:8000"
+  autoscaling:
+    enabled: false
+
+postgresql:
+  replicaCount: 1
+  persistence:
+    size: 5Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+config:
+  api:
+    logLevel: debug
+    corsOrigins:
+      - "*"
+  otel:
+    environment: "development"
+    exporterType: "console"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: fluxion-dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
+        - path: /api/v1
+          pathType: Prefix
+          backend: api
+
+otelCollector:
+  enabled: true
+
+autoscaling:
+  enabled: false
+
+argocd:
+  autoSync:
+    enabled: true
+    prune: true
+    selfHeal: true

@@ -1,0 +1,71 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluxion-production
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    environment: production
+    application: fluxion
+spec:
+  project: fluxion
+  
+  source:
+    repoURL: https://github.com/wesback/fluxion.git
+    # Use a specific tag/release for production
+    targetRevision: v0.1.0  # Change this to match your release tag
+    path: deploy/helm/fluxion
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-production.yaml
+      parameters: []
+      releaseName: fluxion
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: fluxion-production
+  
+  syncPolicy:
+    # Manual sync for production - requires approval
+    automated: null
+    
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+    
+    # Optional: Define sync windows for production deployments
+    # syncWindows:
+    #   - kind: allow
+    #     schedule: '0 9 * * 1-5'  # Mon-Fri 9am
+    #     duration: 8h
+    #     applications:
+    #       - fluxion-production
+    #     manualSync: true
+  
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+  
+  info:
+    - name: Environment
+      value: Production
+    - name: Documentation
+      value: https://github.com/wesback/fluxion
+    - name: Sync Policy
+      value: Manual approval required

@@ -1,0 +1,169 @@
+{{- if .Values.api.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fluxion.api.fullname" . }}
+  labels:
+    {{- include "fluxion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  {{- if .Values.argocd.syncWave }}
+  annotations:
+    {{- include "fluxion.argocd.syncWave" (dict "wave" .Values.argocd.syncWave.api) | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "fluxion.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/api-configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/api-secret.yaml") . | sha256sum }}
+        {{- with .Values.api.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "fluxion.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "fluxion.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "fluxion.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.targetPort }}
+              protocol: TCP
+          env:
+            # Database URL with password from secret
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fluxion.api.secretName" . }}
+                  key: postgres-password
+            - name: DATABASE_URL
+              value: {{ include "fluxion.databaseUrl" . | quote }}
+            # Import all config from ConfigMap
+            {{- range $key, $value := .Values.config }}
+            {{- if eq $key "database" }}
+            - name: DB_POOL_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: DB_POOL_SIZE
+            - name: DB_MAX_OVERFLOW
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: DB_MAX_OVERFLOW
+            - name: SQL_ECHO
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: SQL_ECHO
+            {{- else if eq $key "api" }}
+            - name: API_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: API_PORT
+            - name: API_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: API_HOST
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: LOG_LEVEL
+            - name: CORS_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: CORS_ORIGINS
+            {{- else if eq $key "app" }}
+            - name: APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: APP_NAME
+            - name: APP_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: APP_VERSION
+            {{- else if eq $key "otel" }}
+            - name: OTEL_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: OTEL_ENABLED
+            - name: OTEL_EXPORTER_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: OTEL_EXPORTER_TYPE
+            - name: OTEL_SERVICE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: OTEL_SERVICE_NAME
+            - name: OTEL_ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: OTEL_ENVIRONMENT
+            {{- if $.Values.otelCollector.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "fluxion.api.configMapName" $ }}
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            # Additional environment variables
+            {{- with .Values.api.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.api.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.api.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            {{- with .Values.api.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        {{- with .Values.api.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

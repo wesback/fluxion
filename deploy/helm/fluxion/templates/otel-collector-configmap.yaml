@@ -1,0 +1,16 @@
+{{- if .Values.otelCollector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluxion.otelCollector.fullname" . }}
+  labels:
+    {{- include "fluxion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+  {{- if .Values.argocd.syncWave }}
+  annotations:
+    {{- include "fluxion.argocd.syncWave" (dict "wave" .Values.argocd.syncWave.otelCollector) | nindent 4 }}
+  {{- end }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.otelCollector.config | nindent 4 }}
+{{- end }}

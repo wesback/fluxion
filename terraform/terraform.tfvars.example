@@ -1,0 +1,54 @@
+# Example Terraform Variables File
+# Copy this file to create environment-specific configurations
+
+# Core Configuration
+environment = "dev"           # dev, staging, or production
+location    = "swedencentral" # Azure region
+
+# Optional: Override default names
+# resource_group_name = "my-custom-rg"
+# cluster_name        = "my-custom-aks"
+
+# Kubernetes Configuration
+kubernetes_version = "1.28"   # Latest stable version
+
+# Networking Configuration
+vnet_address_space = ["10.0.0.0/16"]
+subnet_address_prefixes = {
+  aks_nodes = ["10.0.1.0/24"]
+  aks_pods  = ["10.0.2.0/23"]
+}
+enable_private_cluster = false  # Set to true for production
+
+# Node Pool Configuration
+system_node_count    = 2
+system_node_vm_size  = "Standard_D2s_v3"
+user_node_count_min  = 2
+user_node_count_max  = 4
+user_node_vm_size    = "Standard_D4s_v3"
+
+# Feature Flags
+enable_azure_policy                = false
+enable_http_application_routing    = false  # Deprecated, use ingress-nginx
+enable_oms_agent                   = true
+enable_key_vault_secrets_provider  = true
+enable_azure_ad_rbac               = true
+
+# Azure Container Registry
+acr_sku           = "Standard"  # Basic, Standard, or Premium
+acr_admin_enabled = false       # Use managed identity instead
+
+# Monitoring
+log_analytics_retention_days = 30  # Days to retain logs
+
+# Ingress Configuration
+install_ingress_nginx = true
+install_cert_manager  = true
+
+# Tags
+tags = {
+  Environment = "Development"
+  CostCenter  = "Engineering"
+  ManagedBy   = "Terraform"
+  Owner       = "DevOps"
+}

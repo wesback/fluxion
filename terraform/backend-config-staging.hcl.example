@@ -1,0 +1,8 @@
+# Backend configuration for staging environment
+# Usage: terraform init -backend-config=backend-config-staging.hcl
+
+resource_group_name  = "fluxion-tfstate-rg"
+storage_account_name = "fluxiontfstate"  # Replace with your actual storage account name
+container_name       = "tfstate"
+key                  = "fluxion-staging.tfstate"
+use_azuread_auth     = true
