@@ -156,7 +156,11 @@ Image for the API
 {{- $registry := .Values.global.registry | default "" -}}
 {{- $repository := .Values.image.repository -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
+{{- if $registry -}}
 {{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -173,7 +177,11 @@ Image for the frontend
 {{- $registry := .Values.global.registry | default "" -}}
 {{- $repository := .Values.frontend.image.repository -}}
 {{- $tag := .Values.frontend.image.tag | default .Chart.AppVersion -}}
+{{- if $registry -}}
 {{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
