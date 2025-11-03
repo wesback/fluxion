@@ -143,3 +143,14 @@ resource "azurerm_key_vault_access_policy" "aks_secrets_provider" {
     "Get",
   ]
 }
+
+# GitHub OIDC + AKS Role Assignments
+module "github_oidc_aks" {
+  source = "./modules/github-oidc-aks"
+
+  github_actions_app_name = var.github_actions_app_name
+  aks_cluster_id          = module.aks.cluster_id
+  acr_id                  = module.acr.acr_id
+
+  depends_on = [module.aks, module.acr]
+}

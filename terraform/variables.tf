@@ -167,3 +167,11 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# GitHub Actions OIDC
+variable "github_actions_app_name" {
+  description = "Display name of the GitHub Actions federated service principal"
+  type        = string
+  default     = "github-fluxion-1762084983"
+}
+
