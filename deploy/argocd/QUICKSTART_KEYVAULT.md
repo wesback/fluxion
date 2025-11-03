@@ -104,6 +104,17 @@ kubectl get pods -n external-secrets-system
    
    kubectl create serviceaccount fluxion-external-secrets-sa -n <ENVIRONMENT>
    
+   # Get the managed identity client ID (important for next step!)
+   MANAGED_IDENTITY_CLIENT_ID=$(az identity show \
+     --name fluxion-keyvault-reader \
+     --resource-group <your-rg> \
+     --query clientId -o tsv)
+   
+   # Add workload identity annotation to the service account
+   kubectl annotate serviceaccount fluxion-external-secrets-sa \
+     -n <ENVIRONMENT> \
+     azure.workload.identity/client-id=$MANAGED_IDENTITY_CLIENT_ID
+   
    az identity federated-credential create \
      --name fluxion-keyvault-federated \
      --identity-name fluxion-keyvault-reader \
@@ -111,6 +122,25 @@ kubectl get pods -n external-secrets-system
      --issuer <your-aks-oidc-issuer> \
      --subject system:serviceaccount:<ENVIRONMENT>:fluxion-external-secrets-sa
    ```
+
+   **Verify the setup:**
+   ```bash
+   # Check that the service account was created
+   kubectl get serviceaccount fluxion-external-secrets-sa -n <ENVIRONMENT>
+   
+   # Verify the annotation was added
+   kubectl get serviceaccount fluxion-external-secrets-sa -n <ENVIRONMENT> -o yaml | grep azure.workload
+   
+   # Verify the federated credential was created
+   az identity federated-credential list \
+     --name fluxion-keyvault-reader \
+     --resource-group <your-rg>
+   ```
+
+   **If External Secrets still fails to sync:**
+   - Restart the external-secrets operator: `kubectl rollout restart deployment/external-secrets -n external-secrets-system`
+   - Check the SecretStore status: `kubectl describe secretstore -n <ENVIRONMENT>`
+   - If SecretStore is not ready, check the external-secrets logs: `kubectl logs -n external-secrets-system -l app.kubernetes.io/name=external-secrets --tail=50`
 
 ### Option B: Service Principal (Alternative)
 
@@ -708,6 +738,66 @@ kubectl describe application fluxion-production -n argocd
 View ArgoCD server logs:
 ```bash
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server
+```
+
+---
+
+## Automating Workload Identity Setup (Optional)
+
+The manual steps for creating the ServiceAccount and federated credential can be automated using the provided script:
+
+### Option 1: Use the Automation Script
+
+We provide a bash script to automate the Workload Identity setup:
+
+```bash
+# Run the script to set up workload identity for a specific environment
+bash deploy/argocd/quickstart/setup-workload-identity.sh \
+  --environment dev \
+  --resource-group fluxion-dev-rg \
+  --cluster fluxion-dev-aks \
+  --identity-name fluxion-keyvault-reader
+```
+
+### Option 2: Terraform Automation (Future)
+
+Currently, Terraform modules do not automate the federated credential setup. You can contribute this feature by:
+
+1. Creating a new Terraform module: `terraform/modules/workload-identity/`
+2. Adding resources for:
+   - `azurerm_user_assigned_identity` (if not already created)
+   - `azurerm_federated_identity_credential`
+   - Kubernetes ServiceAccount via Helm or kubectl provider
+3. Adding variables for cluster OIDC issuer, namespace, and identity details
+
+This would be a valuable contribution to the project!
+
+### Option 3: CI/CD Pipeline Integration
+
+Add these steps to your GitOps pipeline (ArgoCD or similar) using a custom sync hook:
+
+```yaml
+syncHooks:
+  - resources:
+      - group: external-secrets.io
+        kind: SecretStore
+    execProviderConfig:
+      image: mcr.microsoft.com/azure-cli:latest
+      command:
+        - bash
+        - -c
+        - |
+          set -e
+          # Create service account if it doesn't exist
+          kubectl get sa fluxion-external-secrets-sa -n $ENVIRONMENT || \
+            kubectl create sa fluxion-external-secrets-sa -n $ENVIRONMENT
+          
+          # Add annotation
+          IDENTITY_ID=$(az identity show --name fluxion-keyvault-reader \
+            --resource-group $RESOURCE_GROUP --query clientId -o tsv)
+          kubectl annotate sa fluxion-external-secrets-sa \
+            -n $ENVIRONMENT \
+            azure.workload.identity/client-id=$IDENTITY_ID --overwrite
 ```
 
 ---
