@@ -4,6 +4,9 @@ global:
 
 api:
   replicaCount: 2
+
+image:
+  tag: "staging-latest"
   resources:
     limits:
       cpu: 500m

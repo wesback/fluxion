@@ -4,6 +4,9 @@ global:
 
 api:
   replicaCount: 1
+  
+image:
+  tag: "dev-latest"
   resources:
     limits:
       cpu: 250m
