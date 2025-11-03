@@ -77,7 +77,7 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-dns01-prod"
   hosts:
-    - host: fluxion-dev.backelant.eu
+    - host: fluxion-dev.aks.backelant.eu
       paths:
         - path: /
           pathType: Prefix

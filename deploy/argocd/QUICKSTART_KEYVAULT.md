@@ -349,6 +349,215 @@ kubectl logs -n fluxion-<ENVIRONMENT> -l app=fluxion-api
 kubectl logs -n fluxion-<ENVIRONMENT> statefulset/fluxion-postgresql
 ```
 
+## Step 8.5: Configure DNS and Update Ingress Hosts
+
+After the deployment is created, you need to configure DNS to point to your ingress controller's public IP. This is **critical** for cert-manager to validate domain ownership and issue certificates.
+
+### Step 1: Get the Ingress Controller's Public IP
+
+Wait for the LoadBalancer to be assigned a public IP:
+
+```bash
+# Watch for the EXTERNAL-IP to appear (not <pending>)
+kubectl get svc -n ingress-nginx ingress-nginx-controller -w
+```
+
+Expected output:
+```
+NAME                       TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)
+ingress-nginx-controller   LoadBalancer   10.0.123.45   20.XXX.XXX.XXX   80:30080/TCP,443:30443/TCP
+```
+
+Save the **EXTERNAL-IP** value (e.g., `20.126.45.123`). Press `Ctrl+C` to stop watching.
+
+### Step 2: Choose Your DNS Strategy
+
+#### Option A: Use Dynamic Hostname with nip.io (No DNS Provider Needed)
+
+**Recommended for quick testing/development.**
+
+If your LoadBalancer IP is `20.126.45.123`, your hostname becomes:
+```
+20-126-45-123.nip.io
+```
+
+Convert dots to dashes in the IP address to create a valid nip.io domain.
+
+**Advantages:**
+- ✅ No DNS provider required
+- ✅ No manual DNS record updates
+- ✅ Works immediately with cert-manager
+
+**Disadvantages:**
+- ❌ Different IP each deployment = different hostname each time
+- ❌ Not suitable for production with stable domains
+
+#### Option B: Use Your Own Domain (Requires DNS Provider)
+
+**Recommended for production deployments.**
+
+Create a DNS A record at your DNS provider (e.g., Cloudflare, Azure DNS, GoDaddy):
+
+| Record Type | Name | Value |
+|------------|------|-------|
+| A | fluxion-dev | 20.126.45.123 |
+
+So your full hostname becomes: `fluxion-dev.backelant.eu` (or your domain)
+
+**Advantages:**
+- ✅ Stable, memorable hostname
+- ✅ Can use existing domain infrastructure
+- ✅ Better for production
+
+**Disadvantages:**
+- ⚠️ Requires DNS provider access
+- ⚠️ DNS propagation takes time (5-30 minutes typically)
+- ⚠️ Manual updates if IP changes
+
+### Step 3: Update Ingress Hosts in Helm Values
+
+Update your environment-specific values file with the correct hostname.
+
+**For development (Option A - nip.io):**
+
+```bash
+# Edit values-dev.yaml
+cat > /tmp/ingress-patch.yaml <<EOF
+ingress:
+  hosts:
+    - host: 20-126-45-123.nip.io
+      paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
+        - path: /api/v1
+          pathType: Prefix
+          backend: api
+EOF
+
+# Apply the patch via ArgoCD or Helm
+kubectl patch application fluxion-dev -n argocd --type merge -p "$(cat /tmp/ingress-patch.yaml | yq -r '.spec.source.helm.parameters[0] |= . + {"name":"ingress.hosts[0].host","value":"20-126-45-123.nip.io"}')" 2>/dev/null || \
+  echo "Alternative: Edit deploy/helm/fluxion/values-dev.yaml manually and commit"
+```
+
+**OR manually edit `deploy/helm/fluxion/values-dev.yaml`:**
+
+```yaml
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-dns01-prod"
+  hosts:
+    - host: 20-126-45-123.nip.io  # ← Update this line
+      paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
+        - path: /api/v1
+          pathType: Prefix
+          backend: api
+  tls:
+    enabled: true
+    secretName: fluxion-tls
+    certManager:
+      enabled: true
+      issuer: letsencrypt-dns01-prod
+      issuerKind: ClusterIssuer
+```
+
+**For production (Option B - custom domain):**
+
+Update to use your domain:
+```yaml
+ingress:
+  hosts:
+    - host: fluxion-dev.backelant.eu  # ← Your real domain
+      paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
+        - path: /api/v1
+          pathType: Prefix
+          backend: api
+```
+
+### Step 4: Commit and Sync
+
+If you edited the values file:
+
+```bash
+cd /home/wesleyb/git/fluxion
+
+# Commit the updated values
+git add deploy/helm/fluxion/values-dev.yaml
+git commit -m "Update ingress host to match LoadBalancer IP"
+git push origin main
+
+# Trigger ArgoCD sync
+kubectl patch application fluxion-dev -n argocd \
+  -p '{"spec":{"syncPolicy":{"automated":{"selfHeal":true}}}}'
+
+# Or manual sync
+argocd app sync fluxion-dev
+```
+
+### Step 5: Verify Certificate Issuance
+
+Monitor cert-manager's certificate creation:
+
+```bash
+# Watch certificate status
+kubectl get certificate -n fluxion-<ENVIRONMENT> -w
+
+# Check certificate details
+kubectl describe certificate fluxion-tls -n fluxion-<ENVIRONMENT>
+
+# View cert-manager logs for any errors
+kubectl logs -n cert-manager -l app=cert-manager --tail=50
+```
+
+Expected output when certificate is issued:
+```
+NAME           READY   SECRET           AGE
+fluxion-tls    True    fluxion-tls      2m
+```
+
+### Step 6: Validate DNS Resolution and HTTPS
+
+Test your setup:
+
+```bash
+# Test DNS resolution
+nslookup 20-126-45-123.nip.io
+# OR
+nslookup fluxion-dev.backelant.eu
+
+# Test HTTPS connectivity
+curl -v https://20-126-45-123.nip.io
+# OR
+curl -v https://fluxion-dev.backelant.eu
+
+# Check ingress status
+kubectl get ingress -n fluxion-<ENVIRONMENT>
+```
+
+You should see:
+- ✅ DNS resolves to the LoadBalancer IP
+- ✅ HTTPS connection succeeds (no certificate warnings after issuance)
+- ✅ Ingress shows STATUS: `20.XXX.XXX.XXX`
+
+### Common DNS Issues
+
+| Issue | Symptom | Solution |
+|-------|---------|----------|
+| **DNS not resolving** | `nslookup` fails | Wait for DNS propagation (5-30 min) or verify DNS record exists |
+| **Certificate not issuing** | `READY: False` in certificate status | Check cert-manager logs, verify DNS resolves, check cert-manager-issuer is applied |
+| **Old certificate cached** | Browser shows wrong cert | Clear browser cache or use incognito window |
+| **nip.io not working** | Can't resolve `X-X-X-X.nip.io` | Verify you converted dots to dashes correctly |
+
+---
+
 ## Step 9: Access ArgoCD UI
 
 First, retrieve the ArgoCD admin password:
@@ -366,6 +575,25 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 Open your browser and navigate to `https://localhost:8080`, then login with:
 - **Username:** `admin`
 - **Password:** (from the command above)
+
+---
+
+## Step 10: Access Your Application
+
+Once the certificate is issued and DNS is configured, access your Fluxion application:
+
+```bash
+# For nip.io approach
+curl https://20-126-45-123.nip.io
+
+# For custom domain approach
+curl https://fluxion-dev.backelant.eu
+```
+
+You should see:
+- ✅ Frontend loads successfully
+- ✅ HTTPS connection works without certificate warnings
+- ✅ API endpoints respond at `/api/v1/*`
 
 ---
 
