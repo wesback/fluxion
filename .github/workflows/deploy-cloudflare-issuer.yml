@@ -16,54 +16,85 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
       
-      - name: Azure Login
+      - name: Validate required secrets
+        run: |
+          echo "Checking required secrets..."
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "❌ AZURE_CLIENT_ID is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "❌ CLOUDFLARE_API_TOKEN is not set"
+            exit 1
+          fi
+          echo "✅ All required secrets are present"
+      
+      - name: Azure Login (OIDC)
         uses: azure/login@v1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
-      - name: Install kubelogin
+      - name: Install kubelogin and kubectl
         run: |
+          echo "Installing kubelogin..."
           sudo az aks install-cli
+          kubectl version --client
       
-      - name: Set up kubeconfig
+      - name: Get AKS credentials
         run: |
+          echo "Fetching AKS credentials..."
           az aks get-credentials \
             --resource-group fluxion-dev-rg \
             --name fluxion-dev-aks \
             --file $HOME/.kube/config \
             --overwrite-existing
+          
+          # Verify connection
+          kubectl cluster-info
       
-      - name: Create or update Cloudflare API Secret
+      - name: Ensure cert-manager namespace exists
+        run: |
+          echo "Ensuring cert-manager namespace exists..."
+          kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+          echo "✅ cert-manager namespace is ready"
+      
+      - name: Create/Update Cloudflare API Secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          # Use kubectl to apply the secret directly without trying to get the existing one
-          cat <<EOF | kubectl apply -f -
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: cloudflare-api-token
-            namespace: cert-manager
-          type: Opaque
-          stringData:
-            api-token: ${CLOUDFLARE_API_TOKEN}
-          EOF
+          echo "Creating/updating Cloudflare API token secret..."
+          
+          # Use here-doc to safely pass the token (no shell expansion issues)
+          kubectl create secret generic cloudflare-api-token \
+            --namespace=cert-manager \
+            --from-literal=api-token="${CLOUDFLARE_API_TOKEN}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
+          echo "✅ Secret created/updated successfully"
+          
+          # Verify secret exists
+          kubectl get secret cloudflare-api-token -n cert-manager -o jsonpath='{.metadata.name}'
+          echo ""
       
-      - name: Update ClusterIssuer with Cloudflare credentials
-        env:
-          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Deploy ClusterIssuers
         run: |
-          cat deploy/cert-manager-cloudflare-issuer.yaml | \
-            sed "s/\${CLOUDFLARE_EMAIL}/$CLOUDFLARE_EMAIL/g" | \
-            sed "s/\${CLOUDFLARE_API_TOKEN}/$CLOUDFLARE_API_TOKEN/g" | \
-            kubectl apply -f -
+          echo "Applying ClusterIssuer configurations..."
+          kubectl apply -f deploy/cert-manager-cloudflare-issuer.yaml
+          echo "✅ ClusterIssuers deployed"
       
       - name: Verify deployment
         run: |
-          kubectl get clusterissuer letsencrypt-dns01-prod
-          kubectl get secret -n cert-manager cloudflare-api-token
+          echo "Verifying deployment..."
+          echo ""
+          echo "=== ClusterIssuers ==="
+          kubectl get clusterissuer letsencrypt-dns01-prod letsencrypt-dns01-staging -o wide
+          echo ""
+          echo "=== Cloudflare Secret ==="
+          kubectl get secret -n cert-manager cloudflare-api-token -o wide
+          echo ""
+          echo "✅ Deployment verification complete"
