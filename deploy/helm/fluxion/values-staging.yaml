@@ -6,7 +6,7 @@ api:
   replicaCount: 2
 
 image:
-  tag: "staging-latest"
+  tag: "latest"
   resources:
     limits:
       cpu: 500m
@@ -19,7 +19,7 @@ frontend:
   enabled: true
   replicaCount: 2
   image:
-    tag: "staging-latest"
+    tag: "latest"
   resources:
     limits:
       cpu: 200m

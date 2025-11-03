@@ -6,7 +6,7 @@ api:
   replicaCount: 1
   
 image:
-  tag: "dev-latest"
+  tag: "latest"
   resources:
     limits:
       cpu: 250m
@@ -19,7 +19,7 @@ frontend:
   enabled: true
   replicaCount: 1
   image:
-    tag: "dev-latest"
+    tag: "latest"
   resources:
     limits:
       cpu: 100m
