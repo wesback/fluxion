@@ -1,0 +1,46 @@
+name: Deploy Cloudflare DNS01 Issuer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'deploy/cert-manager-cloudflare-issuer.yaml'
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      
+      - name: Create Cloudflare API Secret
+        run: |
+          kubectl create secret generic cloudflare-api-token \
+            -n cert-manager \
+            --from-literal=api-token='${{ secrets.CLOUDFLARE_API_TOKEN }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Update ClusterIssuer with Cloudflare credentials
+        env:
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          cat deploy/cert-manager-cloudflare-issuer.yaml | \
+            sed "s/\${CLOUDFLARE_EMAIL}/$CLOUDFLARE_EMAIL/g" | \
+            sed "s/\${CLOUDFLARE_API_TOKEN}/$CLOUDFLARE_API_TOKEN/g" | \
+            kubectl apply -f -
+      
+      - name: Verify deployment
+        run: |
+          kubectl get clusterissuer letsencrypt-dns01-prod
+          kubectl get secret -n cert-manager cloudflare-api-token
