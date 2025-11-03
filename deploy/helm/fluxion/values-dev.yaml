@@ -32,6 +32,23 @@ frontend:
     apiUrl: "http://fluxion-api:8000"
   autoscaling:
     enabled: false
+  # Increase health probe delays to allow time for Next.js and Nginx startup
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 45
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 40
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 3
 
 postgresql:
   replicaCount: 1
