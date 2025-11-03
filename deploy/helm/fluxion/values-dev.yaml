@@ -56,8 +56,9 @@ config:
 
 ingress:
   enabled: true
+  className: "nginx"
   hosts:
-    - host: fluxion-dev.example.com
+    - host: fluxion-dev.local
       paths:
         - path: /
           pathType: Prefix
