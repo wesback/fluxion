@@ -4,8 +4,9 @@ global:
 
 api:
   replicaCount: 1
-  
+
 image:
+  pullPolicy: Always
   tag: "latest"
   resources:
     limits:
