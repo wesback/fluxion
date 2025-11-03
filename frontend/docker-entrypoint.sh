@@ -14,7 +14,8 @@ trap shutdown TERM INT
 
 echo "Starting Next.js server..."
 # Start Next.js in the background
-node server.js &
+# Set HOSTNAME to 0.0.0.0 to listen on all interfaces (not just pod IP)
+HOSTNAME=0.0.0.0 node server.js &
 NEXTJS_PID=$!
 
 # Wait for Next.js to be ready
