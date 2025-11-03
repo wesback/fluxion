@@ -75,7 +75,7 @@ ingress:
   enabled: true
   className: "nginx"
   hosts:
-    - host: fluxion-dev.local
+    - host: fluxion-dev.4-225-222-163.nip.io
       paths:
         - path: /
           pathType: Prefix
