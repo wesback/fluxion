@@ -20,7 +20,7 @@ frontend:
   enabled: true
   replicaCount: 1
   image:
-    tag: "latest"
+    tag: "hostname-fix"
   resources:
     limits:
       cpu: 100m
