@@ -17,6 +17,7 @@ data:
     # Generated from Helm values
     
     # Connection Settings
+    listen_addresses = '*'
     max_connections = {{ .Values.postgresql.config.maxConnections | default 100 }}
     
     # Memory Settings
