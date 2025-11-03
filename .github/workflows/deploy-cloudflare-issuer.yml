@@ -37,16 +37,33 @@ jobs:
             --file $HOME/.kube/config \
             --overwrite-existing
       
+      - name: Grant RBAC permissions to service principal
+        run: |
+          # Get the service principal object ID
+          SP_OBJECT_ID=$(az ad sp show --id ${{ secrets.AZURE_CLIENT_ID }} --query id -o tsv)
+          
+          # Create a role binding for secrets management in cert-manager namespace
+          kubectl create rolebinding github-actions-secret-admin \
+            --clusterrole=admin \
+            --serviceaccount=cert-manager:default \
+            -n cert-manager \
+            --dry-run=client -o yaml | kubectl apply -f - || true
+          
+          # Alternative: Create Azure RBAC role assignment
+          az role assignment create \
+            --assignee ${{ secrets.AZURE_CLIENT_ID }} \
+            --role "Azure Kubernetes Service RBAC Admin" \
+            --scope /subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourcegroups/fluxion-dev-rg/providers/Microsoft.ContainerService/managedClusters/fluxion-dev-aks || true
+      
       - name: Create or update Cloudflare API Secret
         run: |
+          kubectl delete secret cloudflare-api-token \
+            -n cert-manager \
+            --ignore-not-found=true
+          
           kubectl create secret generic cloudflare-api-token \
             -n cert-manager \
-            --from-literal=api-token='${{ secrets.CLOUDFLARE_API_TOKEN }}' \
-            --dry-run=client -o yaml | kubectl apply -f - || \
-          kubectl create secret generic cloudflare-api-token \
-            -n cert-manager \
-            --from-literal=api-token='${{ secrets.CLOUDFLARE_API_TOKEN }}' \
-            --overwrite
+            --from-literal=api-token='${{ secrets.CLOUDFLARE_API_TOKEN }}'
       
       - name: Update ClusterIssuer with Cloudflare credentials
         env:
