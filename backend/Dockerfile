@@ -27,19 +27,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+# Create non-root user first
+RUN useradd -m -u 1000 fluxion
+
+# Copy Python dependencies from builder to fluxion user's home
+COPY --from=builder --chown=fluxion:fluxion /root/.local /home/fluxion/.local
 
 # Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/home/fluxion/.local/bin:$PATH
 
 # Copy application code
-COPY fluxion ./fluxion
-COPY alembic ./alembic
-COPY alembic.ini .
+COPY --chown=fluxion:fluxion fluxion ./fluxion
+COPY --chown=fluxion:fluxion alembic ./alembic
+COPY --chown=fluxion:fluxion alembic.ini .
 
-# Create non-root user
-RUN useradd -m -u 1000 fluxion && chown -R fluxion:fluxion /app
+# Switch to non-root user
 USER fluxion
 
 # Expose port
