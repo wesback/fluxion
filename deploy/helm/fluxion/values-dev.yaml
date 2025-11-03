@@ -74,6 +74,9 @@ config:
 ingress:
   enabled: true
   className: "nginx"
+  annotations:
+    # Cert-manager annotations for Let's Encrypt
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
     - host: fluxion-dev.4-225-222-163.nip.io
       paths:
@@ -83,6 +86,13 @@ ingress:
         - path: /api/v1
           pathType: Prefix
           backend: api
+  tls:
+    enabled: true
+    secretName: fluxion-tls
+    certManager:
+      enabled: true
+      issuer: letsencrypt-prod
+      issuerKind: ClusterIssuer
 
 otelCollector:
   enabled: true

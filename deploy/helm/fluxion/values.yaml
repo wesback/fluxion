@@ -315,7 +315,7 @@ secrets:
 
 # Ingress configuration
 ingress:
-  enabled: false
+  enabled: true
   className: "nginx"
   annotations:
     # Rate limiting
@@ -323,9 +323,10 @@ ingress:
     nginx.ingress.kubernetes.io/limit-rps: "10"
     # CORS
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    # Additional annotations can be added here
+    # Cert-manager annotations for Let's Encrypt
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
-    - host: fluxion.example.com
+    - host: fluxion-dev.4-225-222-163.nip.io
       paths:
         # Frontend should be first (more specific path)
         - path: /
@@ -336,13 +337,12 @@ ingress:
           pathType: Prefix
           backend: api
   tls:
-    enabled: false
-    # secretName: fluxion-tls
-    # Uncomment and configure for cert-manager
-    # certManager:
-    #   enabled: true
-    #   issuer: letsencrypt-prod
-    #   issuerKind: ClusterIssuer
+    enabled: true
+    secretName: fluxion-tls
+    certManager:
+      enabled: true
+      issuer: letsencrypt-prod
+      issuerKind: ClusterIssuer
 
 # OpenTelemetry Collector configuration
 otelCollector:
