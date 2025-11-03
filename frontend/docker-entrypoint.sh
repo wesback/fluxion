@@ -19,17 +19,10 @@ NEXTJS_PID=$!
 
 # Wait for Next.js to be ready
 echo "Waiting for Next.js to be ready..."
-for i in $(seq 1 30); do
-    if curl -sf http://localhost:3000 > /dev/null 2>&1; then
-        echo "Next.js is ready!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "Next.js failed to start"
-        exit 1
-    fi
-    sleep 1
-done
+# Give Next.js time to start listening on port 3000
+# The readiness probe will handle actual health checking
+sleep 5
+echo "Next.js startup delay complete"
 
 echo "Starting Nginx..."
 # Start Nginx in the foreground
