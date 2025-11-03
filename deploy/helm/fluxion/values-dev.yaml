@@ -75,13 +75,9 @@ ingress:
   enabled: true
   className: "nginx"
   annotations:
-    # Rate limiting
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/limit-rps: "10"
-    # CORS
-    nginx.ingress.kubernetes.io/enable-cors: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-dns01-prod"
   hosts:
-    - host: fluxion-dev.4-225-222-163.nip.io
+    - host: fluxion-dev.backelant.eu
       paths:
         - path: /
           pathType: Prefix
@@ -89,17 +85,13 @@ ingress:
         - path: /api/v1
           pathType: Prefix
           backend: api
-  # TLS disabled for nip.io (internal IP not publicly accessible)
-  # For production with real domain, set:
-  # tls:
-  #   enabled: true
-  #   secretName: fluxion-tls
-  #   certManager:
-  #     enabled: true
-  #     issuer: letsencrypt-prod
-  #     issuerKind: ClusterIssuer
   tls:
-    enabled: false
+    enabled: true
+    secretName: fluxion-tls
+    certManager:
+      enabled: true
+      issuer: letsencrypt-dns01-prod
+      issuerKind: ClusterIssuer
 
 otelCollector:
   enabled: true
