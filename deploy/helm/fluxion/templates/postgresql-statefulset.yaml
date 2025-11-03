@@ -34,8 +34,7 @@ spec:
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
           imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
           {{- if .Values.postgresql.config }}
-          command:
-            - postgres
+          args:
             - -c
             - config_file=/etc/postgresql/postgresql.conf
           {{- end }}
