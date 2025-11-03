@@ -1,4 +1,7 @@
 # Staging environment overrides
+global:
+  registry: "fluxionstagingaksacr.azurecr.io"
+
 api:
   replicaCount: 2
   resources:

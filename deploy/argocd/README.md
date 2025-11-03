@@ -350,7 +350,7 @@ kind: Application
 metadata:
   name: fluxion-production
   annotations:
-    argocd-image-updater.argoproj.io/image-list: api=ghcr.io/wesback/fluxion
+    argocd-image-updater.argoproj.io/image-list: api=fluxiondevaksacr.azurecr.io/fluxion
     argocd-image-updater.argoproj.io/api.update-strategy: semver
     argocd-image-updater.argoproj.io/api.helm.image-name: image.repository
     argocd-image-updater.argoproj.io/api.helm.image-tag: image.tag

@@ -264,14 +264,14 @@ jobs:
     
     - name: Build Docker image
       run: |
-        docker build -t ghcr.io/wesback/fluxion:${{ github.sha }} backend/
+        docker build -t fluxiondevaksacr.azurecr.io/fluxion:${{ github.sha }} backend/
     
     - name: Push to registry
       run: |
-        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-        docker push ghcr.io/wesback/fluxion:${{ github.sha }}
-        docker tag ghcr.io/wesback/fluxion:${{ github.sha }} ghcr.io/wesback/fluxion:latest
-        docker push ghcr.io/wesback/fluxion:latest
+        echo "${{ secrets.ACR_PASSWORD }}" | docker login fluxiondevaksacr.azurecr.io -u ${{ secrets.ACR_USERNAME }} --password-stdin
+        docker push fluxiondevaksacr.azurecr.io/fluxion:${{ github.sha }}
+        docker tag fluxiondevaksacr.azurecr.io/fluxion:${{ github.sha }} fluxiondevaksacr.azurecr.io/fluxion:latest
+        docker push fluxiondevaksacr.azurecr.io/fluxion:latest
 ```
 
 #### 2. Update Development Values
@@ -300,7 +300,7 @@ ArgoCD Image Updater automatically updates image tags:
 # In deploy/argocd/apps/fluxion-dev.yaml
 metadata:
   annotations:
-    argocd-image-updater.argoproj.io/image-list: api=ghcr.io/wesback/fluxion
+    argocd-image-updater.argoproj.io/image-list: api=fluxiondevaksacr.azurecr.io/fluxion
     argocd-image-updater.argoproj.io/api.update-strategy: latest
     argocd-image-updater.argoproj.io/write-back-method: git
 ```

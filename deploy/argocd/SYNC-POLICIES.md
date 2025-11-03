@@ -571,7 +571,7 @@ spec:
     spec:
       containers:
       - name: migrate
-        image: ghcr.io/wesback/fluxion:v1.2.3
+        image: fluxiondevaksacr.azurecr.io/fluxion:v1.2.3
         command: ["alembic", "upgrade", "head"]
       restartPolicy: Never
 ```

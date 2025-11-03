@@ -41,7 +41,7 @@ spec:
       - name: frontend
         securityContext:
           {{- toYaml .Values.frontend.securityContext | nindent 12 }}
-        image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
+        image: {{ include "fluxion.frontend.image" . | quote }}
         imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
         ports:
         - name: http

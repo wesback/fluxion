@@ -83,8 +83,8 @@ kubectl label secret argocd-image-updater-git-creds \
 
 ```bash
 # For private registries, create credentials secret
-kubectl create secret docker-registry ghcr-credentials \
-  --docker-server=ghcr.io \
+kubectl create secret docker-registry acr-credentials \
+  --docker-server=fluxiondevaksacr.azurecr.io \
   --docker-username=YOUR_USERNAME \
   --docker-password=YOUR_TOKEN \
   -n argocd
@@ -94,10 +94,10 @@ kubectl patch configmap argocd-image-updater-config -n argocd --type merge -p '{
   "data": {
     "registries.conf": |
       registries:
-      - name: ghcr
-        api_url: https://ghcr.io
-        prefix: ghcr.io
-        credentials: secret:argocd/ghcr-credentials
+      - name: acr
+        api_url: https://fluxiondevaksacr.azurecr.io
+        prefix: fluxiondevaksacr.azurecr.io
+        credentials: secret:argocd/acr-credentials
         default: true
   }
 }'

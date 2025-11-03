@@ -1,0 +1,91 @@
+# Production environment overrides
+global:
+  registry: "fluxionprodaksacr.azurecr.io"
+
+api:
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+
+frontend:
+  enabled: true
+  replicaCount: 3
+  image:
+    tag: "latest" # It's recommended to use a specific version tag in production
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+  config:
+    apiUrl: "https://fluxion.example.com/api/v1"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+postgresql:
+  replicaCount: 2
+  persistence:
+    size: 50Gi
+  resources:
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+
+config:
+  api:
+    logLevel: "warning"
+    corsOrigins:
+      - "https://fluxion.example.com"
+  otel:
+    environment: "production"
+    exporterType: "otlp"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: fluxion.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
+        - path: /api/v1
+          pathType: Prefix
+          backend: api
+  tls:
+    enabled: true
+
+otelCollector:
+  enabled: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 75
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+argocd:
+  autoSync:
+    enabled: false # Manual sync for production is recommended

@@ -1,4 +1,7 @@
 # Development environment overrides
+global:
+  registry: "fluxiondevaksacr.azurecr.io"
+
 api:
   replicaCount: 1
   resources:

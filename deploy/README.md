@@ -274,7 +274,7 @@ Before deploying, configure these in your values file or via `--set`:
 ```yaml
 # Image configuration
 image:
-  repository: ghcr.io/wesback/fluxion
+  repository: fluxiondevaksacr.azurecr.io/fluxion
   tag: "v1.0.0"  # Use specific version for production
 
 # Secrets (use existing secrets!)

@@ -150,10 +150,35 @@ OTLP endpoint
 {{- end }}
 
 {{/*
-ArgoCD sync wave annotation
+Image for the API
+*/}}
+{{- define "fluxion.api.image" -}}
+{{- $registry := .Values.global.registry | default "" -}}
+{{- $repository := .Values.image.repository -}}
+{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- end -}}
+
+{{/*
+Frontend fullname
+*/}}
+{{- define "fluxion.frontend.fullname" -}}
+{{- printf "%s-frontend" (include "fluxion.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Image for the frontend
+*/}}
+{{- define "fluxion.frontend.image" -}}
+{{- $registry := .Values.global.registry | default "" -}}
+{{- $repository := .Values.frontend.image.repository -}}
+{{- $tag := .Values.frontend.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- end -}}
+
+{{/*
+ArgoCD sync wave
 */}}
 {{- define "fluxion.argocd.syncWave" -}}
-{{- if .wave }}
 argocd.argoproj.io/sync-wave: {{ .wave | quote }}
-{{- end }}
-{{- end }}
+{{- end -}}

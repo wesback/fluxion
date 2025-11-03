@@ -39,7 +39,7 @@ spec:
         {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
       containers:
         - name: api
-          image: {{ include "fluxion.image" . }}
+          image: {{ include "fluxion.api.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.api.securityContext | nindent 12 }}

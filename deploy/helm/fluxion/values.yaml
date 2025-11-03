@@ -4,11 +4,15 @@
 
 # Global settings
 global:
+  # The container registry to pull images from.
+  # This should be overridden in environment-specific values files.
+  # Example: youracr.azurecr.io
+  registry: ""
   imagePullSecrets: []
 
 # Image configuration
 image:
-  repository: ghcr.io/wesback/fluxion
+  repository: fluxion
   pullPolicy: IfNotPresent
   tag: ""  # Overrides the image tag whose default is the chart appVersion
 
@@ -94,7 +98,7 @@ frontend:
   
   # Image configuration
   image:
-    repository: ghcr.io/wesback/fluxion-frontend
+    repository: fluxion-frontend
     pullPolicy: IfNotPresent
     tag: ""  # Overrides the image tag whose default is the chart appVersion
   
