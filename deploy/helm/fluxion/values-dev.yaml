@@ -75,8 +75,9 @@ ingress:
   enabled: true
   className: "nginx"
   annotations:
-    # Cert-manager annotations for Let's Encrypt
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Cert-manager annotations - Using staging for nip.io (not publicly accessible)
+    # For production with real domain, change to letsencrypt-prod
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
   hosts:
     - host: fluxion-dev.4-225-222-163.nip.io
       paths:
@@ -91,7 +92,7 @@ ingress:
     secretName: fluxion-tls
     certManager:
       enabled: true
-      issuer: letsencrypt-prod
+      issuer: letsencrypt-staging
       issuerKind: ClusterIssuer
 
 otelCollector:
