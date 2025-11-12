@@ -55,7 +55,10 @@ spec:
                   name: {{ include "fluxion.api.secretName" . }}
                   key: postgres-password
             - name: DATABASE_URL
-              value: {{ include "fluxion.databaseUrl" . | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fluxion.api.secretName" . }}
+                  key: database-url
             # Import all config from ConfigMap
             {{- range $key, $value := .Values.config }}
             {{- if eq $key "database" }}

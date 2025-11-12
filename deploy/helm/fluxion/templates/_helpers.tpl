@@ -128,17 +128,6 @@ Image reference
 {{- end }}
 
 {{/*
-Database URL
-*/}}
-{{- define "fluxion.databaseUrl" -}}
-{{- $host := include "fluxion.postgresql.serviceName" . }}
-{{- $port := .Values.postgresql.service.port }}
-{{- $database := .Values.postgresql.auth.database }}
-{{- $username := .Values.postgresql.auth.username }}
-{{- printf "postgresql+asyncpg://%s:$(POSTGRES_PASSWORD)@%s:%d/%s" $username $host (int $port) $database }}
-{{- end }}
-
-{{/*
 OTLP endpoint
 */}}
 {{- define "fluxion.otlpEndpoint" -}}
