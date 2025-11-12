@@ -11,7 +11,7 @@ spec:
     solvers:
     - dns01:
         cloudflare:
-          email: ${CLOUDFLARE_EMAIL}
+          email: wesleyb@live.be
           apiTokenSecretRef:
             name: cloudflare-api-token
             key: api-token
@@ -29,7 +29,7 @@ spec:
     solvers:
     - dns01:
         cloudflare:
-          email: ${CLOUDFLARE_EMAIL}
+          email: wesleyb@live.be
           apiTokenSecretRef:
             name: cloudflare-api-token
             key: api-token

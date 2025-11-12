@@ -1,0 +1,104 @@
+# Local overrides for development / cluster
+# Sets frontend to use a relative API path so the browser talks to the same origin
+# Update image tags as needed
+
+global:
+  imagePullSecrets:
+    - name: fluxion-registry-secret
+
+# Backend image (top-level image.* used by API template)
+image:
+  repository: wesback/fluxion-api
+  tag: 6d31dea
+  pullPolicy: Always
+
+api:
+  replicaCount: 2
+
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: wesback/fluxion-frontend
+    tag: 6d31dea
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  config:
+    # Use a relative path so browser uses same origin as frontend
+    apiUrl: "/api/v1"
+    appName: "Fluxion"
+  autoscaling:
+    enabled: false
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 45
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 40
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+postgresql:
+  replicaCount: 1
+  persistence:
+    size: 5Gi
+  auth:
+    # Set explicit password so Helm uses same password for both Postgres and API
+    # This avoids secret sync issues between fluxion-postgresql and fluxion-api secrets
+    password: "fluxion-local-dev-password-change-in-prod"
+
+config:
+  api:
+    logLevel: debug
+    corsOrigins:
+      - "*"
+  otel:
+    environment: "development"
+    exporterType: "console"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-dns01-prod"
+  hosts:
+    - host: fluxion.backelant.eu
+      paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
+        - path: /api/v1
+          pathType: Prefix
+          backend: api
+  tls:
+    enabled: true
+    secretName: fluxion-tls
+    certManager:
+      enabled: true
+      issuer: letsencrypt-dns01-prod
+      issuerKind: ClusterIssuer
+
+otelCollector:
+  enabled: true
+
+autoscaling:
+  enabled: false
+
+argocd:
+  autoSync:
+    enabled: true
+    prune: true
+    selfHeal: true

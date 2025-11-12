@@ -199,6 +199,11 @@ The chart includes pre-configured values files for different environments:
 - `values-staging.yaml`: Staging environment (2 replicas, TLS enabled)
 - `values-production.yaml`: Production environment (3 replicas, HA, autoscaling)
 
+Local development
+-----------------
+
+A `values-local.yaml` file is provided to make local/cluster testing easier. It sets the frontend `apiUrl` to a relative path (`/api/v1`) so the browser will use the same origin as the frontend (recommended for single-host ingress setups). Update image tags in `values-local.yaml` to match images you push to Docker Hub.
+
 ## Secrets Management
 
 ### Option 1: Helm Values (Testing Only)

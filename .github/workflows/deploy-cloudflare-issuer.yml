@@ -55,7 +55,26 @@ jobs:
             --overwrite-existing
           
           # Verify connection
-          kubectl cluster-info
+          if kubectl cluster-info &> /dev/null; then
+            echo "✅ Connected to AKS cluster"
+          else
+            echo "❌ Failed to connect to AKS cluster"
+            exit 1
+          fi
+      
+      - name: Verify RBAC permissions
+        run: |
+          echo "Checking RBAC permissions..."
+          echo ""
+          echo "Current user:"
+          kubectl auth whoami || echo "⚠️  Could not determine current user"
+          echo ""
+          echo "Permission checks:"
+          kubectl auth can-i create secrets -n cert-manager && echo "✅ Can create secrets in cert-manager" || echo "❌ Cannot create secrets in cert-manager"
+          kubectl auth can-i get clusterissuers && echo "✅ Can get clusterissuers" || echo "❌ Cannot get clusterissuers"
+          kubectl auth can-i create clusterissuers && echo "✅ Can create clusterissuers" || echo "❌ Cannot create clusterissuers"
+          echo ""
+          echo "If permissions are missing, see: deploy/FIX-RBAC-PERMISSIONS.md"
       
       - name: Ensure cert-manager namespace exists
         run: |

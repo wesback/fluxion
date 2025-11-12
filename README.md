@@ -238,6 +238,15 @@ curl -X DELETE http://localhost:8000/api/v1/admin/api-keys/1 \
 - **Role-Based Access**: Admin endpoints require admin role
 - **Audit Trail**: Last used timestamp tracked for each key
 - **OpenTelemetry Integration**: API key info included in spans
+
+Quick helper
+------------
+
+There's a helper script to build and push backend and frontend images to Docker Hub under your user (default: `wesback`):
+
+  scripts/push_to_dockerhub.sh [tag]
+
+Set `DOCKERHUB_USER` and `DOCKERHUB_PASS` env vars to avoid interactive login. Set `BUILD=0` to skip building and only push local images.
 - **Authentication Logging**: Failed auth attempts are logged
 
 ### Using API Keys
