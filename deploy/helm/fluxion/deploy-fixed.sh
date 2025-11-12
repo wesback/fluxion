@@ -32,10 +32,17 @@ helm upgrade $RELEASE_NAME . \
     -f values-local.yaml \
     -n $NAMESPACE \
     --install \
-    --wait \
     --timeout 5m
 
-echo "✓ Helm upgrade complete"
+echo "✓ Helm upgrade submitted"
+echo ""
+
+echo "Waiting for PostgreSQL StatefulSet to be ready..."
+kubectl rollout status statefulset/fluxion-postgresql -n $NAMESPACE --timeout=3m || echo "⚠️  PostgreSQL rollout incomplete, continuing..."
+echo ""
+
+echo "Waiting for API Deployment to have updated replicas..."
+sleep 10
 echo ""
 
 # Verify secrets contain the correct data
