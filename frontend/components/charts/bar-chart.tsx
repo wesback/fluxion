@@ -60,7 +60,7 @@ export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: B
               radius={[4, 4, 0, 0]}
             >
               {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={stringToColor(entry[nameKey])} />
+                <Cell key={`cell-${index}`} fill={stringToColor(entry[nameKey as keyof typeof entry] as string)} />
               ))}
             </Bar>
           </RechartsBarChart>
