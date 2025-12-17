@@ -1,12 +1,4 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { getApiBaseUrl } from './config';
-
-// API key should be stored server-side only, not exposed to client
-// For server-side requests, use the FLUXION_API_KEY environment variable
-const getApiKey = () => {
-  // This will only work in server-side contexts (API routes, server components)
-  return process.env.FLUXION_API_KEY;
-};
 
 export interface Host {
   hostname: string;
@@ -55,28 +47,16 @@ export class ApiError extends Error {
 
 class ApiClient {
   private client: AxiosInstance;
-  private baseUrlPromise: Promise<string> | null = null;
 
-  constructor(apiKey?: string) {
-    // Create client with temporary base URL
-    // Will be updated when first request is made
+  constructor() {
+    // Use Next.js API routes for all requests
+    // These routes handle authentication server-side
     this.client = axios.create({
-      baseURL: 'http://localhost:8000', // temporary default
+      baseURL: '', // Use relative URLs for Next.js API routes
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-        ...(apiKey ? { 'X-API-Key': apiKey } : {}),
       },
-    });
-
-    // Request interceptor to set base URL from runtime config
-    this.client.interceptors.request.use(async (config) => {
-      if (!this.baseUrlPromise) {
-        this.baseUrlPromise = getApiBaseUrl();
-      }
-      const baseURL = await this.baseUrlPromise;
-      config.baseURL = baseURL;
-      return config;
     });
 
     // Response interceptor for error handling
@@ -85,8 +65,8 @@ class ApiClient {
       (error: AxiosError) => {
         if (error.response) {
           // Server responded with error status
-          const data = error.response.data as { detail?: string } | undefined
-          const message = data?.detail || error.message
+          const data = error.response.data as { detail?: string; error?: string } | undefined
+          const message = data?.detail || data?.error || error.message
           throw new ApiError(
             message,
             error.response.status,
@@ -104,12 +84,12 @@ class ApiClient {
   }
 
   async getStats(): Promise<Stats> {
-    const response = await this.client.get<Stats>('/api/v1/stats');
+    const response = await this.client.get<Stats>('/api/stats');
     return response.data;
   }
 
   async getHosts(): Promise<{ items: Host[] }> {
-    const response = await this.client.get<{ items: Host[] }>('/api/v1/hosts');
+    const response = await this.client.get<{ items: Host[] }>('/api/hosts');
     return response.data;
   }
 
@@ -123,7 +103,7 @@ class ApiClient {
     }
   ): Promise<{ items: PackageUpdate[]; total: number; limit: number; offset: number }> {
     const response = await this.client.get(
-      `/api/v1/hosts/${encodeURIComponent(hostname)}/updates`,
+      `/api/hosts/${encodeURIComponent(hostname)}/updates`,
       { params: options }
     );
     return response.data;
@@ -131,7 +111,7 @@ class ApiClient {
 
   async getRecentUpdates(limit: number = 20, hours: number = 24): Promise<{ items: HostUpdate[] }> {
     const response = await this.client.get<{ items: HostUpdate[] }>(
-      '/api/v1/updates/recent',
+      '/api/updates/recent',
       { params: { limit, hours } }
     );
     return response.data;
@@ -139,11 +119,12 @@ class ApiClient {
 
   async getPackageHosts(packageName: string): Promise<{ items: PackageHost[] }> {
     const response = await this.client.get<{ items: PackageHost[] }>(
-      `/api/v1/packages/${encodeURIComponent(packageName)}/hosts`
+      `/api/packages/${encodeURIComponent(packageName)}/hosts`
     );
     return response.data;
   }
 }
 
-// Create a singleton instance with API key from environment
-export const apiClient = new ApiClient(getApiKey());
+// Create a singleton instance
+// No API key needed - Next.js API routes handle authentication server-side
+export const apiClient = new ApiClient();
