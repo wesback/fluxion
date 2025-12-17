@@ -83,9 +83,11 @@ async def _create_package_update_impl(
         if tracer:
             with tracer.start_as_current_span("upsert_host") as span:
                 span.set_attribute("hostname", update_data.hostname)
-                host, now = await _upsert_host(update_data.hostname, session)
+                if update_data.os_info:
+                    span.set_attribute("os_info", update_data.os_info)
+                host, now = await _upsert_host(update_data.hostname, session, update_data.os_info)
         else:
-            host, now = await _upsert_host(update_data.hostname, session)
+            host, now = await _upsert_host(update_data.hostname, session, update_data.os_info)
 
         # Create package update record with custom span
         if tracer:
@@ -147,28 +149,38 @@ async def _create_package_update_impl(
         ) from e
 
 
-async def _upsert_host(hostname: str, session: AsyncSession) -> tuple[Host, datetime]:
-    """Upsert host record (create if not exists, update last_seen if exists)."""
+async def _upsert_host(
+    hostname: str, session: AsyncSession, os_info: str | None = None
+) -> tuple[Host, datetime]:
+    """Upsert host record (create if not exists, update last_seen and os_info if exists)."""
     result = await session.execute(select(Host).where(Host.hostname == hostname))
     host = result.scalar_one_or_none()
 
     now = datetime.now(UTC)
 
     if host:
-        # Update existing host's last_seen timestamp
+        # Update existing host's last_seen timestamp and os_info if provided
         host.last_seen = now
         host.updated_at = now
-        logger.info(f"Updated last_seen for host: {hostname}")
+        if os_info:
+            old_os_info = host.os_info
+            host.os_info = os_info
+            if old_os_info != os_info:
+                logger.info(f"Updated OS info for host {hostname}: {old_os_info} -> {os_info}")
+            else:
+                logger.info(f"Updated last_seen for host: {hostname}")
+        else:
+            logger.info(f"Updated last_seen for host: {hostname}")
     else:
-        # Create new host record
+        # Create new host record with provided os_info or default to "Unknown"
         host = Host(
             hostname=hostname,
-            os_info="Unknown",  # Will be updated by future enhancements
+            os_info=os_info or "Unknown",
             last_seen=now,
         )
         session.add(host)
         await session.flush()  # Flush to get host.id
-        logger.info(f"Created new host: {hostname}")
+        logger.info(f"Created new host: {hostname} with OS: {host.os_info}")
 
     return host, now
 
@@ -286,9 +298,11 @@ async def _create_batch_package_updates_impl(
         if tracer:
             with tracer.start_as_current_span("upsert_host") as span:
                 span.set_attribute("hostname", batch_data.hostname)
-                host, now = await _upsert_host(batch_data.hostname, session)
+                if batch_data.os_info:
+                    span.set_attribute("os_info", batch_data.os_info)
+                host, now = await _upsert_host(batch_data.hostname, session, batch_data.os_info)
         else:
-            host, now = await _upsert_host(batch_data.hostname, session)
+            host, now = await _upsert_host(batch_data.hostname, session, batch_data.os_info)
 
         # Create all package update records
         created_ids: list[int] = []

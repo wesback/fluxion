@@ -30,6 +30,7 @@ class PackageUpdateRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "hostname": "server01",
+                "os_info": "Ubuntu 22.04.3 LTS",
                 "package_name": "nginx",
                 "old_version": "1.18.0",
                 "new_version": "1.22.0",
@@ -38,6 +39,9 @@ class PackageUpdateRequest(BaseModel):
     )
 
     hostname: str = Field(..., min_length=1, max_length=255, description="Hostname of the server")
+    os_info: str | None = Field(
+        None, max_length=500, description="Operating system information (auto-detected if not provided)"
+    )
     package_name: str = Field(..., min_length=1, max_length=255, description="Name of the package")
     old_version: str | None = Field(
         None, max_length=255, description="Previous version (null or '-' for new installs)"
@@ -84,6 +88,7 @@ class BatchPackageUpdateRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "hostname": "server01",
+                "os_info": "Ubuntu 22.04.3 LTS",
                 "updates": [
                     {"package_name": "nginx", "old_version": "1.18.0", "new_version": "1.22.0"},
                     {"package_name": "curl", "old_version": "7.68.0", "new_version": "7.81.0"},
@@ -94,6 +99,9 @@ class BatchPackageUpdateRequest(BaseModel):
     )
 
     hostname: str = Field(..., min_length=1, max_length=255, description="Hostname of the server")
+    os_info: str | None = Field(
+        None, max_length=500, description="Operating system information (auto-detected if not provided)"
+    )
     updates: list[PackageUpdateItem] = Field(
         ..., min_length=1, description="List of package updates"
     )

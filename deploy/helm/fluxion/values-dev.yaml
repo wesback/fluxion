@@ -75,6 +75,8 @@ ingress:
   enabled: true
   className: "nginx"
   annotations:
+    # Preserve the full path including /api/v1 when proxying to backend
+    nginx.ingress.kubernetes.io/rewrite-target: /api/v1/$1
     cert-manager.io/cluster-issuer: "letsencrypt-dns01-prod"
   hosts:
     - host: fluxion-dev.aks.backelant.eu
@@ -82,8 +84,8 @@ ingress:
         - path: /
           pathType: Prefix
           backend: frontend
-        - path: /api/v1
-          pathType: Prefix
+        - path: /api/v1/(.*)
+          pathType: ImplementationSpecific
           backend: api
   tls:
     enabled: true

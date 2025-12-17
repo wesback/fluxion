@@ -55,6 +55,8 @@ ingress:
   annotations:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    # Preserve the full path including /api/v1 when proxying to backend
+    nginx.ingress.kubernetes.io/rewrite-target: /api/v1/$1
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
     - host: fluxion.example.com
@@ -62,8 +64,8 @@ ingress:
         - path: /
           pathType: Prefix
           backend: frontend
-        - path: /api/v1
-          pathType: Prefix
+        - path: /api/v1/(.*)
+          pathType: ImplementationSpecific
           backend: api
   tls:
     enabled: true

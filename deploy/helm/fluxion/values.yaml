@@ -323,6 +323,8 @@ ingress:
     nginx.ingress.kubernetes.io/limit-rps: "10"
     # CORS
     nginx.ingress.kubernetes.io/enable-cors: "true"
+    # Preserve the full path including /api/v1 when proxying to backend
+    nginx.ingress.kubernetes.io/rewrite-target: /api/v1/$1
     # Cert-manager annotations for Let's Encrypt
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
@@ -333,8 +335,8 @@ ingress:
           pathType: Prefix
           backend: frontend
         # API paths
-        - path: /api/v1
-          pathType: Prefix
+        - path: /api/v1/(.*)
+          pathType: ImplementationSpecific
           backend: api
   tls:
     enabled: true

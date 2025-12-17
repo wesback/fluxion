@@ -209,6 +209,7 @@ Receive a single package update from APT hooks.
 ```json
 {
   "hostname": "string",
+  "os_info": "string (optional)",
   "package_name": "string",
   "old_version": "string or null",
   "new_version": "string"
@@ -217,6 +218,7 @@ Receive a single package update from APT hooks.
 
 **Field Descriptions:**
 - `hostname` (required): The hostname of the server reporting the update (1-255 characters)
+- `os_info` (optional): Operating system information (e.g., "Ubuntu 22.04.3 LTS"). Auto-detected by APT hook. Max 500 characters.
 - `package_name` (required): Name of the package being updated (1-255 characters)
 - `old_version` (optional): Previous version of the package. Use `null` or `"-"` for new installations
 - `new_version` (required): New version of the package being installed (1-255 characters)
@@ -250,6 +252,7 @@ curl -X POST http://localhost:8000/api/v1/updates \
   -H "Content-Type: application/json" \
   -d '{
     "hostname": "web-server-01",
+    "os_info": "Ubuntu 22.04.3 LTS",
     "package_name": "nginx",
     "old_version": "1.18.0",
     "new_version": "1.22.0"
@@ -263,9 +266,24 @@ curl -X POST http://localhost:8000/api/v1/updates \
   -H "Content-Type: application/json" \
   -d '{
     "hostname": "web-server-01",
+    "os_info": "Debian 12 (bookworm)",
     "package_name": "redis-server",
     "old_version": null,
     "new_version": "6.2.0"
+  }'
+```
+
+**Example Request (Backward Compatible - without os_info):**
+
+```bash
+# os_info is optional for backward compatibility
+curl -X POST http://localhost:8000/api/v1/updates \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hostname": "legacy-server",
+    "package_name": "apache2",
+    "old_version": "2.4.41",
+    "new_version": "2.4.52"
   }'
 ```
 
@@ -280,6 +298,7 @@ This endpoint is more efficient when multiple packages are updated at once, as i
 ```json
 {
   "hostname": "string",
+  "os_info": "string (optional)",
   "updates": [
     {
       "package_name": "string",
@@ -292,6 +311,7 @@ This endpoint is more efficient when multiple packages are updated at once, as i
 
 **Field Descriptions:**
 - `hostname` (required): The hostname of the server reporting the updates (1-255 characters)
+- `os_info` (optional): Operating system information (e.g., "Ubuntu 22.04.3 LTS"). Auto-detected by APT hook. Max 500 characters.
 - `updates` (required): Array of package updates (must contain at least 1 item)
   - `package_name` (required): Name of the package being updated (1-255 characters)
   - `old_version` (optional): Previous version of the package. Use `null` or `"-"` for new installations
@@ -328,6 +348,7 @@ curl -X POST http://localhost:8000/api/v1/updates/batch \
   -H "Content-Type: application/json" \
   -d '{
     "hostname": "web-server-01",
+    "os_info": "Ubuntu 22.04.3 LTS",
     "updates": [
       {
         "package_name": "nginx",
