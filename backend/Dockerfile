@@ -35,6 +35,7 @@ COPY --from=builder --chown=fluxion:fluxion /root/.local /home/fluxion/.local
 
 # Make sure scripts in .local are usable
 ENV PATH=/home/fluxion/.local/bin:$PATH
+ENV PYTHONPATH=/app
 
 # Copy application code
 COPY --chown=fluxion:fluxion fluxion ./fluxion
