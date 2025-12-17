@@ -1,0 +1,120 @@
+version: '3.8'
+
+# Docker Compose configuration for running Fluxion from DockerHub images
+# This file uses pre-built images from DockerHub instead of building locally
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:18-alpine
+    container_name: fluxion-postgres
+    environment:
+      POSTGRES_DB: fluxion
+      POSTGRES_USER: fluxion
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fluxion_secure_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fluxion"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fluxion-network
+
+  # Jaeger all-in-one for tracing and observability
+  jaeger:
+    image: jaegertracing/all-in-one:1.51
+    container_name: fluxion-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"  # Jaeger UI
+      - "${JAEGER_OTLP_GRPC_PORT:-4317}:4317"    # OTLP gRPC receiver
+      - "${JAEGER_OTLP_HTTP_PORT:-4318}:4318"    # OTLP HTTP receiver
+      - "14250:14250"  # Model collector
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fluxion-network
+
+  # Fluxion backend API (from DockerHub)
+  backend:
+    image: ${DOCKERHUB_USERNAME:-wesback}/fluxion-backend:${BACKEND_TAG:-latest}
+    container_name: fluxion-backend
+    environment:
+      # Database configuration
+      DATABASE_URL: postgresql+asyncpg://fluxion:${POSTGRES_PASSWORD:-fluxion_secure_password}@postgres:5432/fluxion
+      SQL_ECHO: "${SQL_ECHO:-false}"
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # OpenTelemetry settings
+      OTEL_ENABLED: "${OTEL_ENABLED:-true}"
+      OTEL_EXPORTER_TYPE: ${OTEL_EXPORTER_TYPE:-otlp}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-fluxion-backend}
+      OTEL_ENVIRONMENT: ${OTEL_ENVIRONMENT:-production}
+      
+      # CORS settings (must be JSON array format)
+      CORS_ORIGINS: ${CORS_ORIGINS:-["*"]}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - fluxion-network
+    restart: unless-stopped
+
+  # Fluxion frontend (from DockerHub)
+  frontend:
+    image: ${DOCKERHUB_USERNAME:-wesback}/fluxion-frontend:${FRONTEND_TAG:-latest}
+    container_name: fluxion-frontend
+    environment:
+      # API configuration
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      
+      # Backend API key for server-side requests
+      FLUXION_API_KEY: ${FLUXION_API_KEY:-your-api-key-here}
+      
+      # Optional: Node environment
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - fluxion-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  fluxion-network:
+    driver: bridge
