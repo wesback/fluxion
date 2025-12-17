@@ -112,10 +112,11 @@ function MyComponent() {
 - Manual refresh button
 
 ### Packages (`/packages`)
-- Search for packages across all hosts
+- Search for packages across all hosts (supports partial/wildcard matching)
 - Shows which hosts have the package installed
 - Displays current version per host
 - Real-time search results
+- Case-insensitive search
 
 ## Project Structure
 

@@ -229,7 +229,7 @@ async def _get_host_updates_impl(
     "/packages/{package_name}/hosts",
     response_model=PackageHostsResponse,
     summary="Get hosts with specific package",
-    description="Get list of hosts that have installed a specific package with version information",
+    description="Get list of hosts that have installed a specific package with version information. Supports partial/wildcard matching (case-insensitive).",
 )
 async def get_package_hosts(
     package_name: str,
@@ -239,9 +239,10 @@ async def get_package_hosts(
     Get hosts that have installed a specific package.
 
     Returns the latest version of the package installed on each host.
+    Performs case-insensitive partial matching on package names.
 
     Args:
-        package_name: Name of the package to search for
+        package_name: Name or partial name of the package to search for (e.g., 'nginx', 'lib', 'python')
         session: Database session (injected)
 
     Returns:
@@ -274,6 +275,7 @@ async def _get_package_hosts_impl(
     """Implementation of get package hosts with query optimization."""
     # Get the latest update for this package on each host
     # Using a window function to get the most recent update per host
+    # Support wildcard search: use ILIKE for case-insensitive pattern matching
     latest_update_subquery = (
         select(
             PackageUpdate.host_id,
@@ -286,7 +288,7 @@ async def _get_package_hosts_impl(
             )
             .label("rn"),
         )
-        .where(PackageUpdate.package_name == package_name)
+        .where(PackageUpdate.package_name.ilike(f"%{package_name}%"))
         .subquery()
     )
 

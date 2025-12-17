@@ -99,8 +99,10 @@ curl "http://localhost:8000/api/v1/hosts/server01/updates?from_date=2025-10-01T0
 
 Get list of hosts that have installed a specific package with the latest version information.
 
+**Note:** Supports partial/wildcard matching (case-insensitive). You can search for part of a package name to find all matching packages.
+
 **URL Parameters:**
-- `package_name` (required): Name of the package
+- `package_name` (required): Name or partial name of the package (e.g., 'nginx', 'lib', 'python')
 
 **Success Response:**
 
@@ -119,10 +121,14 @@ Get list of hosts that have installed a specific package with the latest version
 }
 ```
 
-**Example Request:**
+**Example Requests:**
 
 ```bash
+# Exact or partial match
 curl http://localhost:8000/api/v1/packages/nginx/hosts
+
+# Find all packages containing "lib"
+curl http://localhost:8000/api/v1/packages/lib/hosts
 ```
 
 #### GET /api/v1/updates/recent

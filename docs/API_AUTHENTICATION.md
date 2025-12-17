@@ -254,8 +254,15 @@ Response:
 
 ### Find Hosts with a Specific Package
 
+**Note:** This endpoint supports partial/wildcard matching (case-insensitive). You can search for part of a package name to find all matching packages.
+
 ```bash
+# Exact or partial match
 curl "${FLUXION_URL}/api/v1/packages/nginx/hosts" \
+  -H "X-API-Key: ${FLUXION_API_KEY}"
+
+# Find all packages containing "lib"
+curl "${FLUXION_URL}/api/v1/packages/lib/hosts" \
   -H "X-API-Key: ${FLUXION_API_KEY}"
 ```
 
