@@ -7,7 +7,8 @@ import axios from 'axios';
  */
 export const dynamic = 'force-dynamic';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+// Use BACKEND_URL for server-side calls (internal Docker network)
+const API_BASE_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 const API_KEY = process.env.FLUXION_API_KEY;
 
 export async function GET() {
