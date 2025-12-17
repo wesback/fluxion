@@ -18,6 +18,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Runtime configuration injected at container startup */}
+        <script src="/config.js" async></script>
+      </head>
       <body className="antialiased">
         <TelemetryProvider>
           <ThemeProvider

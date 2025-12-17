@@ -7,11 +7,21 @@ interface RuntimeConfig {
   apiBaseUrl: string;
 }
 
+// Extend Window interface for TypeScript
+declare global {
+  interface Window {
+    __RUNTIME_CONFIG__?: RuntimeConfig;
+  }
+}
+
 let cachedConfig: RuntimeConfig | null = null;
 let configPromise: Promise<RuntimeConfig> | null = null;
 
 /**
- * Get runtime configuration from the server
+ * Get runtime configuration
+ * Priority: 1. window.__RUNTIME_CONFIG__ (injected at startup)
+ *           2. /api/config endpoint
+ *           3. Build-time env var
  * Caches the result to avoid repeated fetches
  */
 export async function getRuntimeConfig(): Promise<RuntimeConfig> {
@@ -20,16 +30,24 @@ export async function getRuntimeConfig(): Promise<RuntimeConfig> {
     return cachedConfig;
   }
 
+  // Check if we're in browser and have window.__RUNTIME_CONFIG__
+  if (typeof window !== 'undefined' && window.__RUNTIME_CONFIG__) {
+    cachedConfig = window.__RUNTIME_CONFIG__;
+    return cachedConfig;
+  }
+
   // Return existing promise if fetch is in progress
   if (configPromise) {
     return configPromise;
   }
 
-  // Fetch config from server
-  configPromise = fetch('/api/config')
+  // Fetch config from server API endpoint
+  configPromise = fetch('/api/config', {
+    cache: 'no-store',
+  })
     .then(res => {
       if (!res.ok) {
-        throw new Error('Failed to fetch runtime config');
+        throw new Error(`Failed to fetch runtime config: ${res.status}`);
       }
       return res.json();
     })
@@ -39,7 +57,7 @@ export async function getRuntimeConfig(): Promise<RuntimeConfig> {
       return config;
     })
     .catch(error => {
-      console.error('Failed to load runtime config, using defaults:', error);
+      console.warn('Failed to load runtime config from API, using fallback:', error);
       configPromise = null;
       // Fall back to build-time env var or default
       const fallbackConfig = {

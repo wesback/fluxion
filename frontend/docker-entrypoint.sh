@@ -12,6 +12,15 @@ shutdown() {
 # Trap signals
 trap shutdown TERM INT
 
+# Generate runtime config file
+echo "Generating runtime configuration..."
+cat > /app/public/config.js << EOF
+window.__RUNTIME_CONFIG__ = {
+  apiBaseUrl: "${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}"
+};
+EOF
+echo "Runtime config: NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}"
+
 echo "Starting Next.js server..."
 # Start Next.js in the background
 # Set HOSTNAME to 0.0.0.0 to listen on all interfaces (not just pod IP)
