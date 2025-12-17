@@ -46,7 +46,7 @@ docker-compose -f docker-compose.dockerhub.yml ps
 # Run database migrations
 docker exec -it fluxion-backend alembic upgrade head
 
-# Generate an admin API key
+# Generate an admin API key (note: use 'sudo' if needed on Linux)
 docker exec -it fluxion-backend python scripts/generate_admin_key.py
 ```
 
@@ -222,6 +222,7 @@ docker exec -it fluxion-backend alembic upgrade head
 docker-compose -f docker-compose.dockerhub.yml down -v
 docker-compose -f docker-compose.dockerhub.yml up -d
 docker exec -it fluxion-backend alembic upgrade head
+# Note: use 'sudo' before docker commands if needed on Linux
 docker exec -it fluxion-backend python scripts/generate_admin_key.py
 ```
 

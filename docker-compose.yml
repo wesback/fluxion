@@ -18,10 +18,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - fluxion-network
 
-  # Jaeger all-in-one for tracing
+  # Jaeger v2 all-in-one for tracing
   jaeger:
-    image: jaegertracing/all-in-one:1.51
+    image: jaegertracing/jaeger:2
     container_name: fluxion-jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
@@ -29,12 +31,13 @@ services:
       - "16686:16686"  # Jaeger UI
       - "4317:4317"    # OTLP gRPC receiver
       - "4318:4318"    # OTLP HTTP receiver
-      - "14250:14250"  # Model collector
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16687/"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - fluxion-network
 
   # Fluxion backend API
   api:
@@ -67,6 +70,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - fluxion-network
 
 volumes:
   postgres_data:
+    driver: local
+
+networks:
+  fluxion-network:
+    driver: bridge

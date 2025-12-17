@@ -39,6 +39,7 @@ ENV PATH=/home/fluxion/.local/bin:$PATH
 # Copy application code
 COPY --chown=fluxion:fluxion fluxion ./fluxion
 COPY --chown=fluxion:fluxion alembic ./alembic
+COPY --chown=fluxion:fluxion scripts ./scripts
 COPY --chown=fluxion:fluxion alembic.ini .
 
 # Switch to non-root user

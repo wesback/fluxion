@@ -24,9 +24,9 @@ services:
     networks:
       - fluxion-network
 
-  # Jaeger all-in-one for tracing and observability
+  # Jaeger v2 all-in-one for tracing and observability
   jaeger:
-    image: jaegertracing/all-in-one:1.51
+    image: jaegertracing/jaeger:2
     container_name: fluxion-jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
@@ -34,9 +34,8 @@ services:
       - "${JAEGER_UI_PORT:-16686}:16686"  # Jaeger UI
       - "${JAEGER_OTLP_GRPC_PORT:-4317}:4317"    # OTLP gRPC receiver
       - "${JAEGER_OTLP_HTTP_PORT:-4318}:4318"    # OTLP HTTP receiver
-      - "14250:14250"  # Model collector
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16687/"]
       interval: 10s
       timeout: 5s
       retries: 5
