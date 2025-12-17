@@ -105,24 +105,10 @@ def _setup_tracing(resource: Resource) -> None:
 
 def _setup_metrics(resource: Resource) -> None:
     """Configure metrics provider and exporters."""
-    if settings.otel_exporter_type == "console":
-        # Console exporter doesn't support metrics well, skip for now
-        logger.info("Metrics export to console is not configured")
-        return
-    elif settings.otel_exporter_type == "otlp":
-        metric_exporter = OTLPMetricExporter(endpoint=settings.otel_exporter_otlp_endpoint)
-    elif settings.otel_exporter_type == "otlp-http":
-        metric_exporter = OTLPMetricExporterHTTP(endpoint=settings.otel_exporter_otlp_endpoint)
-    else:
-        logger.warning(f"Unknown exporter type: {settings.otel_exporter_type}")
-        return
-
-    # Create metric reader with exporter
-    metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=60000)
-
-    # Create and set meter provider
-    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-    metrics.set_meter_provider(meter_provider)
+    # Metrics export disabled - Jaeger doesn't support OTLP metrics protocol
+    # For production, consider adding Prometheus or OpenTelemetry Collector
+    logger.info("Metrics export is disabled (not supported by Jaeger)")
+    return
 
 
 def _initialize_metrics() -> None:
