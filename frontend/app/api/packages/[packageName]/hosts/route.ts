@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
 /**
@@ -11,8 +11,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 const API_KEY = process.env.FLUXION_API_KEY;
 
 export async function GET(
-  request: Request,
-  { params }: { params: { packageName: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ packageName: string }> }
 ) {
   if (!API_KEY) {
     console.error('FLUXION_API_KEY environment variable is not set');
@@ -22,7 +22,7 @@ export async function GET(
     );
   }
 
-  const packageName = params.packageName;
+  const { packageName } = await params;
 
   try {
     const response = await axios.get(
