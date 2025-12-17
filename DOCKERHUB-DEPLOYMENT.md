@@ -47,7 +47,7 @@ docker-compose -f docker-compose.dockerhub.yml ps
 docker exec -it fluxion-backend alembic upgrade head
 
 # Generate an admin API key (note: use 'sudo' if needed on Linux)
-docker exec -it fluxion-backend python scripts/generate_admin_key.py
+docker exec -it fluxion-backend bash -c "PYTHONPATH=/app python scripts/generate_admin_key.py"
 ```
 
 Copy the generated API key and update your `.env` file:
@@ -56,9 +56,11 @@ Copy the generated API key and update your `.env` file:
 # Update FLUXION_API_KEY in .env
 nano .env
 
-# Restart the frontend to pick up the new key
+# Restart the frontend to pick up the new configuration
 docker-compose -f docker-compose.dockerhub.yml restart frontend
 ```
+
+**Note on Runtime Configuration:** The frontend now supports runtime configuration of the API base URL. You can change `NEXT_PUBLIC_API_BASE_URL` in your `.env` file and restart the frontend container - no rebuild required! The frontend fetches its configuration from `/api/config` which reads the environment variable at request time.
 
 ### 5. Access the Application
 
@@ -185,6 +187,29 @@ CORS_ORIGINS=["*"]
 # Restrict to specific origins (production)
 CORS_ORIGINS=["http://localhost:3000","https://yourdomain.com"]
 ```
+
+### Runtime API Configuration
+
+The frontend supports runtime configuration of the API base URL. This means you can change where the frontend connects to the backend without rebuilding the Docker image:
+
+```bash
+# For local development
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+
+# For production with reverse proxy (recommended)
+NEXT_PUBLIC_API_BASE_URL=https://yourdomain.com
+
+# For production with separate backend domain
+NEXT_PUBLIC_API_BASE_URL=https://api.yourdomain.com
+```
+
+After changing this value, simply restart the frontend:
+
+```bash
+docker-compose -f docker-compose.dockerhub.yml restart frontend
+```
+
+The frontend will fetch its configuration from the `/api/config` endpoint, which reads the environment variable at request time. No rebuild required!
 
 ## Troubleshooting
 

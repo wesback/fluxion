@@ -1,6 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+import { getApiBaseUrl } from './config';
 
 // API key should be stored server-side only, not exposed to client
 // For server-side requests, use the FLUXION_API_KEY environment variable
@@ -56,15 +55,28 @@ export class ApiError extends Error {
 
 class ApiClient {
   private client: AxiosInstance;
+  private baseUrlPromise: Promise<string> | null = null;
 
   constructor(apiKey?: string) {
+    // Create client with temporary base URL
+    // Will be updated when first request is made
     this.client = axios.create({
-      baseURL: API_BASE_URL,
+      baseURL: 'http://localhost:8000', // temporary default
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
         ...(apiKey ? { 'X-API-Key': apiKey } : {}),
       },
+    });
+
+    // Request interceptor to set base URL from runtime config
+    this.client.interceptors.request.use(async (config) => {
+      if (!this.baseUrlPromise) {
+        this.baseUrlPromise = getApiBaseUrl();
+      }
+      const baseURL = await this.baseUrlPromise;
+      config.baseURL = baseURL;
+      return config;
     });
 
     // Response interceptor for error handling

@@ -65,8 +65,12 @@ services:
       
       # CORS settings (must be JSON array format)
       CORS_ORIGINS: ${CORS_ORIGINS:-["*"]}
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fluxion-backend.rule=Host(`${TRAEFIK_DOMAIN:-fluxion.backelant.eu}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.fluxion-backend.entrypoints=websecure"
+      - "traefik.http.routers.fluxion-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.fluxion-backend.loadbalancer.server.port=8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,7 +88,9 @@ services:
 
   # Fluxion frontend (from DockerHub)
   frontend:
-    image: ${DOCKERHUB_USERNAME:-wesback}/fluxion-frontend:${FRONTEND_TAG:-latest}
+    # Temporarily use local build - comment out and use line below for DockerHub image
+    image: fluxion-frontend:local
+    # image: ${DOCKERHUB_USERNAME:-wesback}/fluxion-frontend:${FRONTEND_TAG:-latest}
     container_name: fluxion-frontend
     environment:
       # API configuration
@@ -95,8 +101,12 @@ services:
       
       # Optional: Node environment
       NODE_ENV: ${NODE_ENV:-production}
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fluxion-frontend.rule=Host(`${TRAEFIK_DOMAIN:-fluxion.backelant.eu}`)"
+      - "traefik.http.routers.fluxion-frontend.entrypoints=websecure"
+      - "traefik.http.routers.fluxion-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.fluxion-frontend.loadbalancer.server.port=3000"
     depends_on:
       backend:
         condition: service_healthy

@@ -1,4 +1,4 @@
-# Multi-stage build for Fluxion FastAPI service
+sudo docker exec -it fluxion-backend bash -c "PYTHONPATH=/app python scripts/generate_admin_key.py"# Multi-stage build for Fluxion FastAPI service
 FROM python:3.11-slim as builder
 
 # Set working directory
