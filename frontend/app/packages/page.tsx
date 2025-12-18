@@ -90,14 +90,18 @@ function PackagesContent() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Hostname</TableHead>
+                    <TableHead>Package Name</TableHead>
                     <TableHead>Current Version</TableHead>
                     <TableHead>Last Updated</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {hosts.map((host) => (
-                    <TableRow key={host.hostname}>
+                  {hosts.map((host, idx) => (
+                    <TableRow key={`${host.hostname}-${host.package_name}-${idx}`}>
                       <TableCell className="font-medium">{host.hostname}</TableCell>
+                      <TableCell className="font-mono text-sm text-primary">
+                        {host.package_name}
+                      </TableCell>
                       <TableCell className="font-mono text-sm">
                         {host.current_version}
                       </TableCell>

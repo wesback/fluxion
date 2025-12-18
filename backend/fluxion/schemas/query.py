@@ -100,6 +100,7 @@ class PackageHostItem(BaseModel):
         json_schema_extra={
             "example": {
                 "hostname": "server01",
+                "package_name": "nginx",
                 "current_version": "1.22.0",
                 "last_updated": "2025-10-29T14:30:00Z",
             }
@@ -107,6 +108,7 @@ class PackageHostItem(BaseModel):
     )
 
     hostname: str = Field(..., description="Hostname of the server")
+    package_name: str = Field(..., description="Name of the package")
     current_version: str = Field(..., description="Current version of the package on this host")
     last_updated: datetime = Field(
         ..., description="When this package was last updated on this host (ISO8601 UTC)"
@@ -122,6 +124,7 @@ class PackageHostsResponse(BaseModel):
                 "items": [
                     {
                         "hostname": "server01",
+                        "package_name": "nginx",
                         "current_version": "1.22.0",
                         "last_updated": "2025-10-29T14:30:00Z",
                     }

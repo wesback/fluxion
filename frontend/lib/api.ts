@@ -30,6 +30,7 @@ export interface Stats {
 
 export interface PackageHost {
   hostname: string;
+  package_name: string;
   current_version: string;
   last_updated: string;
 }

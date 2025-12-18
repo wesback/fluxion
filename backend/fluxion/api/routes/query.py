@@ -279,6 +279,7 @@ async def _get_package_hosts_impl(
     latest_update_subquery = (
         select(
             PackageUpdate.host_id,
+            PackageUpdate.package_name,
             PackageUpdate.new_version,
             PackageUpdate.update_timestamp,
             func.row_number()
@@ -296,6 +297,7 @@ async def _get_package_hosts_impl(
     stmt = (
         select(
             Host.hostname,
+            latest_update_subquery.c.package_name,
             latest_update_subquery.c.new_version,
             latest_update_subquery.c.update_timestamp,
         )
@@ -311,6 +313,7 @@ async def _get_package_hosts_impl(
         items=[
             {
                 "hostname": row.hostname,
+                "package_name": row.package_name,
                 "current_version": row.new_version,
                 "last_updated": row.update_timestamp,
             }
