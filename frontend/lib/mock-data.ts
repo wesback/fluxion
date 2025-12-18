@@ -121,16 +121,19 @@ export const mockHostUpdates: PackageUpdate[] = [
 export const mockPackageHosts: PackageHost[] = [
   {
     hostname: 'web-server-01',
+    package_name: 'nginx',
     current_version: '1.18.0-6ubuntu14.5',
     last_updated: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
   },
   {
     hostname: 'web-server-03',
+    package_name: 'nginx',
     current_version: '1.18.0-6ubuntu14.5',
     last_updated: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
   },
   {
     hostname: 'api-server-02',
+    package_name: 'nginx',
     current_version: '1.18.0-6ubuntu14.4',
     last_updated: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
   },
