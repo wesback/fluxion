@@ -10,23 +10,31 @@ interface BarChartProps {
   nameKey?: string
 }
 
+// Cache for stringToColor to avoid recomputing on every render
+const colorCache = new Map<string, string>()
+
 // Generate a consistent, visually appealing color based on a string hash
 function stringToColor(str: string): string {
+  const cached = colorCache.get(str)
+  if (cached) return cached
+
   let hash = 0
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash)
     hash = hash & hash // Convert to 32bit integer
   }
-  
+
   // Use golden ratio to distribute hues evenly across the color wheel
   const goldenRatioConjugate = 0.618033988749895
   const hue = (Math.abs(hash) * goldenRatioConjugate * 360) % 360
-  
+
   // High saturation for vibrant colors, moderate lightness for good visibility
   const saturation = 70 + (Math.abs(hash >> 8) % 15) // 70-85%
   const lightness = 50 + (Math.abs(hash >> 16) % 10) // 50-60%
-  
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`
+
+  const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`
+  colorCache.set(str, color)
+  return color
 }
 
 export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: BarChartProps) {

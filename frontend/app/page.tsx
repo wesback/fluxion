@@ -1,14 +1,20 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { StatsCard } from "@/components/stats-card"
 import { UpdatesTable } from "@/components/updates-table"
-import { BarChart } from "@/components/charts/bar-chart"
 import { Activity, Server, Clock, Calendar, RefreshCw } from "lucide-react"
 import { useStats, useRecentUpdates } from "@/lib/hooks/use-api"
 import { StatsCardSkeleton, TableSkeleton, ChartSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { useRefreshTracking } from "@/lib/telemetry"
+
+const BarChart = dynamic(
+  () => import("@/components/charts/bar-chart").then(mod => ({ default: mod.BarChart })),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+)
 
 function DashboardContent() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useStats()
@@ -48,18 +54,15 @@ function DashboardContent() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">
             Overview of package updates across all hosts
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="flex items-center gap-2 px-4 py-2 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80"
-        >
-          <RefreshCw className="w-4 h-4" />
+        <Button variant="outline" onClick={handleRefresh}>
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
           Refresh
-        </button>
+        </Button>
       </div>
 
       {/* Stats Cards */}
@@ -132,7 +135,7 @@ function DashboardContent() {
 
       {/* Recent Updates */}
       <div>
-        <h2 className="text-2xl font-bold tracking-tight mb-4">
+        <h2 className="text-xl md:text-2xl font-bold tracking-tight mb-4">
           Recent Updates
           <span className="text-sm font-normal text-muted-foreground ml-2">
             (Auto-refreshes every 30 seconds)

@@ -13,7 +13,9 @@
     --secondary: 0 0% 96.1%;
     --secondary-foreground: 0 0% 9%;
     --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
+    --muted-foreground: 0 0% 36%;
+    --trend-positive: 142 71% 35%;
+    --trend-negative: 0 84% 40%;
     --accent: 0 0% 96.1%;
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
@@ -37,6 +39,8 @@
     --secondary-foreground: 0 0% 98%;
     --muted: 0 0% 14.9%;
     --muted-foreground: 0 0% 63.9%;
+    --trend-positive: 142 71% 55%;
+    --trend-negative: 0 84% 60%;
     --accent: 0 0% 14.9%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
@@ -44,6 +48,12 @@
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
+  }
+}
+
+@layer base {
+  .skip-nav {
+    @apply absolute left-0 top-0 -translate-y-full bg-primary text-primary-foreground px-4 py-2 z-50 focus:translate-y-0 transition-transform;
   }
 }
 
@@ -67,6 +77,8 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-trend-positive: hsl(var(--trend-positive));
+  --color-trend-negative: hsl(var(--trend-negative));
   --font-family-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
