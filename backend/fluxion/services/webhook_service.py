@@ -514,6 +514,11 @@ class WebhookService:
         start_time = time.time()
 
         async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+            target_url = (
+                normalize_ntfy_publish_url(webhook_config.url)
+                if is_ntfy_webhook(webhook_config.url)
+                else webhook_config.url
+            )
             headers = {"Content-Type": "application/json"}
             if webhook_config.headers_json:
                 headers.update(webhook_config.headers_json)
@@ -531,7 +536,7 @@ class WebhookService:
 
             try:
                 response = await client.post(
-                    webhook_config.url,
+                    target_url,
                     **request_kwargs,
                 )
 
