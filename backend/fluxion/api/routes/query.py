@@ -138,6 +138,13 @@ async def get_host_updates(
     """
     tracer = get_tracer()
 
+    # Validate date range if both dates are provided
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="from_date must be before to_date",
+        )
+
     try:
         if tracer:
             with tracer.start_as_current_span("get_host_updates") as span:
@@ -276,6 +283,8 @@ async def _get_package_hosts_impl(
     # Get the latest update for this package on each host
     # Using a window function to get the most recent update per host
     # Support wildcard search: use ILIKE for case-insensitive pattern matching
+    # Escape SQL wildcard characters in user input to prevent pattern injection
+    escaped_name = package_name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     latest_update_subquery = (
         select(
             PackageUpdate.host_id,
@@ -289,7 +298,7 @@ async def _get_package_hosts_impl(
             )
             .label("rn"),
         )
-        .where(PackageUpdate.package_name.ilike(f"%{package_name}%"))
+        .where(PackageUpdate.package_name.ilike(f"%{escaped_name}%"))
         .subquery()
     )
 

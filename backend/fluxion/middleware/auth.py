@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
@@ -29,7 +29,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         # Dict mapping api_key_id to (request_count, window_start)
-        self.requests: dict[int, tuple[int, datetime]] = defaultdict(lambda: (0, datetime.now()))
+        self.requests: dict[int, tuple[int, datetime]] = defaultdict(lambda: (0, datetime.now(UTC)))
 
     def check_rate_limit(self, api_key_id: int) -> bool:
         """
@@ -41,7 +41,7 @@ class RateLimiter:
         Returns:
             True if request is allowed, False if rate limited
         """
-        now = datetime.now()
+        now = datetime.now(UTC)
         count, window_start = self.requests[api_key_id]
 
         # Reset window if expired
@@ -60,7 +60,7 @@ class RateLimiter:
     def get_remaining(self, api_key_id: int) -> int:
         """Get remaining requests for an API key."""
         count, window_start = self.requests[api_key_id]
-        now = datetime.now()
+        now = datetime.now(UTC)
 
         # Reset if window expired
         if now - window_start > timedelta(seconds=self.window_seconds):
