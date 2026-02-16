@@ -67,6 +67,7 @@ EOF
 | `FLUXION_BATCH_MODE` | Send updates in batch | `true` | No |
 | `FLUXION_TIMEOUT` | HTTP request timeout (seconds) | `5` | No |
 | `FLUXION_LOG_FILE` | Log file path | `/var/log/fluxion-hook.log` | No |
+| `FLUXION_DETECT_SECURITY` | Detect and flag security-origin updates | `true` | No |
 
 ## How It Works
 
@@ -81,6 +82,7 @@ The hook script performs the following when APT operations occur:
    - Package name (with architecture suffix removed)
    - Old version (or `-` for new installations)
    - New version
+  - Security origin flag (`is_security`) when detectable
 
 3. **Data Transmission**:
    - **Batch Mode** (default): Collects all packages and sends in one request

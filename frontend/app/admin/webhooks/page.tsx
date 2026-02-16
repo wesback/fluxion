@@ -64,11 +64,30 @@ function WebhookForm({
 }) {
   const [name, setName] = useState(initialData?.name || "")
   const [url, setUrl] = useState(initialData?.url || "")
+  const [urlError, setUrlError] = useState<string | null>(null)
   const [enabled, setEnabled] = useState(initialData?.enabled ?? true)
   const [eventTypes, setEventTypes] = useState<string[]>(initialData?.event_types || ["kernel_update"])
   const [headersText, setHeadersText] = useState(
     initialData?.headers_json ? JSON.stringify(initialData.headers_json, null, 2) : ""
   )
+
+  const validateWebhookUrl = (value: string): string | null => {
+    const trimmedValue = value.trim()
+
+    if (!trimmedValue) {
+      return "Please enter a webhook URL"
+    }
+
+    try {
+      const parsedUrl = new URL(trimmedValue)
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        return "Webhook URL must start with http:// or https://"
+      }
+      return null
+    } catch {
+      return "Enter a valid URL (for example: https://example.com/webhook)"
+    }
+  }
 
   const toggleEventType = (type: string) => {
     setEventTypes((prev) =>
@@ -81,10 +100,13 @@ function WebhookForm({
       toast.error("Please enter a webhook name")
       return
     }
-    if (!url.trim()) {
-      toast.error("Please enter a webhook URL")
+    const urlValidationError = validateWebhookUrl(url)
+    if (urlValidationError) {
+      setUrlError(urlValidationError)
+      toast.error(urlValidationError)
       return
     }
+    setUrlError(null)
     if (eventTypes.length === 0) {
       toast.error("Please select at least one event type")
       return
@@ -127,8 +149,16 @@ function WebhookForm({
           type="url"
           placeholder="https://hooks.example.com/webhook"
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(e) => {
+            setUrl(e.target.value)
+            if (urlError) {
+              setUrlError(null)
+            }
+          }}
+          onBlur={() => setUrlError(validateWebhookUrl(url))}
+          aria-invalid={urlError ? true : undefined}
         />
+        {urlError && <p className="text-xs text-destructive">{urlError}</p>}
       </div>
       <div className="space-y-2">
         <Label>Event Types</Label>

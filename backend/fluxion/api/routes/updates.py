@@ -15,7 +15,7 @@ from fluxion.schemas.package_update import (
     PackageUpdateRequest,
     PackageUpdateResponse,
 )
-from fluxion.services import WebhookService, is_kernel_package
+from fluxion.services import WebhookService
 from fluxion.telemetry import get_tracer, record_package_update
 
 router = APIRouter()
@@ -125,16 +125,15 @@ async def _create_package_update_impl(
             f"id={package_update.id}"
         )
 
-        # Trigger webhooks if this is a kernel package (async, don't block response)
-        if is_kernel_package(update_data.package_name):
-            logger.info(f"Kernel package detected: {update_data.package_name}, triggering webhooks")
-            background_tasks.add_task(
-                _trigger_kernel_webhooks,
-                update_data.hostname,
-                update_data.package_name,
-                old_version,
-                update_data.new_version,
-            )
+        # Trigger package-related webhooks (async, don't block response)
+        background_tasks.add_task(
+            _trigger_package_change_webhooks,
+            update_data.hostname,
+            update_data.package_name,
+            old_version,
+            update_data.new_version,
+            update_data.is_security,
+        )
 
         return PackageUpdateResponse(
             id=package_update.id, message="Package update recorded successfully"
@@ -206,14 +205,15 @@ async def _insert_package_update(
     return package_update
 
 
-async def _trigger_kernel_webhooks(
+async def _trigger_package_change_webhooks(
     hostname: str,
     package_name: str,
     old_version: str | None,
     new_version: str,
+    is_security: bool = False,
 ) -> None:
     """
-    Trigger webhooks for kernel package updates.
+    Trigger webhooks for package change events.
 
     This is executed as a background task to not block the API response.
 
@@ -233,11 +233,11 @@ async def _trigger_kernel_webhooks(
 
         async with async_session() as session:
             webhook_service = WebhookService(session)
-            await webhook_service.trigger_kernel_update_webhooks(
-                hostname, package_name, old_version, new_version
+            await webhook_service.trigger_package_change_webhooks(
+                hostname, package_name, old_version, new_version, is_security
             )
     except Exception as e:
-        logger.error(f"Error triggering kernel webhooks: {str(e)}", exc_info=True)
+        logger.error(f"Error triggering package webhooks: {str(e)}", exc_info=True)
 
 
 @router.post(
@@ -306,7 +306,7 @@ async def _create_batch_package_updates_impl(
 
         # Create all package update records
         created_ids: list[int] = []
-        kernel_packages: list[tuple[str, str | None, str]] = []  # (package_name, old_ver, new_ver)
+        package_changes: list[tuple[str, str | None, str, bool]] = []  # (name, old, new, is_security)
 
         for update_item in batch_data.updates:
             # Normalize old_version: treat "-" as None for new installs
@@ -339,11 +339,15 @@ async def _create_batch_package_updates_impl(
 
             created_ids.append(package_update.id)
 
-            # Track kernel packages for webhook triggering
-            if is_kernel_package(update_item.package_name):
-                kernel_packages.append(
-                    (update_item.package_name, old_version, update_item.new_version)
+            # Track package changes for webhook triggering
+            package_changes.append(
+                (
+                    update_item.package_name,
+                    old_version,
+                    update_item.new_version,
+                    update_item.is_security,
                 )
+            )
 
             logger.debug(
                 f"Package update queued: host={batch_data.hostname}, "
@@ -363,18 +367,19 @@ async def _create_batch_package_updates_impl(
             f"count={len(created_ids)}, ids={created_ids}"
         )
 
-        # Trigger webhooks for kernel packages (async, don't block response)
-        if kernel_packages:
+        # Trigger package-related webhooks (async, don't block response)
+        if package_changes:
             logger.info(
-                f"Detected {len(kernel_packages)} kernel package(s), triggering webhooks"
+                f"Detected {len(package_changes)} package change(s), triggering webhooks"
             )
-            for package_name, old_version, new_version in kernel_packages:
+            for package_name, old_version, new_version, is_security in package_changes:
                 background_tasks.add_task(
-                    _trigger_kernel_webhooks,
+                    _trigger_package_change_webhooks,
                     batch_data.hostname,
                     package_name,
                     old_version,
                     new_version,
+                    is_security,
                 )
 
         return BatchPackageUpdateResponse(

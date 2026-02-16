@@ -20,6 +20,59 @@ MAX_RETRIES = 3
 INITIAL_BACKOFF = 1.0  # 1 second
 
 
+def is_ntfy_webhook(url: str) -> bool:
+    """Check if a webhook URL targets ntfy.sh."""
+    return "ntfy.sh" in url.lower()
+
+
+def get_ntfy_notification_metadata(event_type: str) -> tuple[str, str, str]:
+    """
+    Get ntfy notification title, priority, and tags based on event type.
+
+    Returns:
+        Tuple of (title, priority, tags)
+    """
+    if event_type == "kernel_update":
+        return "🚨 Kernel Update", "urgent", "warning,computer"
+    if event_type == "security_update":
+        return "🔒 Security Update", "high", "lock,shield"
+    if event_type == "package_install":
+        return "📦 Package Installed", "default", "package,computer"
+    if event_type == "test":
+        return "🧪 Fluxion Webhook Test", "default", "test,computer"
+    return "📦 Package Updated", "default", "package,computer"
+
+
+def format_ntfy_message(payload: dict, event_type: str) -> str:
+    """Build a readable multi-line ntfy message body from payload data."""
+    hostname = payload.get("hostname", "unknown host")
+    package_name = payload.get("package_name", "unknown package")
+    old_version = payload.get("old_version") or "new"
+    new_version = payload.get("new_version")
+    timestamp = payload.get("timestamp")
+
+    if event_type == "test":
+        message = payload.get("message") or "This is a test webhook from Fluxion"
+        lines = [message]
+        if timestamp:
+            lines.append("")
+            lines.append(f"Time: {timestamp}")
+        return "\n".join(lines)
+
+    lines = [
+        f"Host: {hostname}",
+        f"Package: {package_name}",
+    ]
+
+    if new_version is not None:
+        lines.append(f"Version: {old_version} → {new_version}")
+
+    if timestamp:
+        lines.append(f"Time: {timestamp}")
+
+    return "\n".join(lines)
+
+
 def is_kernel_package(package_name: str) -> bool:
     """
     Check if a package is a kernel package.
@@ -88,10 +141,21 @@ class WebhookService:
         async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
+                    is_ntfy = is_ntfy_webhook(webhook_config.url)
+
                     # Prepare headers
                     headers = {"Content-Type": "application/json"}
                     if webhook_config.headers_json:
                         headers.update(webhook_config.headers_json)
+
+                    message_body: str | None = None
+                    if is_ntfy:
+                        title, priority, tags = get_ntfy_notification_metadata(event_type)
+                        headers["Content-Type"] = "text/plain; charset=utf-8"
+                        headers.setdefault("Title", title)
+                        headers.setdefault("Priority", priority)
+                        headers.setdefault("Tags", tags)
+                        message_body = format_ntfy_message(payload, event_type)
 
                     # Create span for webhook delivery
                     if tracer:
@@ -101,13 +165,24 @@ class WebhookService:
                             span.set_attribute("webhook.url", webhook_config.url)
                             span.set_attribute("webhook.event_type", event_type)
                             span.set_attribute("webhook.attempt", attempt)
+                            span.set_attribute("webhook.is_ntfy", is_ntfy)
 
                             result = await self._send_request(
-                                client, webhook_config.url, headers, payload, attempt
+                                client,
+                                webhook_config.url,
+                                headers,
+                                payload,
+                                attempt,
+                                message_body,
                             )
                     else:
                         result = await self._send_request(
-                            client, webhook_config.url, headers, payload, attempt
+                            client,
+                            webhook_config.url,
+                            headers,
+                            payload,
+                            attempt,
+                            message_body,
                         )
 
                     success, status_code, response_body, error_message = result
@@ -175,6 +250,7 @@ class WebhookService:
         headers: dict,
         payload: dict,
         attempt: int,
+        message_body: str | None = None,
     ) -> tuple[bool, int | None, str | None, str | None]:
         """
         Send HTTP request to webhook endpoint.
@@ -190,7 +266,13 @@ class WebhookService:
             Tuple of (success, status_code, response_body, error_message)
         """
         try:
-            response = await client.post(url, json=payload, headers=headers)
+            request_args: dict = {"headers": headers}
+            if message_body is not None:
+                request_args["content"] = message_body
+            else:
+                request_args["json"] = payload
+
+            response = await client.post(url, **request_args)
 
             # Consider 2xx status codes as success
             success = 200 <= response.status_code < 300
@@ -284,7 +366,7 @@ class WebhookService:
         for webhook in webhooks:
             # Format payload for ntfy.sh if applicable
             webhook_payload = payload.copy()
-            if "ntfy.sh" in webhook.url.lower():
+            if is_ntfy_webhook(webhook.url):
                 # For ntfy.sh, the message body should be simple text
                 webhook_payload["message"] = (
                     f"🚨 Kernel Update: {hostname} - {package_name} "
@@ -297,6 +379,101 @@ class WebhookService:
         # Execute all webhook deliveries concurrently
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    def get_event_types_for_package(
+        self,
+        package_name: str,
+        old_version: str | None,
+        is_security: bool = False,
+    ) -> list[str]:
+        """
+        Determine webhook event types for a package change.
+
+        Args:
+            package_name: Package name
+            old_version: Old version (None for new installs)
+            is_security: Whether the update is from a security channel
+
+        Returns:
+            Ordered list of event types to trigger
+        """
+        event_types: list[str] = []
+
+        if old_version is None:
+            event_types.append("package_install")
+        else:
+            event_types.append("package_update")
+
+        if is_kernel_package(package_name):
+            event_types.append("kernel_update")
+
+        if is_security:
+            event_types.append("security_update")
+
+        return event_types
+
+    async def trigger_package_change_webhooks(
+        self,
+        hostname: str,
+        package_name: str,
+        old_version: str | None,
+        new_version: str,
+        is_security: bool = False,
+    ) -> None:
+        """
+        Trigger all relevant webhook events for a package change.
+
+        Args:
+            hostname: Host name
+            package_name: Package name
+            old_version: Old version
+            new_version: New version
+            is_security: Whether the update is from a security channel
+        """
+        event_types = self.get_event_types_for_package(package_name, old_version, is_security)
+
+        for event_type in event_types:
+            webhooks = await self.get_webhooks_for_event(event_type)
+
+            if not webhooks:
+                logger.debug(f"No webhooks configured for {event_type} event")
+                continue
+
+            severity = "high" if event_type in {"kernel_update", "security_update"} else "info"
+            payload = {
+                "event": event_type,
+                "hostname": hostname,
+                "package_name": package_name,
+                "old_version": old_version or "new install",
+                "new_version": new_version,
+                "is_security": is_security,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "severity": severity,
+            }
+
+            tasks = []
+            for webhook in webhooks:
+                webhook_payload = payload.copy()
+                if is_ntfy_webhook(webhook.url):
+                    if event_type == "kernel_update":
+                        prefix = "🚨 Kernel Update"
+                    elif event_type == "security_update":
+                        prefix = "🔒 Security Update"
+                    elif event_type == "package_install":
+                        prefix = "📦 Package Installed"
+                    else:
+                        prefix = "📦 Package Updated"
+
+                    webhook_payload["message"] = (
+                        f"{prefix}: {hostname} - {package_name} "
+                        f"({old_version or 'new'} → {new_version})"
+                    )
+
+                task = self.send_webhook(webhook, webhook_payload, event_type)
+                tasks.append(task)
+
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     async def test_webhook(
         self,
@@ -327,11 +504,21 @@ class WebhookService:
             if webhook_config.headers_json:
                 headers.update(webhook_config.headers_json)
 
+            request_kwargs: dict = {"headers": headers}
+            if is_ntfy_webhook(webhook_config.url):
+                title, priority, tags = get_ntfy_notification_metadata("test")
+                headers["Content-Type"] = "text/plain; charset=utf-8"
+                headers.setdefault("Title", title)
+                headers.setdefault("Priority", priority)
+                headers.setdefault("Tags", tags)
+                request_kwargs["content"] = format_ntfy_message(test_payload, "test")
+            else:
+                request_kwargs["json"] = test_payload
+
             try:
                 response = await client.post(
                     webhook_config.url,
-                    json=test_payload,
-                    headers=headers
+                    **request_kwargs,
                 )
 
                 delivery_time_ms = int((time.time() - start_time) * 1000)

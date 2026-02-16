@@ -4,7 +4,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from fluxion.main import app
-from fluxion.services import is_kernel_package
+from fluxion.services import WebhookService, is_kernel_package
+from fluxion.services.webhook_service import (
+    format_ntfy_message,
+    get_ntfy_notification_metadata,
+    is_ntfy_webhook,
+)
 
 
 # Test kernel package detection
@@ -16,6 +21,86 @@ def test_is_kernel_package():
     assert not is_kernel_package("nginx")
     assert not is_kernel_package("curl")
     assert not is_kernel_package("linux")  # Too short
+
+
+def test_get_event_types_for_package_install():
+    """New installs should trigger package_install only for non-kernel packages."""
+    service = WebhookService(None)  # type: ignore[arg-type]
+    event_types = service.get_event_types_for_package("nginx", None)
+    assert event_types == ["package_install"]
+
+
+def test_get_event_types_for_package_update():
+    """Version updates should trigger package_update only for non-kernel packages."""
+    service = WebhookService(None)  # type: ignore[arg-type]
+    event_types = service.get_event_types_for_package("nginx", "1.18.0")
+    assert event_types == ["package_update"]
+
+
+def test_get_event_types_for_kernel_package_install():
+    """Kernel installs should trigger package_install and kernel_update."""
+    service = WebhookService(None)  # type: ignore[arg-type]
+    event_types = service.get_event_types_for_package("linux-image-6.8.0", None)
+    assert event_types == ["package_install", "kernel_update"]
+
+
+def test_get_event_types_for_kernel_package_update():
+    """Kernel updates should trigger package_update and kernel_update."""
+    service = WebhookService(None)  # type: ignore[arg-type]
+    event_types = service.get_event_types_for_package("linux-image-6.8.0", "6.7.0")
+    assert event_types == ["package_update", "kernel_update"]
+
+
+def test_get_event_types_for_security_package_update():
+    """Security package updates should include security_update."""
+    service = WebhookService(None)  # type: ignore[arg-type]
+    event_types = service.get_event_types_for_package("openssl", "3.0.2", is_security=True)
+    assert event_types == ["package_update", "security_update"]
+
+
+def test_get_event_types_for_kernel_security_package_install():
+    """Kernel security installs should trigger install, kernel, and security events."""
+    service = WebhookService(None)  # type: ignore[arg-type]
+    event_types = service.get_event_types_for_package(
+        "linux-image-6.8.0",
+        None,
+        is_security=True,
+    )
+    assert event_types == ["package_install", "kernel_update", "security_update"]
+
+
+def test_is_ntfy_webhook():
+    """Detect ntfy URLs reliably."""
+    assert is_ntfy_webhook("https://ntfy.sh/my-topic")
+    assert is_ntfy_webhook("https://Ntfy.sh/my-topic")
+    assert not is_ntfy_webhook("https://example.com/webhook")
+
+
+def test_get_ntfy_notification_metadata_kernel_update():
+    """Kernel update metadata should have elevated urgency."""
+    title, priority, tags = get_ntfy_notification_metadata("kernel_update")
+    assert title == "🚨 Kernel Update"
+    assert priority == "urgent"
+    assert tags == "warning,computer"
+
+
+def test_format_ntfy_message_is_human_readable():
+    """ntfy message should be readable plain text, not JSON."""
+    payload = {
+        "hostname": "server-01",
+        "package_name": "linux-image-6.8.0",
+        "old_version": "6.7.0",
+        "new_version": "6.8.0",
+        "timestamp": "2026-02-16T12:34:56Z",
+    }
+
+    message = format_ntfy_message(payload, "kernel_update")
+
+    assert "Host: server-01" in message
+    assert "Package: linux-image-6.8.0" in message
+    assert "Version: 6.7.0 → 6.8.0" in message
+    assert "Time: 2026-02-16T12:34:56Z" in message
+    assert "{" not in message
 
 
 @pytest.mark.asyncio

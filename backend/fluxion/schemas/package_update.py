@@ -14,6 +14,7 @@ class PackageUpdateItem(BaseModel):
                 "package_name": "nginx",
                 "old_version": "1.18.0",
                 "new_version": "1.22.0",
+                "is_security": False,
             }
         }
     )
@@ -23,6 +24,10 @@ class PackageUpdateItem(BaseModel):
         None, max_length=255, description="Previous version (null or '-' for new installs)"
     )
     new_version: str = Field(..., min_length=1, max_length=255, description="New version installed")
+    is_security: bool = Field(
+        default=False,
+        description="Whether this package update comes from a security update channel",
+    )
 
 
 class PackageUpdateRequest(BaseModel):
@@ -36,6 +41,7 @@ class PackageUpdateRequest(BaseModel):
                 "package_name": "nginx",
                 "old_version": "1.18.0",
                 "new_version": "1.22.0",
+                "is_security": False,
             }
         }
     )
@@ -49,6 +55,10 @@ class PackageUpdateRequest(BaseModel):
         None, max_length=255, description="Previous version (null or '-' for new installs)"
     )
     new_version: str = Field(..., min_length=1, max_length=255, description="New version installed")
+    is_security: bool = Field(
+        default=False,
+        description="Whether this package update comes from a security update channel",
+    )
 
     @field_validator("hostname")
     @classmethod
@@ -102,8 +112,18 @@ class BatchPackageUpdateRequest(BaseModel):
                 "hostname": "server01",
                 "os_info": "Ubuntu 22.04.3 LTS",
                 "updates": [
-                    {"package_name": "nginx", "old_version": "1.18.0", "new_version": "1.22.0"},
-                    {"package_name": "curl", "old_version": "7.68.0", "new_version": "7.81.0"},
+                    {
+                        "package_name": "nginx",
+                        "old_version": "1.18.0",
+                        "new_version": "1.22.0",
+                        "is_security": True,
+                    },
+                    {
+                        "package_name": "curl",
+                        "old_version": "7.68.0",
+                        "new_version": "7.81.0",
+                        "is_security": False,
+                    },
                     {"package_name": "vim", "old_version": None, "new_version": "8.2.0"},
                 ],
             }
