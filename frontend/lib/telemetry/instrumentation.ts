@@ -121,7 +121,8 @@ export function initializeTelemetry(): void {
       instrumentations: [
         new FetchInstrumentation({
           propagateTraceHeaderCorsUrls: [
-            /.*/,  // Allow all for development; restrict in production
+            new RegExp(`^${config.otlpEndpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+            /^\/api\//,  // Relative API calls
           ],
           clearTimingResources: true,
           applyCustomAttributesOnSpan: (span, request, response) => {
@@ -136,7 +137,8 @@ export function initializeTelemetry(): void {
         }),
         new XMLHttpRequestInstrumentation({
           propagateTraceHeaderCorsUrls: [
-            /.*/,  // Allow all for development; restrict in production
+            new RegExp(`^${config.otlpEndpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+            /^\/api\//,  // Relative API calls
           ],
           clearTimingResources: true,
         }),

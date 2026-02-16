@@ -1,8 +1,10 @@
 """Pydantic schemas for webhook configuration endpoints."""
 
+import ipaddress
 from datetime import datetime
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class WebhookConfigCreate(BaseModel):
@@ -39,6 +41,26 @@ class WebhookConfigCreate(BaseModel):
         description="Optional custom headers to send with webhook (e.g., for auth tokens)"
     )
 
+    @field_validator("url")
+    @classmethod
+    def validate_webhook_url(cls, v: str) -> str:
+        """Validate webhook URL to prevent SSRF attacks."""
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Webhook URL must use http or https scheme")
+        if not parsed.hostname:
+            raise ValueError("Webhook URL must have a valid hostname")
+        # Block private/reserved IP addresses to prevent SSRF
+        try:
+            addr = ipaddress.ip_address(parsed.hostname)
+            if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
+                raise ValueError("Webhook URL must not point to private or reserved IP addresses")
+        except ValueError as e:
+            if "private" in str(e) or "reserved" in str(e) or "must not" in str(e):
+                raise
+            # Not an IP address (it's a hostname), which is fine
+        return v
+
 
 class WebhookConfigUpdate(BaseModel):
     """Request schema for updating a webhook configuration."""
@@ -63,6 +85,26 @@ class WebhookConfigUpdate(BaseModel):
     enabled: bool | None = None
     event_types: list[str] | None = Field(None, min_length=1)
     headers_json: dict[str, str] | None = None
+
+    @field_validator("url")
+    @classmethod
+    def validate_webhook_url(cls, v: str | None) -> str | None:
+        """Validate webhook URL to prevent SSRF attacks."""
+        if v is None:
+            return v
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Webhook URL must use http or https scheme")
+        if not parsed.hostname:
+            raise ValueError("Webhook URL must have a valid hostname")
+        try:
+            addr = ipaddress.ip_address(parsed.hostname)
+            if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
+                raise ValueError("Webhook URL must not point to private or reserved IP addresses")
+        except ValueError as e:
+            if "private" in str(e) or "reserved" in str(e) or "must not" in str(e):
+                raise
+        return v
 
 
 class WebhookConfigResponse(BaseModel):

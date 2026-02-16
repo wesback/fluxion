@@ -1,5 +1,7 @@
 """Pydantic schemas for package update endpoints."""
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -47,6 +49,16 @@ class PackageUpdateRequest(BaseModel):
         None, max_length=255, description="Previous version (null or '-' for new installs)"
     )
     new_version: str = Field(..., min_length=1, max_length=255, description="New version installed")
+
+    @field_validator("hostname")
+    @classmethod
+    def validate_hostname(cls, v: str) -> str:
+        """Validate hostname contains only safe characters."""
+        if not re.match(r"^[a-zA-Z0-9._-]+$", v):
+            raise ValueError(
+                "Hostname must contain only alphanumeric characters, dots, hyphens, and underscores"
+            )
+        return v
 
 
 class PackageUpdateResponse(BaseModel):
@@ -105,6 +117,16 @@ class BatchPackageUpdateRequest(BaseModel):
     updates: list[PackageUpdateItem] = Field(
         ..., min_length=1, description="List of package updates"
     )
+
+    @field_validator("hostname")
+    @classmethod
+    def validate_hostname(cls, v: str) -> str:
+        """Validate hostname contains only safe characters."""
+        if not re.match(r"^[a-zA-Z0-9._-]+$", v):
+            raise ValueError(
+                "Hostname must contain only alphanumeric characters, dots, hyphens, and underscores"
+            )
+        return v
 
     @field_validator("updates")
     @classmethod
