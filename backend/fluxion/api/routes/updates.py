@@ -21,6 +21,29 @@ from fluxion.telemetry import get_tracer, record_package_update
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+INSTALL_SENTINEL_OLD_VERSIONS = {
+    "-",
+    "n/a",
+    "na",
+    "none",
+    "(none)",
+    "<none>",
+    "null",
+    "",
+}
+
+
+def _normalize_old_version(old_version: str | None) -> str | None:
+    """Normalize old_version to None for package install sentinel values."""
+    if old_version is None:
+        return None
+
+    normalized = old_version.strip().lower()
+    if normalized in INSTALL_SENTINEL_OLD_VERSIONS:
+        return None
+
+    return old_version
+
 
 @router.post(
     "/updates",
@@ -74,10 +97,8 @@ async def _create_package_update_impl(
 ) -> PackageUpdateResponse:
     """Implementation of package update creation with tracing."""
     try:
-        # Normalize old_version: treat "-" as None for new installs
-        old_version = update_data.old_version
-        if old_version == "-":
-            old_version = None
+        # Normalize old_version sentinel values to None for new installs
+        old_version = _normalize_old_version(update_data.old_version)
 
         # Upsert host record with custom span
         if tracer:
@@ -309,10 +330,8 @@ async def _create_batch_package_updates_impl(
         package_changes: list[tuple[str, str | None, str, bool]] = []  # (name, old, new, is_security)
 
         for update_item in batch_data.updates:
-            # Normalize old_version: treat "-" as None for new installs
-            old_version = update_item.old_version
-            if old_version == "-":
-                old_version = None
+            # Normalize old_version sentinel values to None for new installs
+            old_version = _normalize_old_version(update_item.old_version)
 
             # Insert package update with custom span
             if tracer:

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from datetime import UTC, datetime
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from sqlalchemy import select
@@ -18,6 +19,17 @@ logger = logging.getLogger(__name__)
 WEBHOOK_TIMEOUT = 5.0  # 5 seconds
 MAX_RETRIES = 3
 INITIAL_BACKOFF = 1.0  # 1 second
+
+
+def normalize_ntfy_publish_url(url: str) -> str:
+    """Normalize ntfy subscribe-style URLs to publish URLs."""
+    parsed = urlsplit(url)
+    path = parsed.path or "/"
+
+    if path.endswith("/json"):
+        path = path[:-5] or "/"
+
+    return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
 
 
 def is_ntfy_webhook(url: str) -> bool:
@@ -142,6 +154,7 @@ class WebhookService:
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
                     is_ntfy = is_ntfy_webhook(webhook_config.url)
+                    target_url = normalize_ntfy_publish_url(webhook_config.url) if is_ntfy else webhook_config.url
 
                     # Prepare headers
                     headers = {"Content-Type": "application/json"}
@@ -163,13 +176,14 @@ class WebhookService:
                             span.set_attribute("webhook.id", webhook_config.id)
                             span.set_attribute("webhook.name", webhook_config.name)
                             span.set_attribute("webhook.url", webhook_config.url)
+                            span.set_attribute("webhook.target_url", target_url)
                             span.set_attribute("webhook.event_type", event_type)
                             span.set_attribute("webhook.attempt", attempt)
                             span.set_attribute("webhook.is_ntfy", is_ntfy)
 
                             result = await self._send_request(
                                 client,
-                                webhook_config.url,
+                                target_url,
                                 headers,
                                 payload,
                                 attempt,
@@ -178,7 +192,7 @@ class WebhookService:
                     else:
                         result = await self._send_request(
                             client,
-                            webhook_config.url,
+                            target_url,
                             headers,
                             payload,
                             attempt,

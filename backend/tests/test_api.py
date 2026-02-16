@@ -3,6 +3,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from fluxion.api.routes.updates import _normalize_old_version
 from fluxion.main import app
 
 
@@ -71,6 +72,19 @@ async def test_package_update_null_old_version():
 
         # Now requires API key authentication
         assert response.status_code in [401, 503]
+
+
+def test_normalize_old_version_install_sentinels():
+    """Install sentinel old_version values should normalize to None."""
+    sentinel_values = ["-", "N/A", "n/a", "None", "(none)", "<none>", "null", ""]
+    for value in sentinel_values:
+        assert _normalize_old_version(value) is None
+
+
+def test_normalize_old_version_keeps_real_versions():
+    """Real version values should remain unchanged."""
+    assert _normalize_old_version("1.2.3") == "1.2.3"
+    assert _normalize_old_version(" 1.2.3 ") == " 1.2.3 "
 
 
 @pytest.mark.asyncio

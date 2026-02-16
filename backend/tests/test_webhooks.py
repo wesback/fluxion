@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from fluxion.main import app
 from fluxion.services import WebhookService, is_kernel_package
+from fluxion.services.webhook_service import normalize_ntfy_publish_url
 from fluxion.services.webhook_service import (
     format_ntfy_message,
     get_ntfy_notification_metadata,
@@ -67,6 +68,16 @@ def test_get_event_types_for_kernel_security_package_install():
         is_security=True,
     )
     assert event_types == ["package_install", "kernel_update", "security_update"]
+
+
+def test_normalize_ntfy_publish_url_removes_json_suffix():
+    """ntfy /json URL should be normalized to topic publish URL."""
+    assert normalize_ntfy_publish_url("https://ntfy.sh/fluxion-alerts/json") == "https://ntfy.sh/fluxion-alerts"
+
+
+def test_normalize_ntfy_publish_url_keeps_publish_url():
+    """Already-correct ntfy publish URL should be unchanged."""
+    assert normalize_ntfy_publish_url("https://ntfy.sh/fluxion-alerts") == "https://ntfy.sh/fluxion-alerts"
 
 
 def test_is_ntfy_webhook():
