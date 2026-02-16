@@ -130,11 +130,7 @@ class TestSqlWildcardEscaping:
 
     def test_package_name_with_percent(self):
         """Test that percent signs are escaped in package name search."""
-        from fluxion.api.routes.query import _get_package_hosts_impl
-
-        # This is a unit test for the escaping logic
-        # We can't test the full query without a database, but we verify
-        # the escaping function works correctly
+        # Verify the escaping function works correctly
         name = "test%package"
         escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         assert escaped == "test\\%package"
