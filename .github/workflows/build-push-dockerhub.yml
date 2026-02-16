@@ -76,7 +76,7 @@ jobs:
   build-frontend:
     name: Build Frontend Image
     runs-on: ubuntu-latest
-    if: ${{ vars.DOCKERHUB_USERNAME != '' || secrets.DOCKERHUB_USERNAME != '' }}
+    if: ${{ vars.DOCKERHUB_USERNAME != '' }}
     permissions:
       contents: read
     
