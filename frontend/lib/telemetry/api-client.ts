@@ -5,7 +5,7 @@
  * to automatically track all API calls with detailed metrics
  */
 
-import { apiClient as originalApiClient, ApiError, type Stats, type Host, type PackageUpdate, type HostUpdate, type PackageHost } from '../api';
+import { apiClient as originalApiClient, ApiError, type Stats, type Host, type PackageUpdate, type HostUpdate, type PackageHost, type ListAPIKeysResponse, type CreateAPIKeyRequest, type CreateAPIKeyResponse, type ListWebhooksResponse, type WebhookConfig, type WebhookConfigCreate, type WebhookConfigUpdate, type WebhookTestResponse, type WebhookDeliveryHistory } from '../api';
 import { withSpan } from '../telemetry';
 
 /**
@@ -111,6 +111,88 @@ class InstrumentedApiClient {
       }
     );
   }
+
+  // Admin: API Keys
+  async getAPIKeys(): Promise<ListAPIKeysResponse> {
+    return withSpan('api.call.getAPIKeys', async (span) => {
+      span.setAttribute('api.endpoint', '/api/admin/api-keys');
+      span.setAttribute('api.method', 'GET');
+      const result = await originalApiClient.getAPIKeys();
+      span.setAttribute('api.response.count', result.items.length);
+      return result;
+    });
+  }
+
+  async createAPIKey(data: CreateAPIKeyRequest): Promise<CreateAPIKeyResponse> {
+    return withSpan('api.call.createAPIKey', async (span) => {
+      span.setAttribute('api.endpoint', '/api/admin/api-keys');
+      span.setAttribute('api.method', 'POST');
+      span.setAttribute('api.param.name', data.name);
+      return await originalApiClient.createAPIKey(data);
+    });
+  }
+
+  async deleteAPIKey(keyId: number): Promise<{ message: string }> {
+    return withSpan('api.call.deleteAPIKey', async (span) => {
+      span.setAttribute('api.endpoint', `/api/admin/api-keys/${keyId}`);
+      span.setAttribute('api.method', 'DELETE');
+      return await originalApiClient.deleteAPIKey(keyId);
+    });
+  }
+
+  // Admin: Webhooks
+  async getWebhooks(): Promise<ListWebhooksResponse> {
+    return withSpan('api.call.getWebhooks', async (span) => {
+      span.setAttribute('api.endpoint', '/api/admin/webhooks');
+      span.setAttribute('api.method', 'GET');
+      const result = await originalApiClient.getWebhooks();
+      span.setAttribute('api.response.count', result.webhooks.length);
+      return result;
+    });
+  }
+
+  async createWebhook(data: WebhookConfigCreate): Promise<WebhookConfig> {
+    return withSpan('api.call.createWebhook', async (span) => {
+      span.setAttribute('api.endpoint', '/api/admin/webhooks');
+      span.setAttribute('api.method', 'POST');
+      span.setAttribute('api.param.name', data.name);
+      return await originalApiClient.createWebhook(data);
+    });
+  }
+
+  async updateWebhook(webhookId: number, data: WebhookConfigUpdate): Promise<WebhookConfig> {
+    return withSpan('api.call.updateWebhook', async (span) => {
+      span.setAttribute('api.endpoint', `/api/admin/webhooks/${webhookId}`);
+      span.setAttribute('api.method', 'PATCH');
+      return await originalApiClient.updateWebhook(webhookId, data);
+    });
+  }
+
+  async deleteWebhook(webhookId: number): Promise<{ message: string }> {
+    return withSpan('api.call.deleteWebhook', async (span) => {
+      span.setAttribute('api.endpoint', `/api/admin/webhooks/${webhookId}`);
+      span.setAttribute('api.method', 'DELETE');
+      return await originalApiClient.deleteWebhook(webhookId);
+    });
+  }
+
+  async testWebhook(webhookId: number, testPayload?: Record<string, unknown>): Promise<WebhookTestResponse> {
+    return withSpan('api.call.testWebhook', async (span) => {
+      span.setAttribute('api.endpoint', `/api/admin/webhooks/${webhookId}/test`);
+      span.setAttribute('api.method', 'POST');
+      return await originalApiClient.testWebhook(webhookId, testPayload);
+    });
+  }
+
+  async getWebhookHistory(webhookId: number, limit: number = 50): Promise<WebhookDeliveryHistory[]> {
+    return withSpan('api.call.getWebhookHistory', async (span) => {
+      span.setAttribute('api.endpoint', `/api/admin/webhooks/${webhookId}/history`);
+      span.setAttribute('api.method', 'GET');
+      const result = await originalApiClient.getWebhookHistory(webhookId, limit);
+      span.setAttribute('api.response.count', result.length);
+      return result;
+    });
+  }
 }
 
 // Create and export instrumented client instance
@@ -118,4 +200,4 @@ export const instrumentedApiClient = new InstrumentedApiClient();
 
 // Re-export types and error class
 export { ApiError };
-export type { Stats, Host, PackageUpdate, HostUpdate, PackageHost };
+export type { Stats, Host, PackageUpdate, HostUpdate, PackageHost, ListAPIKeysResponse, CreateAPIKeyRequest, CreateAPIKeyResponse, ListWebhooksResponse, WebhookConfig, WebhookConfigCreate, WebhookConfigUpdate, WebhookTestResponse, WebhookDeliveryHistory };

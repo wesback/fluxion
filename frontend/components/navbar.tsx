@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Activity, Menu, X } from "lucide-react"
+import { Activity, Menu, X, Shield } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useClickTracking } from "@/lib/telemetry"
 
@@ -12,6 +12,7 @@ const navigation = [
   { name: "Dashboard", href: "/" },
   { name: "Hosts", href: "/hosts" },
   { name: "Packages", href: "/packages" },
+  { name: "Admin", href: "/admin" },
 ]
 
 export function Navbar() {
@@ -41,22 +42,28 @@ export function Navbar() {
               <span>Fluxion</span>
             </Link>
             <div className="hidden md:flex gap-6">
-              {navigation.map((item) => (
+              {navigation.map((item) => {
+                const isActive = item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href)
+                return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => handleNavClick(item.name, item.href)}
-                  aria-current={pathname === item.href ? "page" : undefined}
+                  aria-current={isActive ? "page" : undefined}
                   className={cn(
                     "text-sm font-medium transition-colors hover:text-primary",
-                    pathname === item.href
+                    isActive
                       ? "text-foreground"
                       : "text-muted-foreground"
                   )}
                 >
+                  {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
                   {item.name}
                 </Link>
-              ))}
+                )
+              })}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -80,22 +87,28 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div id="mobile-menu" className="border-t md:hidden">
           <div className="container mx-auto px-4 py-2 space-y-1">
-            {navigation.map((item) => (
+            {navigation.map((item) => {
+              const isActive = item.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(item.href)
+              return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => handleNavClick(item.name, item.href)}
-                aria-current={pathname === item.href ? "page" : undefined}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "block rounded-md px-3 py-3 text-base font-medium transition-colors hover:bg-accent hover:text-accent-foreground min-h-11",
-                  pathname === item.href
+                  isActive
                     ? "text-foreground bg-accent"
                     : "text-muted-foreground"
                 )}
               >
+                {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
                 {item.name}
               </Link>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}

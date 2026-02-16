@@ -35,6 +35,87 @@ export interface PackageHost {
   last_updated: string;
 }
 
+// Admin types
+export interface APIKeyMetadata {
+  id: number;
+  name: string;
+  role: string;
+  created_at: string;
+  last_used: string | null;
+  is_active: boolean;
+}
+
+export interface CreateAPIKeyRequest {
+  name: string;
+  role?: string;
+}
+
+export interface CreateAPIKeyResponse {
+  id: number;
+  name: string;
+  role: string;
+  api_key: string;
+  message: string;
+}
+
+export interface ListAPIKeysResponse {
+  items: APIKeyMetadata[];
+  total: number;
+}
+
+export interface WebhookConfig {
+  id: number;
+  name: string;
+  url: string;
+  enabled: boolean;
+  event_types: string[];
+  headers_json: Record<string, string> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookConfigCreate {
+  name: string;
+  url: string;
+  enabled?: boolean;
+  event_types: string[];
+  headers_json?: Record<string, string> | null;
+}
+
+export interface WebhookConfigUpdate {
+  name?: string;
+  url?: string;
+  enabled?: boolean;
+  event_types?: string[];
+  headers_json?: Record<string, string> | null;
+}
+
+export interface ListWebhooksResponse {
+  webhooks: WebhookConfig[];
+  total: number;
+}
+
+export interface WebhookTestResponse {
+  success: boolean;
+  status_code: number | null;
+  response_body: string | null;
+  error_message: string | null;
+  delivery_time_ms: number;
+}
+
+export interface WebhookDeliveryHistory {
+  id: number;
+  webhook_config_id: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  status_code: number | null;
+  response_body: string | null;
+  error_message: string | null;
+  attempt_number: number;
+  delivered_at: string;
+  created_at: string;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -121,6 +202,64 @@ class ApiClient {
   async getPackageHosts(packageName: string): Promise<{ items: PackageHost[] }> {
     const response = await this.client.get<{ items: PackageHost[] }>(
       `/api/packages/${encodeURIComponent(packageName)}/hosts`
+    );
+    return response.data;
+  }
+
+  // Admin: API Keys
+  async getAPIKeys(): Promise<ListAPIKeysResponse> {
+    const response = await this.client.get<ListAPIKeysResponse>('/api/admin/api-keys');
+    return response.data;
+  }
+
+  async createAPIKey(data: CreateAPIKeyRequest): Promise<CreateAPIKeyResponse> {
+    const response = await this.client.post<CreateAPIKeyResponse>('/api/admin/api-keys', data);
+    return response.data;
+  }
+
+  async deleteAPIKey(keyId: number): Promise<{ message: string }> {
+    const response = await this.client.delete<{ message: string }>(`/api/admin/api-keys/${keyId}`);
+    return response.data;
+  }
+
+  // Admin: Webhooks
+  async getWebhooks(): Promise<ListWebhooksResponse> {
+    const response = await this.client.get<ListWebhooksResponse>('/api/admin/webhooks');
+    return response.data;
+  }
+
+  async createWebhook(data: WebhookConfigCreate): Promise<WebhookConfig> {
+    const response = await this.client.post<WebhookConfig>('/api/admin/webhooks', data);
+    return response.data;
+  }
+
+  async getWebhook(webhookId: number): Promise<WebhookConfig> {
+    const response = await this.client.get<WebhookConfig>(`/api/admin/webhooks/${webhookId}`);
+    return response.data;
+  }
+
+  async updateWebhook(webhookId: number, data: WebhookConfigUpdate): Promise<WebhookConfig> {
+    const response = await this.client.patch<WebhookConfig>(`/api/admin/webhooks/${webhookId}`, data);
+    return response.data;
+  }
+
+  async deleteWebhook(webhookId: number): Promise<{ message: string }> {
+    const response = await this.client.delete<{ message: string }>(`/api/admin/webhooks/${webhookId}`);
+    return response.data;
+  }
+
+  async testWebhook(webhookId: number, testPayload?: Record<string, unknown>): Promise<WebhookTestResponse> {
+    const response = await this.client.post<WebhookTestResponse>(
+      `/api/admin/webhooks/${webhookId}/test`,
+      { test_payload: testPayload || null }
+    );
+    return response.data;
+  }
+
+  async getWebhookHistory(webhookId: number, limit: number = 50): Promise<WebhookDeliveryHistory[]> {
+    const response = await this.client.get<WebhookDeliveryHistory[]>(
+      `/api/admin/webhooks/${webhookId}/history`,
+      { params: { limit } }
     );
     return response.data;
   }
