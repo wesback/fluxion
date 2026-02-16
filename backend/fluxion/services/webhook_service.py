@@ -45,14 +45,40 @@ def get_ntfy_notification_metadata(event_type: str) -> tuple[str, str, str]:
         Tuple of (title, priority, tags)
     """
     if event_type == "kernel_update":
-        return "🚨 Kernel Update", "urgent", "warning,computer"
+        return "Kernel Update", "urgent", "warning,computer"
     if event_type == "security_update":
-        return "🔒 Security Update", "high", "lock,shield"
+        return "Security Update", "high", "lock,shield"
     if event_type == "package_install":
-        return "📦 Package Installed", "default", "package,computer"
+        return "Package Installed", "default", "package,computer"
     if event_type == "test":
-        return "🧪 Fluxion Webhook Test", "default", "test,computer"
-    return "📦 Package Updated", "default", "package,computer"
+        return "Fluxion Webhook Test", "default", "test,computer"
+    return "Package Updated", "default", "package,computer"
+
+
+def sanitize_header_values(headers: dict[str, str]) -> dict[str, str]:
+    """Ensure outbound HTTP header values are ASCII-safe for httpx/h11.
+
+    Non-ASCII characters in header values can raise UnicodeEncodeError before
+    a request is sent. This is especially relevant for notification titles.
+    """
+    sanitized_headers: dict[str, str] = {}
+    for key, value in headers.items():
+        header_key = str(key)
+        header_value = str(value)
+
+        try:
+            header_value.encode("ascii")
+        except UnicodeEncodeError:
+            ascii_value = header_value.encode("ascii", errors="ignore").decode("ascii").strip()
+            header_value = ascii_value or "notification"
+            logger.warning(
+                "Sanitized non-ASCII webhook header value: key=%s",
+                header_key,
+            )
+
+        sanitized_headers[header_key] = header_value
+
+    return sanitized_headers
 
 
 def format_ntfy_message(payload: dict, event_type: str) -> str:
@@ -169,6 +195,8 @@ class WebhookService:
                         headers.setdefault("Priority", priority)
                         headers.setdefault("Tags", tags)
                         message_body = format_ntfy_message(payload, event_type)
+
+                    headers = sanitize_header_values(headers)
 
                     # Create span for webhook delivery
                     if tracer:
@@ -533,6 +561,8 @@ class WebhookService:
                 request_kwargs["content"] = format_ntfy_message(test_payload, "test")
             else:
                 request_kwargs["json"] = test_payload
+
+            request_kwargs["headers"] = sanitize_header_values(headers)
 
             try:
                 response = await client.post(

@@ -10,6 +10,7 @@ from fluxion.services.webhook_service import (
     format_ntfy_message,
     get_ntfy_notification_metadata,
     is_ntfy_webhook,
+    sanitize_header_values,
 )
 
 
@@ -90,9 +91,24 @@ def test_is_ntfy_webhook():
 def test_get_ntfy_notification_metadata_kernel_update():
     """Kernel update metadata should have elevated urgency."""
     title, priority, tags = get_ntfy_notification_metadata("kernel_update")
-    assert title == "🚨 Kernel Update"
+    assert title == "Kernel Update"
     assert priority == "urgent"
     assert tags == "warning,computer"
+
+
+def test_sanitize_header_values_removes_non_ascii():
+    """Webhook headers should be sanitized to avoid httpx ASCII encoding errors."""
+    headers = {
+        "Title": "🧪 Fluxion Webhook Test",
+        "Priority": "default",
+        "X-Custom": "hello",
+    }
+
+    sanitized = sanitize_header_values(headers)
+
+    assert sanitized["Title"] == "Fluxion Webhook Test"
+    assert sanitized["Priority"] == "default"
+    assert sanitized["X-Custom"] == "hello"
 
 
 def test_format_ntfy_message_is_human_readable():
