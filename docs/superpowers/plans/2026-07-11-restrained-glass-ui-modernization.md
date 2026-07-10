@@ -22,7 +22,7 @@
 ### Modify
 
 - `frontend/package.json:5-10` — expose the native contract test command without adding dependencies.
-- `frontend/app/globals.css:3-95` — add approved tokens, Tailwind mappings, `.glass-surface`, transparency fallbacks, and constrained-rendering behavior.
+- `frontend/app/globals.css:3-95` — add approved glass, contrast-approved chart/status tokens, Tailwind mappings, `.glass-surface`, transparency fallbacks, and constrained-rendering behavior.
 - `frontend/components/ui/card.tsx:4-17` — make the shared card the standard glass frame.
 - `frontend/components/ui/table.tsx:1-117` — import the sanitizer and enforce opaque table fills.
 - `frontend/components/ui/dialog.tsx:57-109` — make dialog content a glass surface while retaining overlay, Escape, and close-button behavior.
@@ -30,10 +30,13 @@
 - `frontend/components/ui/input.tsx:4-22` — use the input-border token and opaque readable control fill.
 - `frontend/components/ui/textarea.tsx:4-18` — align textarea borders/fill with `Input`.
 - `frontend/components/ui/select.tsx:9-28` — align select borders/fill with `Input`.
+- `frontend/components/ui/badge.tsx:4-27` — use semantic accessible status foreground/surface tokens rather than hard-coded emerald colors.
 - `frontend/components/ui/skeleton.tsx:14-71` — align statistics/chart loading surface framing with the glass system without changing status semantics.
+- `frontend/components/error-boundary.tsx:18-65` — use the accessible error foreground for fallback text.
 - `frontend/components/navbar.tsx:31-115` — apply the shared glass treatment to desktop and mobile navigation surfaces.
-- `frontend/components/charts/bar-chart.tsx:3-79` — replace inline tooltip surface styling with the shared glass tooltip.
-- `frontend/components/charts/line-chart.tsx:3-51` — replace inline tooltip surface styling with the shared glass tooltip.
+- `frontend/components/stats-card.tsx:17-46` — retain trend semantics while using contrast-approved trend foreground tokens.
+- `frontend/components/charts/bar-chart.tsx:3-79` — replace inline tooltip surface styling, `stroke-muted`, and hash-generated colors with shared contrast-approved chart tokens.
+- `frontend/components/charts/line-chart.tsx:3-51` — replace inline tooltip surface styling and `stroke-muted` with shared contrast-approved chart tokens.
 - `frontend/app/page.tsx:68-152` — apply the glass frame to dashboard error states; keep `UpdatesTable` unchanged and opaque.
 - `frontend/app/hosts/page.tsx:54-116` — apply glass to the search/error surface while retaining the current responsive table.
 - `frontend/app/hosts/[hostname]/page.tsx:53-157` — apply glass to host error/not-found/chart-error surfaces without changing loading/table behavior.
@@ -58,13 +61,15 @@
 - [ ] **Step 1: Write failing native Node tests before styling code**
 
   Create a `node:test` suite that reads frontend source files from the repository. Group assertions into named `node:test` cases (`tokens and transparency fallback`, `shared primitive adoption`, `opaque table source contract`, and `route adoption`) so later tasks can execute only the contract group they have made green. Do not import the sanitizer in this initial suite: its module is intentionally created in Task 4 before the dedicated runtime test file imports it. Add focused static assertions for:
-  - the exact light/dark values of all approved glass/control tokens;
+  - the exact light/dark values of all approved glass/control, chart, trend, and status tokens;
   - `.glass-surface` using both standard and WebKit backdrop filters plus the approved two-layer shadow;
   - the media selector and both root fallback selectors with opaque card fill and no filters;
   - the exact constrained-rendering media query and opaque `--glass-opaque` fill;
   - Tailwind v4 suffix-important opaque Table/Header/Body/Row/Footer class strings;
   - use of `withoutTableSurfaceUtilities` for every required table primitive once Task 4 imports it;
   - Card, Navbar, Dialog, and both charts consuming `.glass-surface` rather than a second blur/opacity treatment.
+  - chart grid/axis/tooltip/series code using the approved chart tokens rather than `stroke-muted` or hash-generated HSL values;
+  - every direct error, status, and trend foreground using a semantic contrast-approved `text-status-*` or `text-trend-*` class.
 
 - [ ] **Step 2: Add a test script and verify red**
 
@@ -88,7 +93,7 @@
 
 - [ ] **Step 1: Extend the failing test with control-border and fallback assertions**
 
-  Require `--color-control-border` and `--color-input-border` mappings, the exact `12px` blur maximum, and matching declarations for media, `html[data-reduced-transparency="true"]`, and `html.reduced-transparency` fallbacks.
+  Require `--color-control-border`, `--color-input-border`, `--color-chart-grid`, `--color-chart-axis`, `--color-chart-tooltip-foreground`, `--color-chart-series-1` through `--color-chart-series-5`, `--color-status-success`, `--color-status-success-surface`, `--color-status-error`, `--color-status-error-surface`, `--color-status-warning`, `--color-status-warning-surface`, `--color-trend-positive`, and `--color-trend-negative` mappings; require the exact `12px` blur maximum and matching declarations for media, `html[data-reduced-transparency="true"]`, and `html.reduced-transparency` fallbacks.
 
 - [ ] **Step 2: Run the focused test**
 
@@ -103,9 +108,54 @@
   --glass-surface; --glass-surface-alpha; --glass-border; --glass-border-alpha;
   --glass-shadow; --glass-shadow-near-alpha; --glass-shadow-alpha; --glass-blur;
   --glass-opaque; --control-border; --input-border;
+  --chart-grid; --chart-axis; --chart-tooltip-foreground;
+  --chart-series-1; --chart-series-2; --chart-series-3; --chart-series-4; --chart-series-5;
+  --status-success; --status-success-surface; --status-error; --status-error-surface;
+  --status-warning; --status-warning-surface; --trend-positive; --trend-negative;
   ```
 
-  Map `--color-control-border` and `--color-input-border` in `@theme inline`. Add exactly one `.glass-surface` class with the approved alpha background, alpha border, two-layer shadow, and both backdrop-filter declarations. Add the reduced-transparency selector pair with identical opaque-card/no-filter declarations. Add the exact `(max-width: 767px), (pointer: coarse) and (hover: none), (update: slow)` boundary that uses opaque `--glass-opaque` and disables both filters. Do not create an alternate glass utility or apply blur through Tailwind utilities.
+  Use these approved foreground/graphic values, which must then be verified by composited contrast measurement in Task 7:
+
+  ```css
+  :root {
+    --chart-grid: 0 0% 45%;
+    --chart-axis: 0 0% 20%;
+    --chart-tooltip-foreground: 0 0% 9%;
+    --chart-series-1: 221 83% 36%;
+    --chart-series-2: 152 68% 25%;
+    --chart-series-3: 278 73% 35%;
+    --chart-series-4: 25 95% 30%;
+    --chart-series-5: 342 70% 36%;
+    --status-success: 142 71% 24%;
+    --status-success-surface: 142 45% 92%;
+    --status-error: 0 72% 34%;
+    --status-error-surface: 0 70% 94%;
+    --status-warning: 32 92% 25%;
+    --status-warning-surface: 45 100% 92%;
+    --trend-positive: 142 71% 24%;
+    --trend-negative: 0 72% 34%;
+  }
+  .dark {
+    --chart-grid: 0 0% 64%;
+    --chart-axis: 0 0% 92%;
+    --chart-tooltip-foreground: 0 0% 98%;
+    --chart-series-1: 221 100% 73%;
+    --chart-series-2: 152 69% 58%;
+    --chart-series-3: 278 94% 78%;
+    --chart-series-4: 32 100% 67%;
+    --chart-series-5: 342 100% 77%;
+    --status-success: 142 71% 70%;
+    --status-success-surface: 142 35% 18%;
+    --status-error: 0 84% 74%;
+    --status-error-surface: 0 38% 20%;
+    --status-warning: 45 100% 70%;
+    --status-warning-surface: 45 50% 18%;
+    --trend-positive: 142 71% 70%;
+    --trend-negative: 0 84% 74%;
+  }
+  ```
+
+  Map every listed token through `@theme inline`. Add exactly one `.glass-surface` class with the approved alpha background, alpha border, two-layer shadow, and both backdrop-filter declarations. Add the reduced-transparency selector pair with identical opaque-card/no-filter declarations. Add the exact `(max-width: 767px), (pointer: coarse) and (hover: none), (update: slow)` boundary that uses opaque `--glass-opaque` and disables both filters. Do not create an alternate glass utility or apply blur through Tailwind utilities.
 
 - [ ] **Step 4: Run the focused test**
 
@@ -128,12 +178,15 @@
 - Modify: `frontend/components/ui/input.tsx:4-22`
 - Modify: `frontend/components/ui/textarea.tsx:4-18`
 - Modify: `frontend/components/ui/select.tsx:9-28`
+- Modify: `frontend/components/ui/badge.tsx:4-27`
 - Modify: `frontend/components/ui/skeleton.tsx:14-71`
+- Modify: `frontend/components/error-boundary.tsx:18-65`
+- Modify: `frontend/components/stats-card.tsx:17-46`
 - Test: `frontend/tests/restrained-glass-contract.test.mjs`
 
 - [ ] **Step 1: Add failing source-contract assertions**
 
-  Assert that Card and DialogContent include `glass-surface`; outline Button uses `border-control-border`; Input/Textarea/Select use `border-input-border`; and StatsCardSkeleton/ChartSkeleton use the shared surface class while retaining `role="status"`, `aria-busy`, and screen-reader loading text.
+  Assert that Card and DialogContent include `glass-surface`; outline Button uses `border-control-border`; Input/Textarea/Select use `border-input-border`; and StatsCardSkeleton/ChartSkeleton use the shared surface class while retaining `role="status"`, `aria-busy`, and screen-reader loading text. Add targeted source assertions that Badge success/destructive/outline variants use the exact `bg-status-success-surface text-status-success`, `bg-status-error-surface text-status-error`, and `bg-status-warning-surface text-status-warning` pairs rather than hard-coded `text-emerald-*`; ErrorBoundary fallback text uses `text-status-error`; and StatsCard's existing trend branches resolve to `text-trend-positive`/`text-trend-negative`.
 
 - [ ] **Step 2: Run the focused test**
 
@@ -144,6 +197,8 @@
 
   Replace Card's opaque surface class with `glass-surface` while retaining `rounded-lg`, `border`, `text-card-foreground`, and its modest shadow behavior. Add `glass-surface` to DialogContent while retaining its positioning, overlay, Escape handler, close label, and focus styles. Change visible outline borders to `border-control-border`; change text-control borders to `border-input-border` and give controls an opaque semantic fill (`bg-card`) so text never depends on the backdrop. Preserve existing ring offset/focus/disabled classes. Update only statistics/chart skeleton framing to match the shared surface; leave the table skeleton opaque and its status semantics intact.
 
+  In Badge, retain the current variants/API but replace hard-coded success foreground color utilities with `bg-status-success-surface text-status-success`; use `bg-status-error-surface text-status-error` for destructive state and `bg-status-warning-surface text-status-warning` for outline/warning state. These exact foreground/surface pairs must keep normal-size badge text at 4.5:1. Preserve the existing status label content. In ErrorBoundary, use `text-status-error` for the fallback message. Keep StatsCard's existing branches but ensure its tokens resolve to the approved trend foreground values. Do not replace status text with icons alone.
+
 - [ ] **Step 4: Run the focused test and lint**
 
   Run: `cd frontend && node --test --test-name-pattern="shared primitive adoption" tests/restrained-glass-contract.test.mjs && npm run lint`  
@@ -152,7 +207,7 @@
 - [ ] **Step 5: Commit shared primitives**
 
   ```bash
-  git add frontend/components/ui/{card,dialog,button,input,textarea,select,skeleton}.tsx frontend/tests/restrained-glass-contract.test.mjs
+  git add frontend/components/ui/{card,dialog,button,input,textarea,select,badge,skeleton}.tsx frontend/components/error-boundary.tsx frontend/components/stats-card.tsx frontend/tests/restrained-glass-contract.test.mjs
   git commit -m "feat: glassify shared surfaces and controls"
   ```
 
@@ -267,7 +322,7 @@
 
 - [ ] **Step 1: Add failing tests for shared adoption**
 
-  Assert both chart components use one shared tooltip renderer and no longer include inline `backgroundColor`/`border` tooltip surface objects. Assert both desktop Navbar and the mobile menu surface, plus the admin navigation container, use `glass-surface` while retaining `aria-label`, `aria-current`, and mobile menu controls.
+  Add a named `shared chart and navigation` source-contract group. Assert both chart components use one shared tooltip renderer and no longer include inline `backgroundColor`/`border` tooltip surface objects or `stroke-muted`. Assert BarChart removes `stringToColor`/hash-generated HSL and maps cells deterministically through `hsl(var(--chart-series-1))` through `hsl(var(--chart-series-5))`, cycling by index so series remain visibly distinct. Assert LineChart uses `hsl(var(--chart-series-1))`; both charts use `hsl(var(--chart-grid))` for CartesianGrid and `hsl(var(--chart-axis))` for axis ticks. Assert the shared tooltip carries `.glass-surface` and `text-chart-tooltip-foreground`. Assert both desktop Navbar and the mobile menu surface, plus the admin navigation container, use `glass-surface` while retaining `aria-label`, `aria-current`, and mobile menu controls.
 
 - [ ] **Step 2: Run the focused test**
 
@@ -276,7 +331,9 @@
 
 - [ ] **Step 3: Implement shared chart and navigation surfaces**
 
-  Add a typed Recharts tooltip renderer that returns no UI when inactive/no payload and otherwise renders the tooltip content inside `.glass-surface` with readable tokenized text. Keep chart axes, grid, series, labels, and dynamic bar colors unchanged. Replace both inline tooltip style objects with this renderer. Add `.glass-surface` only to Navbar/navigation containers—not link text—and retain active, hover, focus, and touch-target classes. Apply the same framing to the admin nav without changing link state logic.
+  Add a typed Recharts tooltip renderer that returns no UI when inactive/no payload and otherwise renders the tooltip content inside `.glass-surface text-chart-tooltip-foreground`. Replace both inline tooltip style objects with this renderer.
+
+  Replace each `stroke-muted` CartesianGrid with `stroke="hsl(var(--chart-grid))"` and each `currentColor` axis tick fill with `hsl(var(--chart-axis))`. Replace BarChart's hash cache/function with a fixed five-token series array, selected by `index % 5`, and pass each Cell `fill` as `hsl(var(--chart-series-N))`; retain the data-driven bar count and package/host labels. Set LineChart's stroke and dot fill to `hsl(var(--chart-series-1))`. Do not use unconstrained generated HSL colors, opacity-only series distinctions, or colors outside the approved token set. Add `.glass-surface` only to Navbar/navigation containers—not link text—and retain active, hover, focus, and touch-target classes. Apply the same framing to the admin nav without changing link state logic.
 
 - [ ] **Step 4: Run tests and build**
 
@@ -303,7 +360,7 @@
 
 - [ ] **Step 1: Add failing route-contract tests**
 
-  Verify each listed page applies `glass-surface` to direct non-Card error, empty, search, and dialog state containers as appropriate. Verify all table instances remain `Table` components and no route passes glass/background utility overrides into Table, TableHeader, TableBody, TableRow, or TableFooter. Verify webhook's direct checkbox changes from `border-input` to `border-control-border`.
+  Verify each listed page applies `glass-surface` to direct non-Card error, empty, search, and dialog state containers as appropriate. Add exact source assertions that every direct inline error message uses `text-status-error`: dashboard statistics/charts/recent-updates errors (`app/page.tsx:77-80,118-121,146-149`), hosts loading error (`app/hosts/page.tsx:69-72`), host-detail information/chart/history errors (`app/hosts/[hostname]/page.tsx:53-60,130-133,151-154`), package search error (`app/packages/page.tsx:79-82`), API-key load error (`app/admin/api-keys/page.tsx:111-114`), and webhook load error (`app/admin/webhooks/page.tsx:393-396`). Assert warning text in the API-key-created dialog (`app/admin/api-keys/page.tsx:262-268`) uses `text-status-warning`; preserve its alert icon and secure-storage text. Verify all table instances remain `Table` components and no route passes glass/background utility overrides into Table, TableHeader, TableBody, TableRow, or TableFooter. Verify webhook's direct checkbox changes from `border-input` to `border-control-border`.
 
 - [ ] **Step 2: Run the focused test**
 
@@ -312,7 +369,7 @@
 
 - [ ] **Step 3: Implement route-level surfaces**
 
-  Add `.glass-surface` to direct dashboard, hosts, host-detail, packages, API-key, and webhook error/empty/search/dialog surface containers identified above. Let existing Card-based statistic, host, package-search, API-key, and webhook cards inherit the shared Card treatment; do not add nested glass surfaces. Keep `UpdatesTable`, host lists, package results, API key tables, delivery history, and their loading table skeletons opaque. Preserve every existing `ErrorBoundary`, loading skeleton, `role`, label, caption, `aria-*` attribute, refresh action, and responsive `md:` table column class.
+  Add `.glass-surface` to direct dashboard, hosts, host-detail, packages, API-key, and webhook error/empty/search/dialog surface containers identified above. Replace their `text-destructive` foreground utilities with `text-status-error`; replace the API-key-created dialog's amber text utility with `text-status-warning`. Let existing Card-based statistic, host, package-search, API-key, and webhook cards inherit the shared Card treatment; do not add nested glass surfaces. Keep `UpdatesTable`, host lists, package results, API key tables, delivery history, and their loading table skeletons opaque. Preserve every existing `ErrorBoundary`, loading skeleton, `role`, label, caption, `aria-*` attribute, refresh action, and responsive `md:` table column class.
 
 - [ ] **Step 4: Run tests, lint, and build**
 
@@ -357,7 +414,7 @@
 
 - [ ] **Step 5: Complete the composited contrast matrix**
 
-  With a contrast tool that supports alpha compositing, test normal text (including muted/table/labels/status) at ≥4.5:1 and controls/chart graphics/large text at ≥3:1 for light and dark themes over `--background`, `--card`, `--popover`, `--glass-opaque`, glass over background, and glass over opaque Card/Popover. Test default, hover, selected, active, disabled, and focus-visible content states. Record remediation only if a measured result fails; do not weaken opaque table fills or focus visibility.
+  With a contrast tool that supports alpha compositing, test normal text (including muted/table/labels/status/error/trend text) at ≥4.5:1 and controls/chart graphics/large text at ≥3:1 for light and dark themes over `--background`, `--card`, `--popover`, `--glass-opaque`, glass over background, and glass over opaque Card/Popover. For every permitted surface, measure `--status-success`, `--status-error`, `--status-warning`, `--trend-positive`, and `--trend-negative` at the normal-text 4.5:1 threshold; verify Badge, inline route errors, ErrorBoundary, API-key warning, and StatsCard trend adoption. Measure `--chart-grid`, `--chart-axis`, tooltip text, and each of the five chart series at the 3:1 graphics threshold; confirm the five series remain visually distinguishable in both themes. Test default, hover, selected, active, disabled, and focus-visible content states. Record remediation only if a measured result fails; do not weaken opaque table fills or focus visibility.
 
 - [ ] **Step 6: Commit only verified fixes, if any**
 
