@@ -10,11 +10,45 @@ The frontend uses semantic HSL CSS variables in `frontend/app/globals.css`, Tail
 
 ## Visual architecture and tokens
 
-Extend the semantic token layer in both `:root` and `.dark` with the following contract: `--glass-surface`, `--glass-surface-alpha`, `--glass-border`, `--glass-border-alpha`, `--glass-shadow`, `--glass-shadow-alpha`, `--glass-blur`, and `--glass-opaque`. The color tokens use the existing space-separated HSL format; `--glass-opaque` resolves to the current semantic `--card` value in each theme. `--glass-blur` is `12px` or less.
+Extend the semantic token layer in both `:root` and `.dark` with the following contract: `--glass-surface`, `--glass-surface-alpha`, `--glass-border`, `--glass-border-alpha`, `--glass-shadow`, `--glass-shadow-near-alpha`, `--glass-shadow-alpha`, `--glass-blur`, and `--glass-opaque`. The color tokens use the existing space-separated HSL format; `--glass-opaque` resolves to the current semantic `--card` value in each theme. `--glass-blur` is `12px` or less.
 
-The sole reusable glass treatment is `.glass-surface`. It must use `hsl(var(--glass-surface) / var(--glass-surface-alpha))` for its fill, `hsl(var(--glass-border) / var(--glass-border-alpha))` for its border, a shadow derived from the glass-shadow tokens, and both `backdrop-filter: blur(var(--glass-blur))` and `-webkit-backdrop-filter: blur(var(--glass-blur))`. Glass is an elevation cue, not a substitute for clear typography, spacing, borders, status color, or focus visibility. Preserve current radius, typography, semantic colors, and focus-ring tokens. No ad-hoc opacity or backdrop-filter utility may create a second glass variant.
+Use these exact token values:
 
-Light glass uses a subtle translucent light surface; dark glass uses a translucent charcoal surface. Both modes must maintain sufficient contrast for text and controls without relying on the background visible through the surface.
+```css
+:root {
+  --glass-surface: 0 0% 100%;
+  --glass-surface-alpha: 0.78;
+  --glass-border: 220 13% 88%;
+  --glass-border-alpha: 0.72;
+  --glass-shadow: 222 47% 11%;
+  --glass-shadow-near-alpha: 0.08;
+  --glass-shadow-alpha: 0.12;
+  --glass-blur: 12px;
+  --glass-opaque: var(--card);
+}
+
+.dark {
+  --glass-surface: 0 0% 12%;
+  --glass-surface-alpha: 0.82;
+  --glass-border: 0 0% 100%;
+  --glass-border-alpha: 0.14;
+  --glass-shadow: 0 0% 0%;
+  --glass-shadow-near-alpha: 0.28;
+  --glass-shadow-alpha: 0.32;
+  --glass-blur: 12px;
+  --glass-opaque: var(--card);
+}
+```
+
+The sole reusable glass treatment is `.glass-surface`. It must use `background-color: hsl(var(--glass-surface) / var(--glass-surface-alpha))`, `border-color: hsl(var(--glass-border) / var(--glass-border-alpha))`, and this complete shadow declaration:
+
+```css
+box-shadow:
+  0 1px 2px 0 hsl(var(--glass-shadow) / var(--glass-shadow-near-alpha)),
+  0 12px 28px -6px hsl(var(--glass-shadow) / var(--glass-shadow-alpha));
+```
+
+It must also use both `backdrop-filter: blur(var(--glass-blur))` and `-webkit-backdrop-filter: blur(var(--glass-blur))`. These fills, borders, and shadows are deliberately bounded: the light fill remains near-white over every permitted light backdrop, while the dark fill remains a near-black surface with a subtle light edge; neither supplies text or control contrast through the visible backdrop. Glass is an elevation cue, not a substitute for clear typography, spacing, borders, status color, or focus visibility. Preserve current radius, typography, semantic colors, and focus-ring tokens. No ad-hoc opacity or backdrop-filter utility may create a second glass variant.
 
 ## Component application
 
@@ -34,7 +68,7 @@ Light glass uses a subtle translucent light surface; dark glass uses a transluce
 
 ## Intentional opaque-table boundary
 
-Enforce the opaque boundary in the shared `Table` primitive, not only at call sites. Retain its existing `relative w-full overflow-auto` wrapper exactly. The primitive's base classes must be:
+Enforce the opaque boundary in the shared `Table` primitive, not only at call sites. Retain its existing `relative w-full overflow-auto` wrapper exactly. The primitive's locked surface classes must be:
 
 - `Table`: `w-full caption-bottom bg-card text-card-foreground text-sm`
 - `TableHeader`: `bg-muted [&_tr]:border-b`
@@ -42,7 +76,9 @@ Enforce the opaque boundary in the shared `Table` primitive, not only at call si
 - `TableRow`: `border-b bg-card transition-colors hover:bg-muted data-[state=selected]:bg-accent data-[state=selected]:text-accent-foreground`
 - `TableFooter`: an opaque `bg-muted` (not `bg-muted/50`)
 
-These opaque semantic backgrounds are required even when a table is inside `.glass-surface`; class overrides must not reintroduce translucent table, header, body, default-row, hover-row, selected-row, or footer fills. A parent Card may have minimal glass framing, but the table itself must provide stable contrast for dense scanning, selection, timestamps, package versions, and status badges.
+The implementation must introduce a shared `withoutTableSurfaceUtilities(className)` sanitizer and pass its result—not the raw caller `className`—to `cn` in `Table`, `TableHeader`, `TableBody`, `TableRow`, and `TableFooter`. The sanitizer must tokenize Tailwind classes and remove every background-writing utility after arbitrary variant prefixes and an optional `!` marker: `bg-*`, `from-*`, `via-*`, `to-*`, and arbitrary-property utilities for `background`, `background-color`, `background-image`, or `background`. This includes state forms such as `hover:bg-*`, `focus:bg-*`, `data-[state=selected]:bg-*`, `dark:hover:bg-*`, `!bg-*`, and their arbitrary-value equivalents. It must preserve non-background layout, spacing, typography, and border utilities.
+
+The primitive then appends its locked classes after the sanitized result, with `!` on each surface declaration: `!bg-card` on `Table`, `TableBody`, and default `TableRow`; `!bg-muted` on `TableHeader`, hover `!hover:bg-muted`, and `!bg-accent` / `!data-[state=selected]:bg-accent` on selected rows; `!text-accent-foreground` for selected rows; and `!bg-muted` on `TableFooter`. The corresponding locked `!` utility remains inside the primitive rather than in any caller-supplied string. This two-part contract prevents caller `className` Tailwind utilities—including important and variant-qualified utilities—from changing opaque table, header, body, default-row, hover-row, selected-row, or footer fills, while retaining the existing primitive API and allowing safe caller layout classes. A parent Card may have minimal glass framing, but the table itself must provide stable contrast for dense scanning, selection, timestamps, package versions, and status badges.
 
 ## Responsive, accessibility, and reduced-transparency behavior
 
