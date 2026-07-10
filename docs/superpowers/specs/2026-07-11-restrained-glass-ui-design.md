@@ -10,7 +10,7 @@ The frontend uses semantic HSL CSS variables in `frontend/app/globals.css`, Tail
 
 ## Visual architecture and tokens
 
-Extend the semantic token layer in both `:root` and `.dark` with the following contract: `--glass-surface`, `--glass-surface-alpha`, `--glass-border`, `--glass-border-alpha`, `--glass-shadow`, `--glass-shadow-near-alpha`, `--glass-shadow-alpha`, `--glass-blur`, and `--glass-opaque`. The color tokens use the existing space-separated HSL format; `--glass-opaque` resolves to the current semantic `--card` value in each theme. `--glass-blur` is `12px` or less.
+Extend the semantic token layer in both `:root` and `.dark` with the following contract: `--glass-surface`, `--glass-surface-alpha`, `--glass-border`, `--glass-border-alpha`, `--glass-shadow`, `--glass-shadow-near-alpha`, `--glass-shadow-alpha`, `--glass-blur`, `--glass-opaque`, `--control-border`, and `--input-border`. The color tokens use the existing space-separated HSL format; `--glass-opaque` resolves to the current semantic `--card` value in each theme. `--glass-blur` is `12px` or less.
 
 Use these exact token values:
 
@@ -25,6 +25,8 @@ Use these exact token values:
   --glass-shadow-alpha: 0.12;
   --glass-blur: 12px;
   --glass-opaque: var(--card);
+  --control-border: 0 0% 52%;
+  --input-border: 0 0% 52%;
 }
 
 .dark {
@@ -37,6 +39,8 @@ Use these exact token values:
   --glass-shadow-alpha: 0.32;
   --glass-blur: 12px;
   --glass-opaque: var(--card);
+  --control-border: 0 0% 65%;
+  --input-border: 0 0% 65%;
 }
 ```
 
@@ -49,6 +53,8 @@ box-shadow:
 ```
 
 It must also use both `backdrop-filter: blur(var(--glass-blur))` and `-webkit-backdrop-filter: blur(var(--glass-blur))`. These fills, borders, and shadows are deliberately bounded: the light fill remains near-white over every permitted light backdrop, while the dark fill remains a near-black surface with a subtle light edge; neither supplies text or control contrast through the visible backdrop. Glass is an elevation cue, not a substitute for clear typography, spacing, borders, status color, or focus visibility. Preserve current radius, typography, semantic colors, and focus-ring tokens. No ad-hoc opacity or backdrop-filter utility may create a second glass variant.
+
+`--control-border` is the semantic boundary for buttons, selects, checkboxes, radios, and other controls whose outline conveys that the element is operable; `--input-border` is the semantic boundary for text inputs and textareas. Map both through Tailwind as `--color-control-border: hsl(var(--control-border))` and `--color-input-border: hsl(var(--input-border))`, and use the matching `border-control-border` and `border-input-border` utilities. Their exact values above provide at least **3:1** composited contrast against every permitted opaque page surface and glass composite in each theme. This **3:1 threshold applies specifically to a visible boundary when that boundary conveys control**; decorative panel dividers and borders that do not communicate operability are not control boundaries.
 
 ## Component application
 
@@ -70,15 +76,15 @@ It must also use both `backdrop-filter: blur(var(--glass-blur))` and `-webkit-ba
 
 Enforce the opaque boundary in the shared `Table` primitive, not only at call sites. Retain its existing `relative w-full overflow-auto` wrapper exactly. The primitive's locked surface classes must be:
 
-- `Table`: `w-full caption-bottom bg-card text-card-foreground text-sm`
-- `TableHeader`: `bg-muted [&_tr]:border-b`
-- `TableBody`: `bg-card [&_tr:last-child]:border-0`
-- `TableRow`: `border-b bg-card transition-colors hover:bg-muted data-[state=selected]:bg-accent data-[state=selected]:text-accent-foreground`
-- `TableFooter`: an opaque `bg-muted` (not `bg-muted/50`)
+- `Table`: `w-full caption-bottom bg-card! text-card-foreground text-sm`
+- `TableHeader`: `bg-muted! [&_tr]:border-b`
+- `TableBody`: `bg-card! [&_tr:last-child]:border-0`
+- `TableRow`: `border-b bg-card! transition-colors hover:bg-muted! data-[state=selected]:bg-accent! data-[state=selected]:text-accent-foreground!`
+- `TableFooter`: an opaque `bg-muted!` (not `bg-muted/50`)
 
-The implementation must introduce a shared `withoutTableSurfaceUtilities(className)` sanitizer and pass its result—not the raw caller `className`—to `cn` in `Table`, `TableHeader`, `TableBody`, `TableRow`, and `TableFooter`. The sanitizer must tokenize Tailwind classes and remove every background-writing utility after arbitrary variant prefixes and an optional `!` marker: `bg-*`, `from-*`, `via-*`, `to-*`, and arbitrary-property utilities for `background`, `background-color`, `background-image`, or `background`. This includes state forms such as `hover:bg-*`, `focus:bg-*`, `data-[state=selected]:bg-*`, `dark:hover:bg-*`, `!bg-*`, and their arbitrary-value equivalents. It must preserve non-background layout, spacing, typography, and border utilities.
+The implementation must introduce a shared `withoutTableSurfaceUtilities(className)` sanitizer and pass its result—not the raw caller `className`—to `cn` in `Table`, `TableHeader`, `TableBody`, `TableRow`, and `TableFooter`. The sanitizer must tokenize Tailwind classes and remove every background-writing utility after arbitrary variant prefixes and an optional suffix `!` marker: `bg-*`, `from-*`, `via-*`, `to-*`, and arbitrary-property utilities for `background`, `background-color`, `background-image`, or `background`. This includes state forms such as `hover:bg-*`, `focus:bg-*`, `data-[state=selected]:bg-*`, `dark:hover:bg-*`, `bg-*!`, and their arbitrary-value equivalents. It must preserve non-background layout, spacing, typography, and border utilities.
 
-The primitive then appends its locked classes after the sanitized result, with `!` on each surface declaration: `!bg-card` on `Table`, `TableBody`, and default `TableRow`; `!bg-muted` on `TableHeader`, hover `!hover:bg-muted`, and `!bg-accent` / `!data-[state=selected]:bg-accent` on selected rows; `!text-accent-foreground` for selected rows; and `!bg-muted` on `TableFooter`. The corresponding locked `!` utility remains inside the primitive rather than in any caller-supplied string. This two-part contract prevents caller `className` Tailwind utilities—including important and variant-qualified utilities—from changing opaque table, header, body, default-row, hover-row, selected-row, or footer fills, while retaining the existing primitive API and allowing safe caller layout classes. A parent Card may have minimal glass framing, but the table itself must provide stable contrast for dense scanning, selection, timestamps, package versions, and status badges.
+The primitive then appends its locked classes after the sanitized result, using Tailwind v4's suffix `!` on each declaration: `bg-card!` on `Table`, `TableBody`, and default `TableRow`; `bg-muted!` on `TableHeader`, `hover:bg-muted!` on hover rows, and `data-[state=selected]:bg-accent!` on selected rows; `data-[state=selected]:text-accent-foreground!` for selected rows; and `bg-muted!` on `TableFooter`. The corresponding locked suffix-important utility remains inside the primitive rather than in any caller-supplied string. This two-part contract prevents caller `className` Tailwind utilities—including suffix-important and variant-qualified utilities—from changing opaque table, header, body, default-row, hover-row, selected-row, or footer fills, while retaining the existing primitive API and allowing safe caller layout classes. A parent Card may have minimal glass framing, but the table itself must provide stable contrast for dense scanning, selection, timestamps, package versions, and status badges.
 
 ## Responsive, accessibility, and reduced-transparency behavior
 
