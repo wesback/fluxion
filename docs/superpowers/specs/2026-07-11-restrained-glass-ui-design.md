@@ -10,7 +10,9 @@ The frontend uses semantic HSL CSS variables in `frontend/app/globals.css`, Tail
 
 ## Visual architecture and tokens
 
-Extend the semantic token layer with light- and dark-mode values for glass surface fill, glass border, glass shadow, and a restrained blur strength. Glass is an elevation cue, not a substitute for clear typography, spacing, borders, status color, or focus visibility. Preserve current radius, typography, semantic colors, and focus-ring tokens.
+Extend the semantic token layer in both `:root` and `.dark` with the following contract: `--glass-surface`, `--glass-surface-alpha`, `--glass-border`, `--glass-border-alpha`, `--glass-shadow`, `--glass-shadow-alpha`, `--glass-blur`, and `--glass-opaque`. The color tokens use the existing space-separated HSL format; `--glass-opaque` resolves to the current semantic `--card` value in each theme. `--glass-blur` is `12px` or less.
+
+The sole reusable glass treatment is `.glass-surface`. It must use `hsl(var(--glass-surface) / var(--glass-surface-alpha))` for its fill, `hsl(var(--glass-border) / var(--glass-border-alpha))` for its border, a shadow derived from the glass-shadow tokens, and both `backdrop-filter: blur(var(--glass-blur))` and `-webkit-backdrop-filter: blur(var(--glass-blur))`. Glass is an elevation cue, not a substitute for clear typography, spacing, borders, status color, or focus visibility. Preserve current radius, typography, semantic colors, and focus-ring tokens. No ad-hoc opacity or backdrop-filter utility may create a second glass variant.
 
 Light glass uses a subtle translucent light surface; dark glass uses a translucent charcoal surface. Both modes must maintain sufficient contrast for text and controls without relying on the background visible through the surface.
 
@@ -32,13 +34,63 @@ Light glass uses a subtle translucent light surface; dark glass uses a transluce
 
 ## Intentional opaque-table boundary
 
-Data tables remain mostly opaque with their existing borders, headers, row hover states, and scroll behavior. A parent Card may have minimal glass framing, but table backgrounds and rows must provide stable contrast for dense scanning, selection, timestamps, package versions, and status badges.
+Enforce the opaque boundary in the shared `Table` primitive, not only at call sites. Retain its existing `relative w-full overflow-auto` wrapper exactly. The primitive's base classes must be:
+
+- `Table`: `w-full caption-bottom bg-card text-card-foreground text-sm`
+- `TableHeader`: `bg-muted [&_tr]:border-b`
+- `TableBody`: `bg-card [&_tr:last-child]:border-0`
+- `TableRow`: `border-b bg-card transition-colors hover:bg-muted data-[state=selected]:bg-accent data-[state=selected]:text-accent-foreground`
+- `TableFooter`: an opaque `bg-muted` (not `bg-muted/50`)
+
+These opaque semantic backgrounds are required even when a table is inside `.glass-surface`; class overrides must not reintroduce translucent table, header, body, default-row, hover-row, selected-row, or footer fills. A parent Card may have minimal glass framing, but the table itself must provide stable contrast for dense scanning, selection, timestamps, package versions, and status badges.
 
 ## Responsive, accessibility, and reduced-transparency behavior
 
 Do not change the existing responsive grid breakpoints, mobile navigation, responsive table columns, or table overflow behavior. Preserve semantic HTML, skip navigation, labels, ARIA state/alerts, visible focus rings, and touch target sizing.
 
-When `prefers-reduced-transparency` is active, substitute opaque semantic surfaces for translucent/blurred glass surfaces. Avoid expensive backdrop filtering on constrained/mobile rendering and keep blur restrained elsewhere.
+### Reduced-transparency contract
+
+The following selector pairs are equivalent and must have identical declarations, so automated tests can force the fallback without emulating a media feature:
+
+```css
+@media (prefers-reduced-transparency: reduce) {
+  .glass-surface { /* declarations below */ }
+}
+
+html[data-reduced-transparency="true"] .glass-surface,
+html.reduced-transparency .glass-surface {
+  /* the same declarations */
+}
+```
+
+At either selector, `.glass-surface` must use `background-color: hsl(var(--card))`, retain a semantic `border-color: hsl(var(--border))`, and set both `backdrop-filter: none` and `-webkit-backdrop-filter: none`. It must not use an alpha fill, opacity reduction, or image to simulate translucency. The root `data-reduced-transparency="true"` attribute and `reduced-transparency` class are the required fallback controls where the media preference is unavailable; either one is sufficient, and removing both restores normal behavior when the media query does not match.
+
+### Mobile and constrained-rendering boundary
+
+Backdrop filtering is disabled for `.glass-surface` at the exact capability boundary below:
+
+```css
+@media (max-width: 767px), (pointer: coarse) and (hover: none), (update: slow) {
+  .glass-surface {
+    background-color: hsl(var(--glass-opaque));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+```
+
+This boundary applies independently of reduced-transparency preferences. `--glass-opaque` must be an opaque, theme-appropriate semantic surface with the same readable foreground pairing as `--card`; it is the required non-blurred fill at the boundary, rather than a transparent approximation of glass.
+
+### Composited contrast acceptance
+
+For each light and dark theme, evaluate the final composited pixels—not source token values alone—for every permitted background: the opaque `--background`, `--card`, `--popover`, and `--glass-opaque` surfaces; a `.glass-surface` composited directly over `--background`; and a `.glass-surface` composited over each permitted opaque parent (`--card` or `--popover`). Nested glass surfaces are prohibited, so no other backdrop is permitted.
+
+In every default, hover, selected, active, disabled, and focus-visible state that exposes content:
+
+- Normal-size text, including muted text, table text, labels, and status text, must meet **4.5:1** or greater against each permitted composited background.
+- Controls (their visible label/icon and boundary where it conveys control), chart graphics (series, axes, grids, and tooltip markers), and large text must meet **3:1** or greater against each permitted composited background.
+
+Validate with a contrast tool using computed colors and alpha compositing for the listed backdrop matrix in both themes. A token-only contrast calculation, a single screenshot, or an opaque fallback result does not demonstrate compliance for a translucent state.
 
 ## State handling
 
@@ -53,4 +105,4 @@ Loading skeletons use the matching surface tokens but do not require blur. Error
 
 ## Validation criteria
 
-Run the existing frontend lint and build commands. Verify light and dark themes on desktop and mobile; keyboard focus and dialog interaction; navigation and responsive tables; loading, error, and empty states; and reduced-transparency behavior. Confirm accessible contrast for text, controls, chart labels/series, table content, and status badges.
+Run the existing frontend lint and build commands. Verify light and dark themes on desktop and mobile; keyboard focus and dialog interaction; navigation and responsive tables; loading, error, and empty states; and reduced-transparency behavior. Confirm the shared Table primitive has the specified opaque classes while retaining its overflow wrapper. Test reduced transparency once through an emulated `prefers-reduced-transparency: reduce` media feature and once by setting `html[data-reduced-transparency="true"]` (or the equivalent root class); in both cases verify opaque semantic fills and no computed backdrop filter. At each mobile/constrained media boundary, verify no computed backdrop filter and the opaque `--glass-opaque` fill. Complete the composited contrast matrix defined above for text, controls, chart labels/series, table content, and status badges.
