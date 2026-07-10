@@ -15,6 +15,7 @@
 ### Create
 
 - `frontend/tests/restrained-glass-contract.test.mjs` — Node built-in static contract tests for token values, fallback selectors, table locked classes/sanitization, and shared component adoption.
+- `frontend/lib/without-table-surface-utilities.mjs` — framework-independent, native-Node-importable sanitizer for caller-supplied Tailwind background utilities.
 - `frontend/components/charts/glass-tooltip.tsx` — shared Recharts tooltip renderer that applies the only reusable `.glass-surface` treatment.
 
 ### Modify
@@ -22,7 +23,7 @@
 - `frontend/package.json:5-10` — expose the native contract test command without adding dependencies.
 - `frontend/app/globals.css:3-95` — add approved tokens, Tailwind mappings, `.glass-surface`, transparency fallbacks, and constrained-rendering behavior.
 - `frontend/components/ui/card.tsx:4-17` — make the shared card the standard glass frame.
-- `frontend/components/ui/table.tsx:1-117` — enforce opaque table fills and sanitize caller background classes.
+- `frontend/components/ui/table.tsx:1-117` — import the sanitizer and enforce opaque table fills.
 - `frontend/components/ui/dialog.tsx:57-109` — make dialog content a glass surface while retaining overlay, Escape, and close-button behavior.
 - `frontend/components/ui/button.tsx:10-38` — use the control-border token for visible outline controls.
 - `frontend/components/ui/input.tsx:4-22` — use the input-border token and opaque readable control fill.
@@ -55,13 +56,13 @@
 
 - [ ] **Step 1: Write failing native Node tests before styling code**
 
-  Create a `node:test` suite that reads frontend source files from the repository. Add focused assertions for:
+  Create a `node:test` suite that reads frontend source files from the repository and imports `withoutTableSurfaceUtilities` from `../lib/without-table-surface-utilities.mjs`. Add focused assertions for:
   - the exact light/dark values of all approved glass/control tokens;
   - `.glass-surface` using both standard and WebKit backdrop filters plus the approved two-layer shadow;
   - the media selector and both root fallback selectors with opaque card fill and no filters;
   - the exact constrained-rendering media query and opaque `--glass-opaque` fill;
   - Tailwind v4 suffix-important opaque Table/Header/Body/Row/Footer class strings;
-  - use of `withoutTableSurfaceUtilities` for every required table primitive;
+  - use of the importable `withoutTableSurfaceUtilities` utility for every required table primitive;
   - Card, Navbar, Dialog, and both charts consuming `.glass-surface` rather than a second blur/opacity treatment.
 
 - [ ] **Step 2: Add a test script and verify red**
@@ -69,7 +70,7 @@
   Add `"test:ui-contract": "node --test tests/restrained-glass-contract.test.mjs"` to `frontend/package.json`.
 
   Run: `cd frontend && npm run test:ui-contract`  
-  Expected: FAIL because tokens, fallback styles, sanitizer, and glass tooltip do not exist yet.
+  Expected: FAIL with `ERR_MODULE_NOT_FOUND` for the sanitizer module (before any styling assertions can pass).
 
 - [ ] **Step 3: Commit the test harness**
 
@@ -157,21 +158,57 @@
 ## Task 4: Lock the opaque-table boundary
 
 **Files:**
+- Create: `frontend/lib/without-table-surface-utilities.mjs`
 - Modify: `frontend/components/ui/table.tsx:1-117`
 - Test: `frontend/tests/restrained-glass-contract.test.mjs`
 
 - [ ] **Step 1: Expand the failing tests for adversarial caller classes**
 
-  Add contract cases that pass representative background-writing tokens through the exported sanitizer: `bg-red-500`, `bg-red-500!`, `hover:bg-red-500`, `dark:hover:bg-red-500!`, `data-[state=selected]:bg-red-500`, `from-blue-500`, `via-blue-500`, `to-blue-500`, and arbitrary background-property/value forms. Assert those are removed while `p-4`, `text-sm`, `border`, and `hidden md:table-cell` remain. Assert the Table wrapper remains exactly `relative w-full overflow-auto`.
+  Add executable behavior tests—not source-text assertions—for the imported sanitizer:
+
+  ```js
+  import test from "node:test"
+  import assert from "node:assert/strict"
+  import { withoutTableSurfaceUtilities } from "../lib/without-table-surface-utilities.mjs"
+
+  test("removes background-writing Tailwind utilities including variants and suffix important", () => {
+    const input = [
+      "p-4", "text-sm", "border", "hidden", "md:table-cell",
+      "bg-red-500", "bg-red-500!", "hover:bg-red-500",
+      "dark:hover:bg-red-500!", "data-[state=selected]:bg-red-500",
+      "from-blue-500", "via-blue-500!", "to-blue-500",
+      "[background:red]", "[background-color:rgb(1,2,3)]!",
+      "hover:[background-image:linear-gradient(red,blue)]",
+    ].join(" ")
+
+    assert.equal(
+      withoutTableSurfaceUtilities(input),
+      "p-4 text-sm border hidden md:table-cell",
+    )
+  })
+
+  test("preserves non-background arbitrary, layout, typography, and border utilities", () => {
+    const input = "md:p-4 text-sm border border-red-500 [color:canvastext] [mask-image:none]"
+    assert.equal(withoutTableSurfaceUtilities(input), input)
+  })
+
+  test("accepts omitted className", () => {
+    assert.equal(withoutTableSurfaceUtilities(), undefined)
+  })
+  ```
+
+  Keep the static assertion that the Table wrapper remains exactly `relative w-full overflow-auto`; it verifies that the runtime safeguard does not change responsive overflow behavior.
 
 - [ ] **Step 2: Run the focused test**
 
   Run: `cd frontend && npm run test:ui-contract`  
-  Expected: FAIL because the sanitizer and suffix-important surface classes are absent.
+  Expected: FAIL because the sanitizer module/function and suffix-important surface classes are absent.
 
 - [ ] **Step 3: Implement the shared table safeguard**
 
-  In `table.tsx`, export `withoutTableSurfaceUtilities(className?: string)`. Tokenize whitespace-separated Tailwind classes, split variant prefixes from the terminal utility, accept an optional suffix `!`, and remove terminal `bg-*`, `from-*`, `via-*`, `to-*`, plus arbitrary property/value forms writing `background`, `background-color`, or `background-image`. Preserve all other tokens.
+  Create `frontend/lib/without-table-surface-utilities.mjs` with a named `withoutTableSurfaceUtilities(className)` export. The `.mjs` extension is intentional: Node 20 can import and execute it through `node --test` without a TypeScript/TSX runtime, while this repository's `tsconfig.json` already has `allowJs: true` for the Next.js import. Tokenize whitespace-separated Tailwind classes, split variant prefixes from the terminal utility, accept an optional suffix `!`, and remove terminal `bg-*`, `from-*`, `via-*`, `to-*`, plus arbitrary property/value forms writing `background`, `background-color`, or `background-image`. Preserve all other tokens and return `undefined` when no class string is supplied.
+
+  Import that named utility into `table.tsx` from `@/lib/without-table-surface-utilities.mjs`; do not duplicate sanitizer logic in the TSX component.
 
   Pass the sanitized value (never raw caller `className`) to `cn` for Table, TableHeader, TableBody, TableRow, and TableFooter. Append the locked Tailwind v4 suffix-important classes after it:
 
@@ -193,7 +230,7 @@
 - [ ] **Step 5: Commit the opaque-table boundary**
 
   ```bash
-  git add frontend/components/ui/table.tsx frontend/tests/restrained-glass-contract.test.mjs
+  git add frontend/lib/without-table-surface-utilities.mjs frontend/components/ui/table.tsx frontend/tests/restrained-glass-contract.test.mjs
   git commit -m "feat: preserve opaque data table surfaces"
   ```
 
