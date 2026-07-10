@@ -176,6 +176,7 @@
       "p-4", "text-sm", "border", "hidden", "md:table-cell",
       "bg-red-500", "bg-red-500!", "hover:bg-red-500",
       "dark:hover:bg-red-500!", "data-[state=selected]:bg-red-500",
+      "[&:nth-child(2)]:bg-red-500", "[&:nth-child(2)]:hover:bg-red-500!",
       "from-blue-500", "via-blue-500!", "to-blue-500",
       "[background:red]", "[background-color:rgb(1,2,3)]!",
       "hover:[background-image:linear-gradient(red,blue)]",
@@ -188,7 +189,12 @@
   })
 
   test("preserves non-background arbitrary, layout, typography, and border utilities", () => {
-    const input = "md:p-4 text-sm border border-red-500 [color:canvastext] [mask-image:none]"
+    const input = [
+      "md:p-4", "text-sm", "border", "border-red-500",
+      "[color:canvastext]", "[mask-image:none]",
+      "[&:nth-child(2)]:text-sm", "[&:nth-child(2)]:border-red-500",
+      "hover:text-primary", "data-[state=selected]:text-accent-foreground",
+    ].join(" ")
     assert.equal(withoutTableSurfaceUtilities(input), input)
   })
 
@@ -206,7 +212,7 @@
 
 - [ ] **Step 3: Implement the shared table safeguard**
 
-  Create `frontend/lib/without-table-surface-utilities.mjs` with a named `withoutTableSurfaceUtilities(className)` export. The `.mjs` extension is intentional: Node 20 can import and execute it through `node --test` without a TypeScript/TSX runtime, while this repository's `tsconfig.json` already has `allowJs: true` for the Next.js import. Tokenize whitespace-separated Tailwind classes, split variant prefixes from the terminal utility, accept an optional suffix `!`, and remove terminal `bg-*`, `from-*`, `via-*`, `to-*`, plus arbitrary property/value forms writing `background`, `background-color`, or `background-image`. Preserve all other tokens and return `undefined` when no class string is supplied.
+  Create `frontend/lib/without-table-surface-utilities.mjs` with a named `withoutTableSurfaceUtilities(className)` export. The `.mjs` extension is intentional: Node 20 can import and execute it through `node --test` without a TypeScript/TSX runtime, while this repository's `tsconfig.json` already has `allowJs: true` for the Next.js import. Tokenize whitespace-separated Tailwind classes, then parse each token bracket-aware: scan characters while tracking square-bracket depth and split variant prefixes only at colons encountered at depth zero. This preserves arbitrary variants with internal colons (for example, `[&:nth-child(2)]:...`) while identifying their terminal utility. Strip an optional suffix `!` from that terminal utility for classification, and remove terminal `bg-*`, `from-*`, `via-*`, `to-*`, plus arbitrary property/value forms writing `background`, `background-color`, or `background-image`. Preserve all other tokens—including arbitrary variants whose terminal utility is typography or border related—and return `undefined` when no class string is supplied.
 
   Import that named utility into `table.tsx` from `@/lib/without-table-surface-utilities.mjs`; do not duplicate sanitizer logic in the TSX component.
 
