@@ -15,6 +15,7 @@
 ### Create
 
 - `frontend/tests/restrained-glass-contract.test.mjs` — Node built-in static contract tests for token values, fallback selectors, table locked classes/sanitization, and shared component adoption.
+- `frontend/tests/without-table-surface-utilities.test.mjs` — executable native Node adversarial behavior tests for the table-surface sanitizer.
 - `frontend/lib/without-table-surface-utilities.mjs` — framework-independent, native-Node-importable sanitizer for caller-supplied Tailwind background utilities.
 - `frontend/components/charts/glass-tooltip.tsx` — shared Recharts tooltip renderer that applies the only reusable `.glass-surface` treatment.
 
@@ -56,21 +57,21 @@
 
 - [ ] **Step 1: Write failing native Node tests before styling code**
 
-  Create a `node:test` suite that reads frontend source files from the repository and imports `withoutTableSurfaceUtilities` from `../lib/without-table-surface-utilities.mjs`. Add focused assertions for:
+  Create a `node:test` suite that reads frontend source files from the repository. Group assertions into named `node:test` cases (`tokens and transparency fallback`, `shared primitive adoption`, `opaque table source contract`, and `route adoption`) so later tasks can execute only the contract group they have made green. Do not import the sanitizer in this initial suite: its module is intentionally created in Task 4 before the dedicated runtime test file imports it. Add focused static assertions for:
   - the exact light/dark values of all approved glass/control tokens;
   - `.glass-surface` using both standard and WebKit backdrop filters plus the approved two-layer shadow;
   - the media selector and both root fallback selectors with opaque card fill and no filters;
   - the exact constrained-rendering media query and opaque `--glass-opaque` fill;
   - Tailwind v4 suffix-important opaque Table/Header/Body/Row/Footer class strings;
-  - use of the importable `withoutTableSurfaceUtilities` utility for every required table primitive;
+  - use of `withoutTableSurfaceUtilities` for every required table primitive once Task 4 imports it;
   - Card, Navbar, Dialog, and both charts consuming `.glass-surface` rather than a second blur/opacity treatment.
 
 - [ ] **Step 2: Add a test script and verify red**
 
-  Add `"test:ui-contract": "node --test tests/restrained-glass-contract.test.mjs"` to `frontend/package.json`.
+  Add `"test:ui-contract": "node --test tests/*.test.mjs"` to `frontend/package.json`. At this point the glob resolves only to `restrained-glass-contract.test.mjs`; Task 4 adds the sanitizer's dedicated behavior test.
 
   Run: `cd frontend && npm run test:ui-contract`  
-  Expected: FAIL with `ERR_MODULE_NOT_FOUND` for the sanitizer module (before any styling assertions can pass).
+  Expected: FAIL on missing token/fallback/component source-contract assertions; it must not fail from importing a not-yet-created sanitizer module.
 
 - [ ] **Step 3: Commit the test harness**
 
@@ -108,8 +109,8 @@
 
 - [ ] **Step 4: Run the focused test**
 
-  Run: `cd frontend && npm run test:ui-contract`  
-  Expected: PASS for token and fallback contract assertions; other component/table assertions may remain failing.
+  Run: `cd frontend && node --test --test-name-pattern="tokens and transparency fallback" tests/restrained-glass-contract.test.mjs`  
+  Expected: PASS for the token and fallback contract group. Other named groups remain red until their owning tasks.
 
 - [ ] **Step 5: Commit the token system**
 
@@ -145,8 +146,8 @@
 
 - [ ] **Step 4: Run the focused test and lint**
 
-  Run: `cd frontend && npm run test:ui-contract && npm run lint`  
-  Expected: contract tests PASS; ESLint completes with no errors.
+  Run: `cd frontend && node --test --test-name-pattern="shared primitive adoption" tests/restrained-glass-contract.test.mjs && npm run lint`  
+  Expected: the shared-primitive group PASSes; ESLint completes with no errors. The full suite remains red until Task 4 establishes the opaque table boundary.
 
 - [ ] **Step 5: Commit shared primitives**
 
@@ -159,12 +160,26 @@
 
 **Files:**
 - Create: `frontend/lib/without-table-surface-utilities.mjs`
+- Create: `frontend/tests/without-table-surface-utilities.test.mjs`
 - Modify: `frontend/components/ui/table.tsx:1-117`
 - Test: `frontend/tests/restrained-glass-contract.test.mjs`
+- Test: `frontend/tests/without-table-surface-utilities.test.mjs`
 
-- [ ] **Step 1: Expand the failing tests for adversarial caller classes**
+- [ ] **Step 1: Create the importable utility seam**
 
-  Add executable behavior tests—not source-text assertions—for the imported sanitizer:
+  Before any test imports it, create `frontend/lib/without-table-surface-utilities.mjs` with this named, deliberately incomplete implementation:
+
+  ```js
+  export function withoutTableSurfaceUtilities(className) {
+    return className
+  }
+  ```
+
+  This makes the module executable by the repository's Node 20 toolchain. Do not change `table.tsx` yet.
+
+- [ ] **Step 2: Write the failing adversarial behavior test**
+
+  Create `frontend/tests/without-table-surface-utilities.test.mjs`. It imports the module created in Step 1 and contains executable behavior tests—not source-text assertions:
 
   ```js
   import test from "node:test"
@@ -203,14 +218,14 @@
   })
   ```
 
-  Keep the static assertion that the Table wrapper remains exactly `relative w-full overflow-auto`; it verifies that the runtime safeguard does not change responsive overflow behavior.
+  Keep the static assertion that the Table wrapper remains exactly `relative w-full overflow-auto` in `restrained-glass-contract.test.mjs`; it verifies that the runtime safeguard does not change responsive overflow behavior.
 
-- [ ] **Step 2: Run the focused test**
+- [ ] **Step 3: Run the dedicated red test**
 
-  Run: `cd frontend && npm run test:ui-contract`  
-  Expected: FAIL because the sanitizer module/function and suffix-important surface classes are absent.
+  Run: `cd frontend && node --test tests/without-table-surface-utilities.test.mjs`  
+  Expected: FAIL because the importable seam returns every conflicting background utility unchanged.
 
-- [ ] **Step 3: Implement the shared table safeguard**
+- [ ] **Step 4: Implement the shared table safeguard**
 
   Create `frontend/lib/without-table-surface-utilities.mjs` with a named `withoutTableSurfaceUtilities(className)` export. The `.mjs` extension is intentional: Node 20 can import and execute it through `node --test` without a TypeScript/TSX runtime, while this repository's `tsconfig.json` already has `allowJs: true` for the Next.js import. Tokenize whitespace-separated Tailwind classes, then parse each token bracket-aware: scan characters while tracking square-bracket depth and split variant prefixes only at colons encountered at depth zero. This preserves arbitrary variants with internal colons (for example, `[&:nth-child(2)]:...`) while identifying their terminal utility. Strip an optional suffix `!` from that terminal utility for classification, and remove terminal `bg-*`, `from-*`, `via-*`, `to-*`, plus arbitrary property/value forms writing `background`, `background-color`, or `background-image`. Preserve all other tokens—including arbitrary variants whose terminal utility is typography or border related—and return `undefined` when no class string is supplied.
 
@@ -228,15 +243,15 @@
 
   Do not alter TableHead, TableCell, TableCaption, the wrapper, props, semantics, or responsive caller classes.
 
-- [ ] **Step 4: Run targeted and integration checks**
+- [ ] **Step 5: Run red-green and integration checks**
 
-  Run: `cd frontend && npm run test:ui-contract && npm run lint && npm run build`  
-  Expected: all contract tests PASS; lint has no errors; Next production build completes successfully.
+  Run: `cd frontend && node --test tests/without-table-surface-utilities.test.mjs && node --test --test-name-pattern="opaque table source contract" tests/restrained-glass-contract.test.mjs && npm run lint && npm run build`  
+  Expected: the dedicated adversarial behavior test and opaque-table source-contract group PASS; lint has no errors; Next production build completes successfully. Navigation and route groups remain red until Tasks 5 and 6.
 
-- [ ] **Step 5: Commit the opaque-table boundary**
+- [ ] **Step 6: Commit the opaque-table boundary**
 
   ```bash
-  git add frontend/lib/without-table-surface-utilities.mjs frontend/components/ui/table.tsx frontend/tests/restrained-glass-contract.test.mjs
+  git add frontend/lib/without-table-surface-utilities.mjs frontend/components/ui/table.tsx frontend/tests/restrained-glass-contract.test.mjs frontend/tests/without-table-surface-utilities.test.mjs
   git commit -m "feat: preserve opaque data table surfaces"
   ```
 
@@ -265,8 +280,8 @@
 
 - [ ] **Step 4: Run tests and build**
 
-  Run: `cd frontend && npm run test:ui-contract && npm run lint && npm run build`  
-  Expected: all commands succeed.
+  Run: `cd frontend && node --test --test-name-pattern="shared chart and navigation" tests/restrained-glass-contract.test.mjs && npm run lint && npm run build`  
+  Expected: the chart/navigation contract group PASSes; lint and build succeed. The route-adoption group remains red until Task 6.
 
 - [ ] **Step 5: Commit chart and navigation surfaces**
 
