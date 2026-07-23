@@ -5,7 +5,7 @@
  * to automatically track all API calls with detailed metrics
  */
 
-import { apiClient as originalApiClient, ApiError, type Stats, type Host, type PackageUpdate, type HostUpdate, type PackageHost, type ListAPIKeysResponse, type CreateAPIKeyRequest, type CreateAPIKeyResponse, type ListWebhooksResponse, type WebhookConfig, type WebhookConfigCreate, type WebhookConfigUpdate, type WebhookTestResponse, type WebhookDeliveryHistory } from '../api';
+import { apiClient as originalApiClient, ApiError, type Stats, type Host, type PackageUpdate, type HostUpdate, type PackageHost, type SecurityFeedResponse, type ListAPIKeysResponse, type CreateAPIKeyRequest, type CreateAPIKeyResponse, type ListWebhooksResponse, type WebhookConfig, type WebhookConfigCreate, type WebhookConfigUpdate, type WebhookTestResponse, type WebhookDeliveryHistory, type KernelFleetResponse, type ActivityResponse, type IngestDiagnosticsResponse, type WebhookCoverageResponse } from '../api';
 import { withSpan } from '../telemetry';
 
 /**
@@ -95,6 +95,23 @@ class InstrumentedApiClient {
     );
   }
 
+  async getSecurityFeed(options?: {
+    limit?: number;
+    offset?: number;
+    hostname?: string;
+    package_name?: string;
+    from_date?: string;
+    to_date?: string;
+  }): Promise<SecurityFeedResponse> {
+    return withSpan('api.call.getSecurityFeed', async (span) => {
+      span.setAttribute('api.endpoint', '/api/v1/security');
+      span.setAttribute('api.method', 'GET');
+      const result = await originalApiClient.getSecurityFeed(options);
+      span.setAttribute('api.response.count', result.items.length);
+      return result;
+    });
+  }
+
   async getPackageHosts(packageName: string): Promise<{ items: PackageHost[] }> {
     return withSpan(
       'api.call.getPackageHosts',
@@ -110,6 +127,42 @@ class InstrumentedApiClient {
         return result;
       }
     );
+  }
+
+  async getKernels(): Promise<KernelFleetResponse> {
+    return withSpan('api.call.getKernels', async (span) => {
+      span.setAttribute('api.endpoint', '/api/kernels');
+      span.setAttribute('api.method', 'GET');
+      const result = await originalApiClient.getKernels();
+      span.setAttribute('api.response.count', result.items.length);
+      return result;
+    });
+  }
+
+  async getActivity(options?: Parameters<typeof originalApiClient.getActivity>[0]): Promise<ActivityResponse> {
+    return withSpan('api.call.getActivity', async (span) => {
+      span.setAttribute('api.endpoint', '/api/activity');
+      span.setAttribute('api.method', 'GET');
+      const result = await originalApiClient.getActivity(options);
+      span.setAttribute('api.response.count', result.items.length);
+      return result;
+    });
+  }
+
+  async getIngestDiagnostics(): Promise<IngestDiagnosticsResponse> {
+    return withSpan('api.call.getIngestDiagnostics', async (span) => {
+      span.setAttribute('api.endpoint', '/api/admin/ingest-diagnostics');
+      span.setAttribute('api.method', 'GET');
+      return await originalApiClient.getIngestDiagnostics();
+    });
+  }
+
+  async getWebhookCoverage(): Promise<WebhookCoverageResponse> {
+    return withSpan('api.call.getWebhookCoverage', async (span) => {
+      span.setAttribute('api.endpoint', '/api/admin/webhook-coverage');
+      span.setAttribute('api.method', 'GET');
+      return await originalApiClient.getWebhookCoverage();
+    });
   }
 
   // Admin: API Keys
@@ -200,4 +253,4 @@ export const instrumentedApiClient = new InstrumentedApiClient();
 
 // Re-export types and error class
 export { ApiError };
-export type { Stats, Host, PackageUpdate, HostUpdate, PackageHost, ListAPIKeysResponse, CreateAPIKeyRequest, CreateAPIKeyResponse, ListWebhooksResponse, WebhookConfig, WebhookConfigCreate, WebhookConfigUpdate, WebhookTestResponse, WebhookDeliveryHistory };
+export type { Stats, Host, PackageUpdate, HostUpdate, PackageHost, SecurityFeedResponse, ListAPIKeysResponse, CreateAPIKeyRequest, CreateAPIKeyResponse, ListWebhooksResponse, WebhookConfig, WebhookConfigCreate, WebhookConfigUpdate, WebhookTestResponse, WebhookDeliveryHistory, KernelFleetResponse, ActivityResponse, IngestDiagnosticsResponse, WebhookCoverageResponse };

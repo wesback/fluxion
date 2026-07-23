@@ -142,6 +142,40 @@ api:
       memory: 256Mi
 ```
 
+#### Retention Maintenance
+
+The chart records the confirmed data policy in
+`<release>-fluxion-maintenance-policy`:
+
+```yaml
+maintenance:
+  enabled: false
+  schedule: "0 3 * * 0"  # Sunday at 03:00 UTC
+  retentionDays: 365
+  exportMaxRows: 10000
+```
+
+The weekly CronJob is intentionally disabled by default. To enable it, set
+`maintenance.endpoint` to the backend retention endpoint and provide an API key
+secret:
+
+```yaml
+maintenance:
+  enabled: true
+  endpoint: "http://fluxion-api:8000/api/v1/maintenance/retention"
+  apiKey:
+    existingSecret: "fluxion-maintenance"
+    secretKey: "api-key"
+```
+
+The endpoint accepts an authenticated `POST` request with the existing
+`X-API-Key` header and JSON body `{"retention_days":365}`, performs bounded
+cleanup for package updates and webhook history, and returns a 2xx response.
+No database or destructive shell command is embedded in the chart. The backend
+enforces a minimum retention period of 365 days. The backend already caps
+exports at 10,000 rows; `exportMaxRows` keeps that policy visible to delivery
+configuration.
+
 #### Database Configuration
 
 ```yaml

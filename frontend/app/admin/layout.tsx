@@ -3,11 +3,12 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Key, Webhook } from "lucide-react"
+import { Activity, Key, Webhook } from "lucide-react"
 
 const adminNav = [
   { name: "API Keys", href: "/admin/api-keys", icon: Key },
   { name: "Webhooks", href: "/admin/webhooks", icon: Webhook },
+  { name: "Diagnostics", href: "/admin/diagnostics", icon: Activity },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

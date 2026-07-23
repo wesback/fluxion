@@ -295,6 +295,37 @@ config:
     serviceName: "fluxion"
     environment: "development"
 
+# Retention and maintenance policy
+# The cleanup CronJob remains disabled until the backend exposes the configured
+# authenticated maintenance endpoint.
+maintenance:
+  enabled: false
+  schedule: "0 3 * * 0"  # Weekly, Sunday at 03:00 UTC
+  retentionDays: 365
+  exportMaxRows: 10000
+  endpoint: ""  # Set to the existing backend maintenance endpoint before enabling
+  method: POST
+  image:
+    repository: curlimages/curl
+    tag: "8.10.1"
+    pullPolicy: IfNotPresent
+  apiKey:
+    existingSecret: ""  # Defaults to the chart API secret
+    secretKey: admin-api-key
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 900
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+
 # Secrets configuration
 # Use external-secrets or sealed-secrets in production
 secrets:
@@ -473,6 +504,7 @@ argocd:
     frontend: "2"
     ingress: "3"
     otelCollector: "1"
+    maintenance: "3"
   
   # Sync options
   syncOptions:

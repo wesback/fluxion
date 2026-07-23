@@ -72,3 +72,25 @@ class WebhookDeliveryHistory(Base):
             f"event_type='{self.event_type}', status_code={self.status_code}, "
             f"attempt={self.attempt_number})>"
         )
+
+
+class IngestDiagnostic(Base):
+    """Server-observed aggregate for an ingest request."""
+
+    __tablename__ = "ingest_diagnostics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="webhook")
+    package_manager: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    package_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    accepted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rejected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False, default="accepted")
+
+    __table_args__ = (
+        Index("ix_ingest_diagnostics_received_at", "received_at"),
+        Index("ix_ingest_diagnostics_package_manager", "package_manager"),
+    )

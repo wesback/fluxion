@@ -2,7 +2,10 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from fluxion.services.export import MAX_EXPORT_ROWS
+from fluxion.services.time import as_utc
 
 
 class HostListItem(BaseModel):
@@ -23,6 +26,7 @@ class HostListItem(BaseModel):
     os_info: str = Field(..., description="Operating system information")
     last_seen: datetime = Field(..., description="Last time host reported in (ISO8601 UTC)")
     total_updates: int = Field(..., description="Total number of updates for this host")
+    status: str = Field(..., description="Liveness status derived from package-report activity")
 
 
 class HostListResponse(BaseModel):
@@ -64,6 +68,7 @@ class UpdateItem(BaseModel):
     old_version: str | None = Field(None, description="Previous version (null for new installs)")
     new_version: str = Field(..., description="New version installed")
     update_timestamp: datetime = Field(..., description="When the update occurred (ISO8601 UTC)")
+    is_security: bool = Field(..., description="Whether the update was security-related")
 
 
 class HostUpdatesResponse(BaseModel):
@@ -93,6 +98,39 @@ class HostUpdatesResponse(BaseModel):
     offset: int = Field(..., description="Offset used for pagination")
 
 
+class UpdateFilters(BaseModel):
+    """Canonical filters shared by update, security, and export queries."""
+
+    hostname: str | None = None
+    os_info: str | None = None
+    package_name: str | None = None
+    from_date: datetime | None = None
+    to_date: datetime | None = None
+    is_security: bool | None = None
+    is_install: bool | None = None
+    is_kernel: bool | None = None
+    limit: int = Field(100, ge=1, le=MAX_EXPORT_ROWS)
+    offset: int = Field(0, ge=0)
+
+    @field_validator("to_date")
+    @classmethod
+    def validate_date_range(cls, value: datetime | None, info):
+        """Reject a reversed date range when both bounds are supplied."""
+        from_date = info.data.get("from_date")
+        if value is not None and from_date is not None:
+            from_date = as_utc(from_date)
+            value = as_utc(value)
+        if value is not None and from_date is not None and from_date > value:
+            raise ValueError("from_date must be before to_date")
+        return value
+
+    @field_validator("from_date", "to_date")
+    @classmethod
+    def normalize_utc(cls, value: datetime | None) -> datetime | None:
+        """Give all API date filters explicit UTC semantics."""
+        return as_utc(value) if value is not None else None
+
+
 class PackageHostItem(BaseModel):
     """Single host item for package hosts endpoint."""
 
@@ -103,6 +141,7 @@ class PackageHostItem(BaseModel):
                 "package_name": "nginx",
                 "current_version": "1.22.0",
                 "last_updated": "2025-10-29T14:30:00Z",
+                "is_security": False,
             }
         }
     )
@@ -113,6 +152,7 @@ class PackageHostItem(BaseModel):
     last_updated: datetime = Field(
         ..., description="When this package was last updated on this host (ISO8601 UTC)"
     )
+    is_security: bool = Field(..., description="Whether the latest update was security-related")
 
 
 class PackageHostsResponse(BaseModel):
@@ -156,6 +196,7 @@ class RecentUpdateItem(BaseModel):
     old_version: str | None = Field(None, description="Previous version (null for new installs)")
     new_version: str = Field(..., description="New version installed")
     timestamp: datetime = Field(..., description="When the update occurred (ISO8601 UTC)")
+    is_security: bool = Field(..., description="Whether the update was security-related")
 
 
 class RecentUpdatesResponse(BaseModel):
@@ -178,6 +219,50 @@ class RecentUpdatesResponse(BaseModel):
     )
 
     items: list[RecentUpdateItem] = Field(..., description="List of recent updates")
+
+
+class SecurityFeedItem(BaseModel):
+    """Security update shown in the security feed."""
+
+    hostname: str
+    package_name: str
+    old_version: str | None
+    new_version: str
+    update_timestamp: datetime
+    is_security: bool = True
+
+
+class SecurityFeedResponse(BaseModel):
+    """Security updates plus summary aggregations."""
+
+    items: list[SecurityFeedItem]
+    total: int
+    limit: int
+    offset: int
+    security_updates_last_24h: int
+    security_updates_last_7d: int
+    top_packages: list["TopPackageItem"]
+    top_hosts: list["TopHostItem"]
+
+
+class HostHealthItem(BaseModel):
+    """Host health status derived from last package report."""
+
+    hostname: str
+    os_info: str
+    last_seen: datetime
+    total_updates: int
+    status: str
+
+
+class HostHealthResponse(BaseModel):
+    """Fleet health list and status aggregations."""
+
+    items: list[HostHealthItem]
+    total_hosts: int
+    healthy_hosts: int
+    stale_hosts: int
+    missing_hosts: int
 
 
 class TopPackageItem(BaseModel):

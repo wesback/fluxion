@@ -11,6 +11,8 @@ import {
   type WebhookConfigUpdate,
   type WebhookTestResponse,
   type WebhookDeliveryHistory,
+  type IngestDiagnosticsResponse,
+  type WebhookCoverageResponse,
 } from '../telemetry/api-client';
 import { toast } from 'sonner';
 
@@ -19,6 +21,8 @@ export const adminQueryKeys = {
   webhooks: ['admin', 'webhooks'] as const,
   webhook: (id: number) => ['admin', 'webhooks', id] as const,
   webhookHistory: (id: number) => ['admin', 'webhooks', id, 'history'] as const,
+  ingestDiagnostics: ['admin', 'ingest-diagnostics'] as const,
+  webhookCoverage: ['admin', 'webhook-coverage'] as const,
 };
 
 const defaultQueryOptions = {
@@ -157,8 +161,41 @@ export function useWebhookHistory(webhookId: number, limit: number = 50) {
         toast.error(message);
         throw error;
       }
+
     },
     ...defaultQueryOptions,
     enabled: webhookId > 0,
+  });
+}
+
+export function useIngestDiagnostics() {
+  return useQuery<IngestDiagnosticsResponse, Error>({
+    queryKey: adminQueryKeys.ingestDiagnostics,
+    queryFn: async () => {
+      try {
+        return await apiClient.getIngestDiagnostics();
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'Failed to fetch ingest diagnostics';
+        toast.error(message);
+        throw error;
+      }
+    },
+    ...defaultQueryOptions,
+  });
+}
+
+export function useWebhookCoverage() {
+  return useQuery<WebhookCoverageResponse, Error>({
+    queryKey: adminQueryKeys.webhookCoverage,
+    queryFn: async () => {
+      try {
+        return await apiClient.getWebhookCoverage();
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'Failed to fetch webhook coverage';
+        toast.error(message);
+        throw error;
+      }
+    },
+    ...defaultQueryOptions,
   });
 }

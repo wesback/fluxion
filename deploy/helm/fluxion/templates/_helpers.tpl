@@ -106,6 +106,13 @@ API configmap name
 {{- end }}
 
 {{/*
+Maintenance policy ConfigMap name
+*/}}
+{{- define "fluxion.maintenance.configMapName" -}}
+{{- printf "%s-maintenance-policy" (include "fluxion.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
 OpenTelemetry Collector fullname
 */}}
 {{- define "fluxion.otelCollector.fullname" -}}

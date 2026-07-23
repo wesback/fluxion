@@ -16,10 +16,23 @@ from fluxion.schemas.query import (
     RecentUpdatesResponse,
     StatsResponse,
 )
+from fluxion.services.host_health import (
+    HOST_MISSING_AFTER_DAYS,
+    HOST_STALE_AFTER_DAYS,
+    HostStatus,
+    get_host_status,
+)
 from fluxion.telemetry import get_tracer
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "HostStatus",
+    "HOST_STALE_AFTER_DAYS",
+    "HOST_MISSING_AFTER_DAYS",
+    "get_host_status",
+]
 
 
 @router.get(
@@ -84,6 +97,7 @@ async def _list_hosts_impl(session: AsyncSession) -> HostListResponse:
             func.coalesce(update_count_subquery.c.update_count, 0).label("total_updates"),
         )
         .outerjoin(update_count_subquery, Host.id == update_count_subquery.c.host_id)
+        .where(Host.archived_at.is_(None))
         .order_by(Host.last_seen.desc())
     )
 
@@ -97,6 +111,7 @@ async def _list_hosts_impl(session: AsyncSession) -> HostListResponse:
                 "os_info": row.os_info,
                 "last_seen": row.last_seen,
                 "total_updates": row.total_updates,
+                "status": get_host_status(row.last_seen).value,
             }
             for row in hosts
         ]
@@ -179,7 +194,9 @@ async def _get_host_updates_impl(
 ) -> HostUpdatesResponse:
     """Implementation of get host updates with query optimization."""
     # First, verify the host exists
-    host_result = await session.execute(select(Host).where(Host.hostname == hostname))
+    host_result = await session.execute(
+        select(Host).where(Host.hostname == hostname, Host.archived_at.is_(None))
+    )
     host = host_result.scalar_one_or_none()
 
     if not host:
@@ -223,6 +240,7 @@ async def _get_host_updates_impl(
                 "old_version": update.old_version,
                 "new_version": update.new_version,
                 "update_timestamp": update.update_timestamp,
+                "is_security": update.is_security,
             }
             for update in updates
         ],
@@ -291,6 +309,7 @@ async def _get_package_hosts_impl(
             PackageUpdate.package_name,
             PackageUpdate.new_version,
             PackageUpdate.update_timestamp,
+            PackageUpdate.is_security,
             func.row_number()
             .over(
                 partition_by=PackageUpdate.host_id,
@@ -311,7 +330,7 @@ async def _get_package_hosts_impl(
             latest_update_subquery.c.update_timestamp,
         )
         .join(latest_update_subquery, Host.id == latest_update_subquery.c.host_id)
-        .where(latest_update_subquery.c.rn == 1)
+        .where(Host.archived_at.is_(None), latest_update_subquery.c.rn == 1)
         .order_by(Host.hostname)
     )
 
@@ -325,6 +344,7 @@ async def _get_package_hosts_impl(
                 "package_name": row.package_name,
                 "current_version": row.new_version,
                 "last_updated": row.update_timestamp,
+                "is_security": row.is_security,
             }
             for row in hosts
         ]
@@ -390,9 +410,13 @@ async def _get_recent_updates_impl(
             PackageUpdate.old_version,
             PackageUpdate.new_version,
             PackageUpdate.update_timestamp,
+            PackageUpdate.is_security,
         )
         .join(Host, PackageUpdate.host_id == Host.id)
-        .where(PackageUpdate.update_timestamp >= cutoff_time)
+        .where(
+            Host.archived_at.is_(None),
+            PackageUpdate.update_timestamp >= cutoff_time,
+        )
         .order_by(PackageUpdate.update_timestamp.desc())
         .limit(limit)
     )
@@ -408,6 +432,7 @@ async def _get_recent_updates_impl(
                 "old_version": row.old_version,
                 "new_version": row.new_version,
                 "timestamp": row.update_timestamp,
+                "is_security": row.is_security,
             }
             for row in updates
         ]
@@ -463,18 +488,27 @@ async def get_stats(
 async def _get_stats_impl(session: AsyncSession) -> StatsResponse:
     """Implementation of get stats with query optimization."""
     # Get total hosts
-    total_hosts_result = await session.execute(select(func.count(Host.id)))
+    total_hosts_result = await session.execute(
+        select(func.count(Host.id)).where(Host.archived_at.is_(None))
+    )
     total_hosts = total_hosts_result.scalar() or 0
 
     # Get total updates
-    total_updates_result = await session.execute(select(func.count(PackageUpdate.id)))
+    total_updates_result = await session.execute(
+        select(func.count(PackageUpdate.id))
+        .join(Host, PackageUpdate.host_id == Host.id)
+        .where(Host.archived_at.is_(None))
+    )
     total_updates = total_updates_result.scalar() or 0
 
     # Get updates in last 24 hours
     cutoff_24h = datetime.now(UTC) - timedelta(hours=24)
     updates_24h_result = await session.execute(
-        select(func.count(PackageUpdate.id)).where(
-            PackageUpdate.update_timestamp >= cutoff_24h
+        select(func.count(PackageUpdate.id))
+        .join(Host, PackageUpdate.host_id == Host.id)
+        .where(
+            Host.archived_at.is_(None),
+            PackageUpdate.update_timestamp >= cutoff_24h,
         )
     )
     updates_last_24h = updates_24h_result.scalar() or 0
@@ -482,7 +516,12 @@ async def _get_stats_impl(session: AsyncSession) -> StatsResponse:
     # Get updates in last 7 days
     cutoff_7d = datetime.now(UTC) - timedelta(days=7)
     updates_7d_result = await session.execute(
-        select(func.count(PackageUpdate.id)).where(PackageUpdate.update_timestamp >= cutoff_7d)
+        select(func.count(PackageUpdate.id))
+        .join(Host, PackageUpdate.host_id == Host.id)
+        .where(
+            Host.archived_at.is_(None),
+            PackageUpdate.update_timestamp >= cutoff_7d,
+        )
     )
     updates_last_7d = updates_7d_result.scalar() or 0
 
@@ -492,6 +531,8 @@ async def _get_stats_impl(session: AsyncSession) -> StatsResponse:
             PackageUpdate.package_name,
             func.count(PackageUpdate.id).label("count"),
         )
+        .join(Host, PackageUpdate.host_id == Host.id)
+        .where(Host.archived_at.is_(None))
         .group_by(PackageUpdate.package_name)
         .order_by(func.count(PackageUpdate.id).desc())
         .limit(10)
@@ -506,6 +547,7 @@ async def _get_stats_impl(session: AsyncSession) -> StatsResponse:
             func.count(PackageUpdate.id).label("count"),
         )
         .join(PackageUpdate, Host.id == PackageUpdate.host_id)
+        .where(Host.archived_at.is_(None))
         .group_by(Host.hostname)
         .order_by(func.count(PackageUpdate.id).desc())
         .limit(10)

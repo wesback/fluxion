@@ -2,13 +2,14 @@
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.database import get_session
-from fluxion.models import Host, PackageUpdate
+from fluxion.models import Host, IngestDiagnostic, PackageUpdate
 from fluxion.schemas.package_update import (
     BatchPackageUpdateRequest,
     BatchPackageUpdateResponse,
@@ -16,6 +17,7 @@ from fluxion.schemas.package_update import (
     PackageUpdateResponse,
 )
 from fluxion.services import WebhookService
+from fluxion.services.ingest_adapters import adapter_for
 from fluxion.telemetry import get_tracer, record_package_update
 
 router = APIRouter()
@@ -31,6 +33,66 @@ INSTALL_SENTINEL_OLD_VERSIONS = {
     "null",
     "",
 }
+
+
+@router.post(
+    "/updates/ingest/{package_manager}",
+    response_model=BatchPackageUpdateResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Normalize a supported distro package-manager ingest",
+)
+async def ingest_package_manager_updates(
+    package_manager: str,
+    payload: dict[str, Any],
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> BatchPackageUpdateResponse:
+    """Adapt dnf/yum, apk, or zypper payloads into the canonical batch contract."""
+    adapter = adapter_for(package_manager)
+    if adapter is None:
+        session.add(
+            IngestDiagnostic(
+                package_manager=package_manager.lower(),
+                package_count=0,
+                accepted_count=0,
+                rejected_count=1,
+                outcome="unsupported_package_manager",
+            )
+        )
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported package manager; use dnf, yum, apk, or zypper",
+        )
+    try:
+        normalized = adapter.normalize(payload)
+        batch = BatchPackageUpdateRequest(
+            hostname=normalized.hostname,
+            os_info=normalized.os_info,
+            package_manager=normalized.package_manager,
+            updates=[
+                {
+                    "package_name": update.package_name,
+                    "old_version": update.old_version,
+                    "new_version": update.new_version,
+                    "is_security": update.is_security,
+                }
+                for update in normalized.updates
+            ],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        session.add(
+            IngestDiagnostic(
+                package_manager=package_manager.lower(),
+                package_count=0,
+                accepted_count=0,
+                rejected_count=1,
+                outcome="rejected",
+            )
+        )
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return await _create_batch_package_updates_impl(batch, background_tasks, session, None)
 
 
 def _normalize_old_version(old_version: str | None) -> str | None:
@@ -120,6 +182,8 @@ async def _create_package_update_impl(
                     update_data.package_name,
                     old_version,
                     update_data.new_version,
+                    update_data.is_security,
+                    update_data.package_manager,
                     now,
                     session,
                 )
@@ -129,10 +193,21 @@ async def _create_package_update_impl(
                 update_data.package_name,
                 old_version,
                 update_data.new_version,
+                update_data.is_security,
+                update_data.package_manager,
                 now,
                 session,
             )
 
+        session.add(
+            IngestDiagnostic(
+                package_manager=update_data.package_manager or "apt",
+                package_count=1,
+                accepted_count=1,
+                rejected_count=0,
+                outcome="accepted",
+            )
+        )
         # Commit the transaction
         await session.commit()
 
@@ -172,8 +247,10 @@ async def _create_package_update_impl(
 async def _upsert_host(
     hostname: str, session: AsyncSession, os_info: str | None = None
 ) -> tuple[Host, datetime]:
-    """Upsert host record (create if not exists, update last_seen and os_info if exists)."""
-    result = await session.execute(select(Host).where(Host.hostname == hostname))
+    """Upsert only an active identity; archived hosts are never reactivated."""
+    result = await session.execute(
+        select(Host).where(Host.hostname == hostname, Host.archived_at.is_(None))
+    )
     host = result.scalar_one_or_none()
 
     now = datetime.now(UTC)
@@ -197,6 +274,7 @@ async def _upsert_host(
             hostname=hostname,
             os_info=os_info or "Unknown",
             last_seen=now,
+            archived_at=None,
         )
         session.add(host)
         await session.flush()  # Flush to get host.id
@@ -210,6 +288,8 @@ async def _insert_package_update(
     package_name: str,
     old_version: str | None,
     new_version: str,
+    is_security: bool,
+    package_manager: str | None,
     update_timestamp: datetime,
     session: AsyncSession,
 ) -> PackageUpdate:
@@ -219,6 +299,8 @@ async def _insert_package_update(
         package_name=package_name,
         old_version=old_version,
         new_version=new_version,
+        is_security=is_security,
+        package_manager=package_manager,
         update_timestamp=update_timestamp,
     )
     session.add(package_update)
@@ -327,7 +409,7 @@ async def _create_batch_package_updates_impl(
 
         # Create all package update records
         created_ids: list[int] = []
-        package_changes: list[tuple[str, str | None, str, bool]] = []  # (name, old, new, is_security)
+        package_changes: list[tuple[str, str | None, str, bool]] = []
 
         for update_item in batch_data.updates:
             # Normalize old_version sentinel values to None for new installs
@@ -343,6 +425,8 @@ async def _create_batch_package_updates_impl(
                         update_item.package_name,
                         old_version,
                         update_item.new_version,
+                        update_item.is_security,
+                        batch_data.package_manager or update_item.package_manager,
                         now,
                         session,
                     )
@@ -352,6 +436,8 @@ async def _create_batch_package_updates_impl(
                     update_item.package_name,
                     old_version,
                     update_item.new_version,
+                    update_item.is_security,
+                    batch_data.package_manager or update_item.package_manager,
                     now,
                     session,
                 )
@@ -375,6 +461,15 @@ async def _create_batch_package_updates_impl(
                 f"id={package_update.id}"
             )
 
+        session.add(
+            IngestDiagnostic(
+                package_manager=batch_data.package_manager or "apt",
+                package_count=len(created_ids),
+                accepted_count=len(created_ids),
+                rejected_count=0,
+                outcome="accepted",
+            )
+        )
         # Commit the transaction
         await session.commit()
 

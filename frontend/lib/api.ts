@@ -12,11 +12,32 @@ export interface PackageUpdate {
   old_version: string | null;
   new_version: string;
   update_timestamp: string;
+  is_security: boolean;
 }
 
 export interface HostUpdate extends PackageUpdate {
   hostname: string;
   timestamp: string;
+}
+
+export interface SecurityFeedItem {
+  hostname: string;
+  package_name: string;
+  old_version: string | null;
+  new_version: string;
+  update_timestamp: string;
+  is_security: boolean;
+}
+
+export interface SecurityFeedResponse {
+  items: SecurityFeedItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  security_updates_last_24h: number;
+  security_updates_last_7d: number;
+  top_packages: Array<{ package: string; count: number }>;
+  top_hosts: Array<{ hostname: string; count: number }>;
 }
 
 export interface Stats {
@@ -26,6 +47,10 @@ export interface Stats {
   updates_last_7d: number;
   most_updated_packages: Array<{ package: string; count: number }>;
   most_active_hosts: Array<{ hostname: string; count: number }>;
+  security_updates_last_24h?: number;
+  security_updates_last_7d?: number;
+  top_security_packages?: Array<{ package: string; count: number }>;
+  top_security_hosts?: Array<{ hostname: string; count: number }>;
 }
 
 export interface PackageHost {
@@ -33,6 +58,63 @@ export interface PackageHost {
   package_name: string;
   current_version: string;
   last_updated: string;
+  is_security?: boolean;
+}
+
+export interface KernelFleetItem {
+  hostname: string;
+  os_info: string;
+  kernel_package: string | null;
+  kernel_version: string | null;
+  last_updated: string | null;
+  update_age_seconds: number | null;
+  is_security: boolean;
+}
+
+export interface KernelFleetResponse {
+  items: KernelFleetItem[];
+  total_hosts: number;
+}
+
+export interface ActivityPoint {
+  bucket: string;
+  updates: number;
+  installs: number;
+  upgrades: number;
+  security_updates: number;
+  kernel_updates: number;
+}
+
+export interface ActivityResponse {
+  bucket: "hour" | "day" | "week";
+  from_date: string;
+  to_date: string;
+  items: ActivityPoint[];
+}
+
+export interface IngestDiagnosticsResponse {
+  from_date: string;
+  to_date: string;
+  requests: number;
+  packages_received: number;
+  packages_accepted: number;
+  packages_rejected: number;
+  by_package_manager: Record<string, number>;
+  by_outcome: Record<string, number>;
+}
+
+export interface WebhookCoverageItem {
+  event_type: string;
+  configured: number;
+  attempted: number;
+  delivered: number;
+  failed: number;
+}
+
+export interface WebhookCoverageResponse {
+  from_date: string;
+  to_date: string;
+  items: WebhookCoverageItem[];
 }
 
 // Admin types
@@ -199,10 +281,53 @@ class ApiClient {
     return response.data;
   }
 
+  async getSecurityFeed(options?: {
+    limit?: number;
+    offset?: number;
+    hostname?: string;
+    package_name?: string;
+    from_date?: string;
+    to_date?: string;
+  }): Promise<SecurityFeedResponse> {
+    const response = await this.client.get<SecurityFeedResponse>('/api/security', {
+      params: options,
+    });
+    return response.data;
+  }
+
   async getPackageHosts(packageName: string): Promise<{ items: PackageHost[] }> {
     const response = await this.client.get<{ items: PackageHost[] }>(
       `/api/packages/${encodeURIComponent(packageName)}/hosts`
     );
+    return response.data;
+  }
+
+  async getKernels(): Promise<KernelFleetResponse> {
+    const response = await this.client.get<KernelFleetResponse>('/api/kernels');
+    return response.data;
+  }
+
+  async getActivity(options?: {
+    hostname?: string;
+    package_name?: string;
+    from_date?: string;
+    to_date?: string;
+    is_security?: boolean;
+    is_install?: boolean;
+    is_kernel?: boolean;
+    bucket?: 'hour' | 'day' | 'week';
+  }): Promise<ActivityResponse> {
+    const response = await this.client.get<ActivityResponse>('/api/activity', { params: options });
+    return response.data;
+  }
+
+  async getIngestDiagnostics(): Promise<IngestDiagnosticsResponse> {
+    const response = await this.client.get<IngestDiagnosticsResponse>('/api/admin/ingest-diagnostics');
+    return response.data;
+  }
+
+  async getWebhookCoverage(): Promise<WebhookCoverageResponse> {
+    const response = await this.client.get<WebhookCoverageResponse>('/api/admin/webhook-coverage');
     return response.data;
   }
 

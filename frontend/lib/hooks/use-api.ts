@@ -1,5 +1,5 @@
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { instrumentedApiClient as apiClient, ApiError, Stats, Host, PackageUpdate, HostUpdate, PackageHost } from '../telemetry/api-client';
+import { instrumentedApiClient as apiClient, ApiError, Stats, Host, PackageUpdate, HostUpdate, PackageHost, SecurityFeedResponse, KernelFleetResponse, ActivityResponse } from '../telemetry/api-client';
 import { toast } from 'sonner';
 
 // Query keys for cache management
@@ -10,6 +10,9 @@ export const queryKeys = {
   hostUpdates: (hostname: string, options?: Record<string, unknown>) => ['host', hostname, 'updates', options] as const,
   recentUpdates: (hours: number) => ['updates', 'recent', hours] as const,
   packageHosts: (packageName: string) => ['package', packageName, 'hosts'] as const,
+  securityFeed: (options?: Record<string, unknown>) => ['security', options] as const,
+  kernels: (options?: Record<string, unknown>) => ['kernels', options] as const,
+  activity: (options?: Record<string, unknown>) => ['activity', options] as const,
 };
 
 // Default query options with retry logic and error handling
@@ -124,10 +127,37 @@ export function useRecentUpdates(
         handleQueryError(error, 'Failed to fetch recent updates');
         throw error;
       }
+
     },
     ...defaultQueryOptions,
     refetchInterval: 30000, // Auto-refresh every 30 seconds
     ...options,
+  });
+}
+
+export function useSecurityFeed(
+  options?: {
+    limit?: number;
+    offset?: number;
+    hostname?: string;
+    package_name?: string;
+    from_date?: string;
+    to_date?: string;
+  },
+  queryOptions?: Omit<UseQueryOptions<SecurityFeedResponse, Error>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery<SecurityFeedResponse, Error>({
+    queryKey: queryKeys.securityFeed(options),
+    queryFn: async () => {
+      try {
+        return await apiClient.getSecurityFeed(options);
+      } catch (error) {
+        handleQueryError(error, 'Failed to fetch security updates');
+        throw error;
+      }
+    },
+    ...defaultQueryOptions,
+    ...queryOptions,
   });
 }
 
@@ -148,9 +178,47 @@ export function usePackageSearch(
         handleQueryError(error, `Failed to search for package: ${packageName}`);
         throw error;
       }
+
     },
     ...defaultQueryOptions,
     enabled: !!packageName && packageName.length > 0,
     ...options,
+  });
+}
+
+export function useKernels(
+  queryOptions?: Omit<UseQueryOptions<KernelFleetResponse, Error>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery<KernelFleetResponse, Error>({
+    queryKey: queryKeys.kernels(),
+    queryFn: async () => {
+      try {
+        return await apiClient.getKernels();
+      } catch (error) {
+        handleQueryError(error, 'Failed to fetch kernel fleet');
+        throw error;
+      }
+    },
+    ...defaultQueryOptions,
+    ...queryOptions,
+  });
+}
+
+export function useActivity(
+  options?: Parameters<typeof apiClient.getActivity>[0],
+  queryOptions?: Omit<UseQueryOptions<ActivityResponse, Error>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery<ActivityResponse, Error>({
+    queryKey: queryKeys.activity(options),
+    queryFn: async () => {
+      try {
+        return await apiClient.getActivity(options);
+      } catch (error) {
+        handleQueryError(error, 'Failed to fetch activity');
+        throw error;
+      }
+    },
+    ...defaultQueryOptions,
+    ...queryOptions,
   });
 }

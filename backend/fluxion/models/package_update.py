@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -24,8 +24,12 @@ class PackageUpdate(Base):
         ForeignKey("hosts.id", ondelete="CASCADE"), nullable=False
     )
     package_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    package_manager: Mapped[str | None] = mapped_column(String(32), nullable=True)
     old_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
     new_version: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_security: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     update_timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
@@ -40,6 +44,11 @@ class PackageUpdate(Base):
     __table_args__ = (
         Index("ix_package_updates_package_name", "package_name"),
         Index("ix_package_updates_update_timestamp", "update_timestamp"),
+        Index(
+            "ix_package_updates_is_security_update_timestamp",
+            "is_security",
+            "update_timestamp",
+        ),
         # Composite indexes for efficient queries
         Index("ix_package_updates_host_id_update_timestamp", "host_id", "update_timestamp"),
         Index(

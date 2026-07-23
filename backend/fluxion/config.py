@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # CORS_ORIGINS=["https://dashboard.example.com","https://admin.example.com"]
     cors_origins: list[str] = ["*"]
 
+    # Weekly bounded retention maintenance.
+    package_update_retention_days: int = 365
+    webhook_history_retention_days: int = 365
+    retention_batch_size: int = 1000
+
     # Application metadata
     app_name: str = "Fluxion"
     app_version: str = "0.1.0"

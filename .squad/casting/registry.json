@@ -1,0 +1,39 @@
+{
+  "agents": {
+    "neo": {
+      "persistent_name": "Neo",
+      "universe": "The Matrix",
+      "created_at": "2026-07-11T00:05:53.066+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "trinity": {
+      "persistent_name": "Trinity",
+      "universe": "The Matrix",
+      "created_at": "2026-07-11T00:05:53.066+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "morpheus": {
+      "persistent_name": "Morpheus",
+      "universe": "The Matrix",
+      "created_at": "2026-07-11T00:05:53.066+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "tank": {
+      "persistent_name": "Tank",
+      "universe": "The Matrix",
+      "created_at": "2026-07-11T00:05:53.066+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "dozer": {
+      "persistent_name": "Dozer",
+      "universe": "The Matrix",
+      "created_at": "2026-07-11T00:05:53.066+02:00",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}

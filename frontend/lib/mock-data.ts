@@ -62,6 +62,7 @@ export const mockRecentUpdates: HostUpdate[] = [
     new_version: '1.18.0-6ubuntu14.5',
     timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
     update_timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    is_security: true,
   },
   {
     hostname: 'db-server-01',
@@ -70,6 +71,7 @@ export const mockRecentUpdates: HostUpdate[] = [
     new_version: '14.10-0ubuntu0.22.04.1',
     timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
     update_timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    is_security: false,
   },
   {
     hostname: 'api-server-02',
@@ -78,6 +80,7 @@ export const mockRecentUpdates: HostUpdate[] = [
     new_version: '24.0.8-1',
     timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     update_timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    is_security: false,
   },
   {
     hostname: 'web-server-03',
@@ -86,6 +89,7 @@ export const mockRecentUpdates: HostUpdate[] = [
     new_version: '249.11-0ubuntu3.12',
     timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
     update_timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+    is_security: false,
   },
   {
     hostname: 'cache-server-01',
@@ -94,6 +98,7 @@ export const mockRecentUpdates: HostUpdate[] = [
     new_version: '6.0.16-1ubuntu2',
     timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     update_timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    is_security: false,
   },
 ];
 
@@ -103,18 +108,21 @@ export const mockHostUpdates: PackageUpdate[] = [
     old_version: '1.18.0-6ubuntu14.4',
     new_version: '1.18.0-6ubuntu14.5',
     update_timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    is_security: true,
   },
   {
     package_name: 'systemd',
     old_version: '249.11-0ubuntu3.11',
     new_version: '249.11-0ubuntu3.12',
     update_timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    is_security: false,
   },
   {
     package_name: 'linux-image-generic',
     old_version: '5.15.0.91.91',
     new_version: '5.15.0.92.92',
     update_timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    is_security: false,
   },
 ];
 

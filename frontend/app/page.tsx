@@ -1,15 +1,17 @@
 "use client"
 
 import dynamic from "next/dynamic"
+import { useEffect, useState } from "react"
 import { StatsCard } from "@/components/stats-card"
 import { UpdatesTable } from "@/components/updates-table"
-import { Activity, Server, Clock, Calendar, RefreshCw } from "lucide-react"
-import { useStats, useRecentUpdates } from "@/lib/hooks/use-api"
+import { Activity, Server, Clock, Calendar, RefreshCw, AlertTriangle } from "lucide-react"
+import { useStats, useRecentUpdates, useHosts } from "@/lib/hooks/use-api"
 import { StatsCardSkeleton, TableSkeleton, ChartSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { useRefreshTracking } from "@/lib/telemetry"
+import { getHostHealthStatus } from "@/lib/host-health"
 
 const BarChart = dynamic(
   () => import("@/components/charts/bar-chart").then(mod => ({ default: mod.BarChart })),
@@ -19,9 +21,24 @@ const BarChart = dynamic(
 function DashboardContent() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useStats()
   const { data: recentUpdatesData, isLoading: updatesLoading, error: updatesError, refetch: refetchUpdates } = useRecentUpdates(24, 20)
+  const { data: hostsData, isLoading: hostsLoading, refetch: refetchHosts } = useHosts()
+  const [now, setNow] = useState(0)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setNow(Date.now()), 0)
+    return () => window.clearTimeout(timer)
+  }, [])
   const trackRefresh = useRefreshTracking()
 
   const recentUpdates = recentUpdatesData?.items || []
+  const hostHealth = (hostsData?.items || []).reduce(
+    (counts, host) => {
+      const status = getHostHealthStatus(host.last_seen, now ? new Date(now) : undefined)
+      if (status === "missing") counts.missing += 1
+      else if (status === "stale") counts.stale += 1
+      return counts
+    },
+    { stale: 0, missing: 0 }
+  )
 
   // Prepare chart data
   const topPackagesData = stats?.most_updated_packages.map(pkg => ({
@@ -37,7 +54,7 @@ function DashboardContent() {
   const handleRefresh = async () => {
     try {
       await toast.promise(
-        Promise.all([refetchStats(), refetchUpdates()]),
+        Promise.all([refetchStats(), refetchUpdates(), refetchHosts()]),
         {
           loading: 'Refreshing data...',
           success: 'Data refreshed successfully',
@@ -66,7 +83,7 @@ function DashboardContent() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {statsLoading ? (
           <>
             <StatsCardSkeleton />
@@ -75,7 +92,7 @@ function DashboardContent() {
             <StatsCardSkeleton />
           </>
         ) : statsError ? (
-          <div className="col-span-4 p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+          <div className="col-span-full p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
             Failed to load statistics
           </div>
         ) : stats ? (
@@ -103,6 +120,13 @@ function DashboardContent() {
               value={stats.updates_last_7d}
               icon={Calendar}
               description="This week"
+            />
+            <StatsCard
+              title="Host Health"
+              value={hostsLoading ? "…" : `${hostHealth.stale} stale · ${hostHealth.missing} missing`}
+              icon={AlertTriangle}
+              description="Based on package-report activity"
+              className={hostHealth.stale + hostHealth.missing > 0 ? "border-amber-300 dark:border-amber-700" : undefined}
             />
           </>
         ) : null}

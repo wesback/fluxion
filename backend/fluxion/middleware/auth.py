@@ -117,7 +117,9 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
             async for session in get_session():
                 # Check if admin role is required
                 required_role = None
-                if request.url.path.startswith("/api/v1/admin"):
+                if request.url.path.startswith("/api/v1/admin") or request.url.path.startswith(
+                    "/api/v1/maintenance"
+                ):
                     required_role = "admin"
 
                 key_obj: APIKey | None = await validate_api_key(api_key, session, required_role)

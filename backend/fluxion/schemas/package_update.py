@@ -28,6 +28,11 @@ class PackageUpdateItem(BaseModel):
         default=False,
         description="Whether this package update comes from a security update channel",
     )
+    package_manager: str | None = Field(
+        None,
+        max_length=32,
+        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
+    )
 
 
 class PackageUpdateRequest(BaseModel):
@@ -48,7 +53,9 @@ class PackageUpdateRequest(BaseModel):
 
     hostname: str = Field(..., min_length=1, max_length=255, description="Hostname of the server")
     os_info: str | None = Field(
-        None, max_length=500, description="Operating system information (auto-detected if not provided)"
+        None,
+        max_length=500,
+        description="Operating system information (auto-detected if not provided)",
     )
     package_name: str = Field(..., min_length=1, max_length=255, description="Name of the package")
     old_version: str | None = Field(
@@ -58,6 +65,11 @@ class PackageUpdateRequest(BaseModel):
     is_security: bool = Field(
         default=False,
         description="Whether this package update comes from a security update channel",
+    )
+    package_manager: str | None = Field(
+        None,
+        max_length=32,
+        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
     )
 
     @field_validator("hostname")
@@ -132,7 +144,14 @@ class BatchPackageUpdateRequest(BaseModel):
 
     hostname: str = Field(..., min_length=1, max_length=255, description="Hostname of the server")
     os_info: str | None = Field(
-        None, max_length=500, description="Operating system information (auto-detected if not provided)"
+        None,
+        max_length=500,
+        description="Operating system information (auto-detected if not provided)",
+    )
+    package_manager: str | None = Field(
+        None,
+        max_length=32,
+        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
     )
     updates: list[PackageUpdateItem] = Field(
         ..., min_length=1, description="List of package updates"

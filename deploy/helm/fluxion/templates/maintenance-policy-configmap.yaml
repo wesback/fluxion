@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluxion.maintenance.configMapName" . }}
+  labels:
+    {{- include "fluxion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: maintenance
+data:
+  RETENTION_DAYS: {{ .Values.maintenance.retentionDays | int | quote }}
+  EXPORT_MAX_ROWS: {{ .Values.maintenance.exportMaxRows | int | quote }}

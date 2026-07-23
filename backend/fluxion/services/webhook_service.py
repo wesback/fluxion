@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.models import WebhookConfig, WebhookDeliveryHistory
+from fluxion.services.package_classifier import is_kernel_package
 from fluxion.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
@@ -111,20 +112,6 @@ def format_ntfy_message(payload: dict, event_type: str) -> str:
     return "\n".join(lines)
 
 
-def is_kernel_package(package_name: str) -> bool:
-    """
-    Check if a package is a kernel package.
-
-    Args:
-        package_name: Name of the package
-
-    Returns:
-        True if the package is a kernel package, False otherwise
-    """
-    kernel_patterns = ["linux-image", "linux-headers", "linux-modules"]
-    return any(package_name.startswith(pattern) for pattern in kernel_patterns)
-
-
 class WebhookService:
     """Service for managing and delivering webhooks."""
 
@@ -180,7 +167,11 @@ class WebhookService:
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
                     is_ntfy = is_ntfy_webhook(webhook_config.url)
-                    target_url = normalize_ntfy_publish_url(webhook_config.url) if is_ntfy else webhook_config.url
+                    target_url = (
+                        normalize_ntfy_publish_url(webhook_config.url)
+                        if is_ntfy
+                        else webhook_config.url
+                    )
 
                     # Prepare headers
                     headers = {"Content-Type": "application/json"}

@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from "date-fns"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card } from "@/components/ui/card"
+import { SecurityBadge } from "@/components/security-badge"
 
 interface Update {
   hostname?: string
@@ -9,6 +10,7 @@ interface Update {
   new_version: string
   update_timestamp?: string
   timestamp?: string
+  is_security?: boolean
 }
 
 interface UpdatesTableProps {
@@ -49,7 +51,10 @@ export function UpdatesTable({ updates, showHostname = true }: UpdatesTableProps
                   </TableCell>
                 )}
                 <TableCell className="font-mono text-sm">
-                  {update.package_name}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{update.package_name}</span>
+                    {update.is_security && <SecurityBadge />}
+                  </div>
                 </TableCell>
                 <TableCell className="hidden md:table-cell font-mono text-sm text-muted-foreground">
                   {update.old_version || "N/A"}

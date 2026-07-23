@@ -4,14 +4,17 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Activity, Menu, X, Shield } from "lucide-react"
+import { Activity, Menu, X, Shield, ShieldCheck, Cpu } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useClickTracking } from "@/lib/telemetry"
 
 const navigation = [
   { name: "Dashboard", href: "/" },
   { name: "Hosts", href: "/hosts" },
+  { name: "Kernels", href: "/kernels" },
+  { name: "Activity", href: "/activity" },
   { name: "Packages", href: "/packages" },
+  { name: "Security", href: "/security" },
   { name: "Admin", href: "/admin" },
 ]
 
@@ -60,6 +63,8 @@ export function Navbar() {
                   )}
                 >
                   {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
+                  {item.name === "Security" && <ShieldCheck className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
+                  {item.name === "Kernels" && <Cpu className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
                   {item.name}
                 </Link>
                 )
@@ -105,6 +110,8 @@ export function Navbar() {
                 )}
               >
                 {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
+                {item.name === "Security" && <ShieldCheck className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
+                {item.name === "Kernels" && <Cpu className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
                 {item.name}
               </Link>
               )

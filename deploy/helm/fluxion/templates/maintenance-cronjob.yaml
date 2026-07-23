@@ -1,0 +1,79 @@
+{{- if .Values.maintenance.enabled }}
+{{- $endpoint := required "maintenance.endpoint must be set when maintenance.enabled is true" .Values.maintenance.endpoint }}
+{{- $secretName := .Values.maintenance.apiKey.existingSecret | default (include "fluxion.api.secretName" .) }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "fluxion.maintenance.configMapName" . }}
+  labels:
+    {{- include "fluxion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: maintenance
+  {{- if and .Values.argocd.syncWave .Values.argocd.syncWave.maintenance }}
+  annotations:
+    {{- include "fluxion.argocd.syncWave" (dict "wave" .Values.argocd.syncWave.maintenance) | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.maintenance.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.maintenance.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.maintenance.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.maintenance.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.maintenance.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.maintenance.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: {{ .Values.maintenance.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          labels:
+            {{- include "fluxion.labels" . | nindent 12 }}
+            app.kubernetes.io/component: maintenance
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: retention-cleanup
+              image: "{{ .Values.maintenance.image.repository }}:{{ .Values.maintenance.image.tag }}"
+              imagePullPolicy: {{ .Values.maintenance.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+              args:
+                - |
+                  curl --fail --silent --show-error \
+                    --connect-timeout 10 \
+                    --max-time 600 \
+                    --request "${MAINTENANCE_METHOD}" \
+                    --header "X-API-Key: ${MAINTENANCE_API_KEY}" \
+                    --header "Content-Type: application/json" \
+                    --data "${MAINTENANCE_PAYLOAD}" \
+                    "${MAINTENANCE_ENDPOINT}"
+              env:
+                - name: MAINTENANCE_ENDPOINT
+                  value: {{ $endpoint | quote }}
+                - name: MAINTENANCE_METHOD
+                  value: {{ .Values.maintenance.method | quote }}
+                - name: MAINTENANCE_PAYLOAD
+                  value: '{"retention_days":{{ .Values.maintenance.retentionDays | int }}}'
+                - name: MAINTENANCE_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $secretName }}
+                      key: {{ .Values.maintenance.apiKey.secretKey }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+              resources:
+                {{- toYaml .Values.maintenance.resources | nindent 16 }}
+{{- end }}

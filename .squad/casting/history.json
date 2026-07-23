@@ -1,0 +1,22 @@
+{
+  "universe_usage_history": [
+    {
+      "universe": "The Matrix",
+      "assignment_id": "fluxion-initial-team-2026-07-11",
+      "used_at": "2026-07-11T00:05:53.066+02:00"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "fluxion-initial-team-2026-07-11": {
+      "universe": "The Matrix",
+      "agents": {
+        "neo": "Neo",
+        "trinity": "Trinity",
+        "morpheus": "Morpheus",
+        "tank": "Tank",
+        "dozer": "Dozer"
+      },
+      "created_at": "2026-07-11T00:05:53.066+02:00"
+    }
+  }
+}
