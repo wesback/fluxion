@@ -199,6 +199,7 @@ describe("skeleton shimmer", () => {
 
 // ── Group 7: Chart tooltip ─────────────────────────────────────────────────
 describe("chart glass tooltip", () => {
+  const css = read("app/globals.css")
   const tooltip = read("components/charts/glass-tooltip.tsx")
   const bar = read("components/charts/bar-chart.tsx")
   const line = read("components/charts/line-chart.tsx")
@@ -242,6 +243,16 @@ describe("chart glass tooltip", () => {
     // The contrast audit decision must be documented in glass-tooltip.tsx.
     assert.match(tooltip, /4\.5:1/, "contrast audit ratio must be documented in glass-tooltip.tsx")
     assert.match(tooltip, /no opaque tint/, "contrast audit conclusion (no opaque tint) must be documented in glass-tooltip.tsx")
+  })
+  it("GlassTooltip applies glass-surface-tooltip modifier for dark-mode chart contrast", () => {
+    // Dark mode: glass-surface-alpha 0.05 is nearly transparent over bright chart series.
+    // glass-surface-tooltip raises the background to hsl(var(--card)/0.82) so
+    // muted-foreground clears 4.5:1 against any chart color behind the backdrop blur.
+    assert.match(tooltip, /glass-surface-tooltip/, "GlassTooltip must apply glass-surface-tooltip modifier")
+  })
+  it("globals.css defines :where(.dark) .glass-surface-tooltip smoked-glass background", () => {
+    // :where(.dark) keeps specificity at (0,1,0) so OS-level fallback rules win by source order.
+    assert.match(css, /:where\(\.dark\)\s+\.glass-surface-tooltip[\s\S]*background-color/, "dark-mode smoked-glass override must use :where(.dark) for correct specificity")
   })
 })
 

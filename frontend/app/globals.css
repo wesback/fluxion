@@ -346,6 +346,21 @@
     backdrop-filter: blur(var(--glass-blur));
   }
 
+  /* Dark-mode tooltip: "smoked glass" — card/82 ensures muted-foreground ≥7:1 over
+     any chart-data color visible through the backdrop blur. Light mode is unaffected
+     because this selector only matches inside .dark.
+     `:where(.dark)` holds specificity at (0,1,0) — equal to the OS-level fallback
+     rules (.glass-surface inside prefers-reduced-transparency, mobile/coarse-pointer,
+     and @supports-not-backdrop-filter). Those fallback blocks appear later in the file
+     and therefore win by source order, restoring background-color: hsl(var(--card))
+     (fully opaque) whenever a constrained-rendering or transparency fallback fires.
+     The JS fallback (html[data-reduced-transparency]) is already (0,2,1) and wins
+     regardless. */
+  :where(.dark) .glass-surface-tooltip {
+    background-color: hsl(var(--card) / 0.82);
+    border-color: hsl(var(--glass-border) / 0.20);
+  }
+
   /* Interactive glass surface: animate box-shadow on interaction */
   .glass-surface[data-interactive] {
     transition: box-shadow 150ms ease;
