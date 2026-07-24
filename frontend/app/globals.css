@@ -336,13 +336,18 @@
 /* Single reusable glass surface class */
 .glass-surface {
   background-color: hsl(var(--glass-surface) / var(--glass-surface-alpha));
-  border: 1px solid;
-  border-color: hsl(var(--glass-border) / var(--glass-border-alpha));
+  border: 1px solid hsl(var(--glass-border) / var(--glass-border-alpha));
+  border-radius: var(--radius);
   box-shadow:
     0 1px 2px 0 hsl(var(--glass-shadow) / var(--glass-shadow-near-alpha)),
     0 12px 28px -6px hsl(var(--glass-shadow) / var(--glass-shadow-alpha));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   backdrop-filter: blur(var(--glass-blur));
+}
+
+/* Interactive glass surface: animate box-shadow on interaction */
+.glass-surface[data-interactive] {
+  transition: box-shadow 200ms ease;
 }
 
 /* Reduced-transparency fallbacks — opaque card fill, semantic border, no filters */
@@ -369,6 +374,20 @@ html.reduced-transparency .glass-surface {
     background-color: hsl(var(--glass-opaque));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+}
+
+/* Browsers without backdrop-filter support: opaque solid fill */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-surface {
+    background-color: hsl(var(--glass-opaque));
+  }
+}
+
+/* Reduced-motion: remove box-shadow transition from interactive surfaces */
+@media (prefers-reduced-motion: reduce) {
+  .glass-surface[data-interactive] {
+    transition: none;
   }
 }
 
