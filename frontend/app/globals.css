@@ -216,6 +216,7 @@
   /* Navbar link tokens */
   .navbar-link {
     color: hsl(var(--muted-foreground));
+    padding-inline: 0.5rem;
     transition: color 150ms;
   }
   .navbar-link:hover {
