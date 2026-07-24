@@ -305,7 +305,8 @@ html.reduced-transparency .glass-surface {
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   /* Three-layer ambient background: base fill (bg-background), top-left secondary
-     radial, bottom-right accent radial, and 32px repeating grid lines on top. */
+     radial, bottom-right accent radial, and 32px repeating grid lines beneath them
+     (radial washes are listed first in the gradient stack and therefore paint on top). */
   body {
     position: relative;
     background-image:
