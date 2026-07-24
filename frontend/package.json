@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:ui-contract": "node --test tests/*.test.mjs"
+    "test:ui-contract": "node --test tests/*.test.mjs",
+    "test:frosted-glass": "node --test tests/frosted-glass-contract.test.mjs"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
