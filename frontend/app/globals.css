@@ -395,7 +395,30 @@
   }
 }
 
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 @layer base {
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--background)) 25%,
+      hsl(var(--background-secondary)) 50%,
+      hsl(var(--background)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.6s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer {
+      animation: none;
+      background: hsl(var(--background-secondary));
+    }
+  }
+
   * {
     @apply border-border;
   }
