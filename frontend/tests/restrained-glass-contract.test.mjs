@@ -81,6 +81,56 @@ test("tokens and transparency fallback", () => {
   // two-layer shadow
   assert.ok(css.includes("--glass-shadow"), "glass-surface must reference --glass-shadow")
 
+  // ── Exact spec token values ───────────────────────────────────────────────
+  // :root
+  assert.ok(css.includes("--glass-surface-alpha: 0.78"), ":root --glass-surface-alpha must be 0.78")
+  assert.ok(css.includes("--glass-border: 220 13% 88%"), ":root --glass-border must be 220 13% 88%")
+  assert.ok(css.includes("--glass-border-alpha: 0.72"), ":root --glass-border-alpha must be 0.72")
+  assert.ok(css.includes("--glass-shadow: 222 47% 11%"), ":root --glass-shadow must be 222 47% 11%")
+  assert.ok(css.includes("--glass-shadow-near-alpha: 0.08"), ":root --glass-shadow-near-alpha must be 0.08")
+  assert.ok(css.includes("--glass-shadow-alpha: 0.12"), ":root --glass-shadow-alpha must be 0.12")
+  assert.ok(css.includes("--glass-opaque: var(--card)"), "--glass-opaque must be var(--card) in both themes")
+  assert.ok(css.includes("--control-border: 0 0% 52%"), ":root --control-border must be 0 0% 52%")
+  assert.ok(css.includes("--input-border: 0 0% 52%"), ":root --input-border must be 0 0% 52%")
+  // .dark
+  assert.ok(css.includes("--glass-surface: 0 0% 12%"), ".dark --glass-surface must be 0 0% 12%")
+  assert.ok(css.includes("--glass-surface-alpha: 0.82"), ".dark --glass-surface-alpha must be 0.82")
+  assert.ok(css.includes("--glass-border-alpha: 0.14"), ".dark --glass-border-alpha must be 0.14")
+  assert.ok(css.includes("--glass-shadow-near-alpha: 0.28"), ".dark --glass-shadow-near-alpha must be 0.28")
+  assert.ok(css.includes("--glass-shadow-alpha: 0.32"), ".dark --glass-shadow-alpha must be 0.32")
+  assert.ok(css.includes("--control-border: 0 0% 65%"), ".dark --control-border must be 0 0% 65%")
+  assert.ok(css.includes("--input-border: 0 0% 65%"), ".dark --input-border must be 0 0% 65%")
+
+  // ── Exact .glass-surface shadow layers ───────────────────────────────────
+  assert.ok(
+    css.includes("0 1px 2px 0 hsl(var(--glass-shadow) / var(--glass-shadow-near-alpha))"),
+    ".glass-surface near shadow must be 0 1px 2px 0 hsl(...)"
+  )
+  assert.ok(
+    css.includes("0 12px 28px -6px hsl(var(--glass-shadow) / var(--glass-shadow-alpha))"),
+    ".glass-surface outer shadow must be 0 12px 28px -6px hsl(...)"
+  )
+
+  // ── background-color and border-color longhands ───────────────────────────
+  assert.ok(
+    css.includes("background-color: hsl(var(--glass-surface)"),
+    ".glass-surface must use background-color (not background shorthand)"
+  )
+  assert.ok(
+    css.includes("border-color: hsl(var(--glass-border)"),
+    ".glass-surface must use border-color (not border shorthand color)"
+  )
+
+  // ── Reduced-transparency fallback properties ──────────────────────────────
+  assert.ok(
+    css.includes("background-color: hsl(var(--card))"),
+    "reduced-transparency fallback must use background-color: hsl(var(--card))"
+  )
+  assert.ok(
+    css.includes("border-color: hsl(var(--border))"),
+    "reduced-transparency fallback must use border-color: hsl(var(--border))"
+  )
+
   // reduced-transparency fallbacks
   assert.ok(
     css.includes('html[data-reduced-transparency="true"]') ||

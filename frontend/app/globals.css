@@ -25,18 +25,18 @@
 
     /* Glass system */
     --glass-surface: 0 0% 100%;
-    --glass-surface-alpha: 0.72;
-    --glass-border: 0 0% 100%;
-    --glass-border-alpha: 0.40;
-    --glass-shadow: 0 0% 0%;
-    --glass-shadow-near-alpha: 0.06;
-    --glass-shadow-alpha: 0.10;
+    --glass-surface-alpha: 0.78;
+    --glass-border: 220 13% 88%;
+    --glass-border-alpha: 0.72;
+    --glass-shadow: 222 47% 11%;
+    --glass-shadow-near-alpha: 0.08;
+    --glass-shadow-alpha: 0.12;
     --glass-blur: 12px;
-    --glass-opaque: 0 0% 100%;
+    --glass-opaque: var(--card);
 
     /* Control tokens */
-    --control-border: 0 0% 70%;
-    --input-border: 0 0% 78%;
+    --control-border: 0 0% 52%;
+    --input-border: 0 0% 52%;
     --control-danger: 0 72% 34%;
     --control-danger-hover: 0 72% 28%;
     --control-danger-hover-surface: 0 70% 94%;
@@ -86,19 +86,19 @@
     --ring: 0 0% 83.1%;
 
     /* Glass system */
-    --glass-surface: 0 0% 8%;
-    --glass-surface-alpha: 0.70;
+    --glass-surface: 0 0% 12%;
+    --glass-surface-alpha: 0.82;
     --glass-border: 0 0% 100%;
-    --glass-border-alpha: 0.12;
+    --glass-border-alpha: 0.14;
     --glass-shadow: 0 0% 0%;
-    --glass-shadow-near-alpha: 0.20;
-    --glass-shadow-alpha: 0.35;
+    --glass-shadow-near-alpha: 0.28;
+    --glass-shadow-alpha: 0.32;
     --glass-blur: 12px;
-    --glass-opaque: 0 0% 4%;
+    --glass-opaque: var(--card);
 
     /* Control tokens */
-    --control-border: 0 0% 42%;
-    --input-border: 0 0% 35%;
+    --control-border: 0 0% 65%;
+    --input-border: 0 0% 65%;
     --control-danger: 0 84% 74%;
     --control-danger-hover: 0 84% 80%;
     --control-danger-hover-surface: 0 38% 20%;
@@ -180,19 +180,21 @@
 
 /* Single reusable glass surface class */
 .glass-surface {
-  background: hsla(var(--glass-surface) / var(--glass-surface-alpha));
-  border: 1px solid hsla(var(--glass-border) / var(--glass-border-alpha));
+  background-color: hsl(var(--glass-surface) / var(--glass-surface-alpha));
+  border: 1px solid;
+  border-color: hsl(var(--glass-border) / var(--glass-border-alpha));
   box-shadow:
-    0 1px 2px hsla(var(--glass-shadow) / var(--glass-shadow-near-alpha)),
-    0 4px 16px hsla(var(--glass-shadow) / var(--glass-shadow-alpha));
+    0 1px 2px 0 hsl(var(--glass-shadow) / var(--glass-shadow-near-alpha)),
+    0 12px 28px -6px hsl(var(--glass-shadow) / var(--glass-shadow-alpha));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   backdrop-filter: blur(var(--glass-blur));
 }
 
-/* Reduced-transparency fallbacks — opaque card fill, no filters */
+/* Reduced-transparency fallbacks — opaque card fill, semantic border, no filters */
 @media (prefers-reduced-transparency: reduce) {
   .glass-surface {
-    background: hsl(var(--glass-opaque));
+    background-color: hsl(var(--card));
+    border-color: hsl(var(--border));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -200,7 +202,8 @@
 
 html[data-reduced-transparency="true"] .glass-surface,
 html.reduced-transparency .glass-surface {
-  background: hsl(var(--glass-opaque));
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -208,7 +211,7 @@ html.reduced-transparency .glass-surface {
 /* Constrained-rendering: opaque fill, disable both filters for small/coarse/slow displays */
 @media (max-width: 767px), (pointer: coarse) and (hover: none), (update: slow) {
   .glass-surface {
-    background: hsl(var(--glass-opaque));
+    background-color: hsl(var(--glass-opaque));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
