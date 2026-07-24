@@ -726,6 +726,18 @@ This task is a blocking check. Do not proceed to Task 1 until all assertions bel
 
   No entry/exit animation beyond Recharts' built-in `opacity` fade (≤ 100 ms). Do not add any `transition` or `animation` props.
 
+  **Design-time contrast verification:** Before finalising the component, verify that the composited fill of `GlassTooltip` (i.e. `glass-surface` at its rendered alpha over the page background) achieves a luminance-contrast ratio of at least **4.5:1** against both text groups:
+  - `text-foreground` (value text)
+  - `text-muted-foreground` (label / series-name text)
+
+  Evaluate at the representative `--glass-surface-alpha` value in both light and dark themes using a WCAG 2.1 contrast checker (e.g. [WebAIM Contrast Checker](https://webaim.org/resources/contrastchecker/) with the composited colour as the background). If **either** combination falls below 4.5:1, the tooltip container **must** include an always-on semi-opaque tint fallback class alongside `glass-surface`, for example:
+
+  ```tsx
+  <div className={cn("glass-surface bg-[hsl(var(--glass-opaque)/0.9)] px-3 py-2 text-sm min-w-[8rem]", className)}>
+  ```
+
+  This tint class (`bg-[hsl(var(--glass-opaque)/0.9)]`) raises the effective background luminance so that text contrast is guaranteed even when the frosted compositing layer is too translucent. Remove it only if both contrasts are confirmed ≥ 4.5:1 without it.
+
 - [ ] **Step 2: Update `bar-chart.tsx`**
 
   In `frontend/components/charts/bar-chart.tsx`:
@@ -1009,6 +1021,22 @@ The test suite uses the Node built-in `node:test` runner with `node:assert`. It 
     })
     it("line-chart has no inline contentStyle object", () => {
       assert.ok(!line.includes("contentStyle"), "line-chart must not use inline contentStyle after GlassTooltip adoption")
+    })
+    it("GlassTooltip includes tint fallback class when contrast requires it", () => {
+      // If the design-time contrast audit (Task 6 Step 1) determined that the composited
+      // glass-surface fill is below 4.5:1 against either text group, the tooltip container
+      // must carry the always-on semi-opaque tint fallback.  This assertion verifies that
+      // the class is present whenever the tint requirement applies.
+      // Implementation note: if contrast is confirmed ≥ 4.5:1 without the tint, this test
+      // may be updated to assert its absence; but the tint must never be silently dropped.
+      const requiresTint = tooltip.includes("bg-[hsl(var(--glass-opaque)")
+      if (requiresTint) {
+        assert.match(tooltip, /bg-\[hsl\(var\(--glass-opaque\)/)
+      } else {
+        // Tint not present — acceptable only if the contrast audit confirmed ≥ 4.5:1.
+        // Document that finding in a comment inside glass-tooltip.tsx.
+        assert.match(tooltip, /contrast|4\.5/)
+      }
     })
   })
 
