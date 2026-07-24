@@ -2,7 +2,9 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* Page background — ice wash */
+    --background: 214 36% 97%;           /* #F3F7FB ice */
+    --background-secondary: 213 30% 93%; /* #E6EEF5 cloud */
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 3.9%;
@@ -23,11 +25,36 @@
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
 
-    /* Glass system */
+    /* Frosted shell tokens */
+    --shell-surface: 0 0% 100%;
+    --shell-surface-alpha: 0.62;
+    --shell-border: 213 30% 88%;
+    --shell-border-alpha: 0.70;
+
+    /* Navbar-specific */
+    --navbar-surface: 0 0% 100%;
+    --navbar-surface-alpha: 0.72;
+    --navbar-highlight: 0 0% 100%;
+    --navbar-highlight-alpha: 0.55;
+    --navbar-blur: 14px;
+
+    /* Ambient grid/noise */
+    --ambient-grid-opacity: 0.025;
+
+    /* Operational accent */
+    --accent-operational: 200 55% 38%;   /* #2C7396 */
+    --accent-operational-fg: 0 0% 100%;
+
+    /* Signature frost line */
+    --frost-line-start: 0 0% 100%;
+    --frost-line-end: 210 60% 94%;
+    --frost-line-alpha: 0.80;
+
+    /* Glass system — supersede 2026-07-11 values */
     --glass-surface: 0 0% 100%;
-    --glass-surface-alpha: 0.78;
-    --glass-border: 220 13% 88%;
-    --glass-border-alpha: 0.72;
+    --glass-surface-alpha: 0.62;
+    --glass-border: 213 30% 88%;
+    --glass-border-alpha: 0.68;
     --glass-shadow: 222 47% 11%;
     --glass-shadow-near-alpha: 0.08;
     --glass-shadow-alpha: 0.12;
@@ -65,7 +92,9 @@
   }
 
   .dark {
-    --background: 0 0% 3.9%;
+    /* Page background — charcoal */
+    --background: 216 23% 9%;            /* #11161B charcoal */
+    --background-secondary: 214 23% 13%; /* #1A232B graphite */
     --foreground: 0 0% 98%;
     --card: 0 0% 3.9%;
     --card-foreground: 0 0% 98%;
@@ -85,11 +114,36 @@
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
 
-    /* Glass system */
-    --glass-surface: 0 0% 12%;
-    --glass-surface-alpha: 0.82;
+    /* Frosted shell tokens */
+    --shell-surface: 0 0% 100%;
+    --shell-surface-alpha: 0.05;
+    --shell-border: 0 0% 100%;
+    --shell-border-alpha: 0.10;
+
+    /* Navbar-specific */
+    --navbar-surface: 0 0% 100%;
+    --navbar-surface-alpha: 0.06;
+    --navbar-highlight: 0 0% 100%;
+    --navbar-highlight-alpha: 0.08;
+    --navbar-blur: 14px;
+
+    /* Ambient grid */
+    --ambient-grid-opacity: 0.035;
+
+    /* Operational accent — muted cyan */
+    --accent-operational: 196 52% 58%;   /* #5BB8D4 */
+    --accent-operational-fg: 216 23% 9%;
+
+    /* Signature frost line */
+    --frost-line-start: 0 0% 100%;
+    --frost-line-end: 196 52% 80%;
+    --frost-line-alpha: 0.12;
+
+    /* Glass tokens */
+    --glass-surface: 0 0% 100%;
+    --glass-surface-alpha: 0.05;
     --glass-border: 0 0% 100%;
-    --glass-border-alpha: 0.14;
+    --glass-border-alpha: 0.10;
     --glass-shadow: 0 0% 0%;
     --glass-shadow-near-alpha: 0.28;
     --glass-shadow-alpha: 0.32;
@@ -174,6 +228,15 @@
   --color-status-error-surface: hsl(var(--status-error-surface));
   --color-status-warning: hsl(var(--status-warning));
   --color-status-warning-surface: hsl(var(--status-warning-surface));
+  --color-background-secondary: hsl(var(--background-secondary));
+  --color-shell-surface: hsl(var(--shell-surface));
+  --color-shell-border: hsl(var(--shell-border));
+  --color-navbar-surface: hsl(var(--navbar-surface));
+  --color-navbar-highlight: hsl(var(--navbar-highlight));
+  --color-accent-operational: hsl(var(--accent-operational));
+  --color-accent-operational-fg: hsl(var(--accent-operational-fg));
+  --color-frost-line-start: hsl(var(--frost-line-start));
+  --color-frost-line-end: hsl(var(--frost-line-end));
   --font-family-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
