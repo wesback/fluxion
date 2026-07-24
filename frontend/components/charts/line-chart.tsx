@@ -30,7 +30,7 @@ export function LineChart({ title, data, dataKey = 'value', nameKey = 'name' }: 
               className="text-xs"
               tick={{ fill: 'hsl(var(--chart-axis))' }}
             />
-            <Tooltip content={GlassTooltip} />
+            <Tooltip content={<GlassTooltip />} />
             <Line
               type="monotone"
               dataKey={dataKey}

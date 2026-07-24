@@ -38,7 +38,7 @@ export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: B
               className="text-xs"
               tick={{ fill: 'hsl(var(--chart-axis))' }}
             />
-            <Tooltip content={GlassTooltip} />
+            <Tooltip content={<GlassTooltip />} />
             <Bar
               dataKey={dataKey}
               radius={[4, 4, 0, 0]}
