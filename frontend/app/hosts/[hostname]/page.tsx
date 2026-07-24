@@ -54,9 +54,9 @@ function HostDetailContent({ hostname }: { hostname: string }) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Error</h1>
-        <Card className="p-8">
-          <p className="text-destructive">Failed to load host information. Please try again.</p>
-        </Card>
+        <div className="p-8 rounded-lg border glass-surface border-status-error text-status-error">
+          Failed to load host information. Please try again.
+        </div>
       </div>
     )
   }
@@ -128,7 +128,7 @@ function HostDetailContent({ hostname }: { hostname: string }) {
       {updatesLoading ? (
         <ChartSkeleton />
       ) : updatesError ? (
-        <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+        <div className="p-4 rounded-lg border glass-surface border-status-error text-status-error">
           Failed to load chart data
         </div>
       ) : (
@@ -149,7 +149,7 @@ function HostDetailContent({ hostname }: { hostname: string }) {
         {updatesLoading ? (
           <TableSkeleton />
         ) : updatesError ? (
-          <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+          <div className="p-4 rounded-lg border glass-surface border-status-error text-status-error">
             Failed to load update history
           </div>
         ) : (

@@ -2,6 +2,7 @@
 
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { GlassTooltip } from '@/components/charts/glass-tooltip'
 
 interface BarChartProps {
   title: string
@@ -10,32 +11,13 @@ interface BarChartProps {
   nameKey?: string
 }
 
-// Cache for stringToColor to avoid recomputing on every render
-const colorCache = new Map<string, string>()
-
-// Generate a consistent, visually appealing color based on a string hash
-function stringToColor(str: string): string {
-  const cached = colorCache.get(str)
-  if (cached) return cached
-
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash)
-    hash = hash & hash // Convert to 32bit integer
-  }
-
-  // Use golden ratio to distribute hues evenly across the color wheel
-  const goldenRatioConjugate = 0.618033988749895
-  const hue = (Math.abs(hash) * goldenRatioConjugate * 360) % 360
-
-  // High saturation for vibrant colors, moderate lightness for good visibility
-  const saturation = 70 + (Math.abs(hash >> 8) % 15) // 70-85%
-  const lightness = 50 + (Math.abs(hash >> 16) % 10) // 50-60%
-
-  const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`
-  colorCache.set(str, color)
-  return color
-}
+const CHART_SERIES = [
+  "hsl(var(--chart-series-1))",
+  "hsl(var(--chart-series-2))",
+  "hsl(var(--chart-series-3))",
+  "hsl(var(--chart-series-4))",
+  "hsl(var(--chart-series-5))",
+]
 
 export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: BarChartProps) {
   return (
@@ -46,29 +28,23 @@ export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: B
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
           <RechartsBarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis 
-              dataKey={nameKey} 
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--chart-grid))" />
+            <XAxis
+              dataKey={nameKey}
               className="text-xs"
-              tick={{ fill: 'currentColor' }}
+              tick={{ fill: 'hsl(var(--chart-axis))' }}
             />
-            <YAxis 
+            <YAxis
               className="text-xs"
-              tick={{ fill: 'currentColor' }}
+              tick={{ fill: 'hsl(var(--chart-axis))' }}
             />
-            <Tooltip 
-              contentStyle={{ 
-                backgroundColor: 'hsl(var(--background))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '6px'
-              }}
-            />
-            <Bar 
-              dataKey={dataKey} 
+            <Tooltip content={GlassTooltip} />
+            <Bar
+              dataKey={dataKey}
               radius={[4, 4, 0, 0]}
             >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={stringToColor(entry[nameKey as keyof typeof entry] as string)} />
+              {data.map((_, index) => (
+                <Cell key={`cell-${index}`} fill={CHART_SERIES[index % 5]} />
               ))}
             </Bar>
           </RechartsBarChart>
@@ -77,3 +53,4 @@ export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: B
     </Card>
   )
 }
+

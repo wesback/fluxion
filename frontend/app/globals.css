@@ -14,8 +14,6 @@
     --secondary-foreground: 0 0% 9%;
     --muted: 0 0% 96.1%;
     --muted-foreground: 0 0% 36%;
-    --trend-positive: 142 71% 35%;
-    --trend-negative: 0 84% 40%;
     --accent: 0 0% 96.1%;
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
@@ -24,6 +22,46 @@
     --input: 0 0% 89.8%;
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
+
+    /* Glass system */
+    --glass-surface: 0 0% 100%;
+    --glass-surface-alpha: 0.72;
+    --glass-border: 0 0% 100%;
+    --glass-border-alpha: 0.40;
+    --glass-shadow: 0 0% 0%;
+    --glass-shadow-near-alpha: 0.06;
+    --glass-shadow-alpha: 0.10;
+    --glass-blur: 12px;
+    --glass-opaque: 0 0% 100%;
+
+    /* Control tokens */
+    --control-border: 0 0% 70%;
+    --input-border: 0 0% 78%;
+    --control-danger: 0 72% 34%;
+    --control-danger-hover: 0 72% 28%;
+    --control-danger-hover-surface: 0 70% 94%;
+
+    /* Chart tokens */
+    --chart-grid: 0 0% 45%;
+    --chart-axis: 0 0% 20%;
+    --chart-tooltip-foreground: 0 0% 9%;
+    --chart-series-1: 221 83% 36%;
+    --chart-series-2: 152 68% 25%;
+    --chart-series-3: 278 73% 35%;
+    --chart-series-4: 25 95% 30%;
+    --chart-series-5: 342 70% 36%;
+
+    /* Status tokens */
+    --status-success: 142 71% 24%;
+    --status-success-surface: 142 45% 92%;
+    --status-error: 0 72% 34%;
+    --status-error-surface: 0 70% 94%;
+    --status-warning: 32 92% 25%;
+    --status-warning-surface: 45 100% 92%;
+
+    /* Trend tokens */
+    --trend-positive: 142 71% 24%;
+    --trend-negative: 0 72% 34%;
   }
 
   .dark {
@@ -39,8 +77,6 @@
     --secondary-foreground: 0 0% 98%;
     --muted: 0 0% 14.9%;
     --muted-foreground: 0 0% 63.9%;
-    --trend-positive: 142 71% 55%;
-    --trend-negative: 0 84% 60%;
     --accent: 0 0% 14.9%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
@@ -48,6 +84,46 @@
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
+
+    /* Glass system */
+    --glass-surface: 0 0% 8%;
+    --glass-surface-alpha: 0.70;
+    --glass-border: 0 0% 100%;
+    --glass-border-alpha: 0.12;
+    --glass-shadow: 0 0% 0%;
+    --glass-shadow-near-alpha: 0.20;
+    --glass-shadow-alpha: 0.35;
+    --glass-blur: 12px;
+    --glass-opaque: 0 0% 4%;
+
+    /* Control tokens */
+    --control-border: 0 0% 42%;
+    --input-border: 0 0% 35%;
+    --control-danger: 0 84% 74%;
+    --control-danger-hover: 0 84% 80%;
+    --control-danger-hover-surface: 0 38% 20%;
+
+    /* Chart tokens */
+    --chart-grid: 0 0% 64%;
+    --chart-axis: 0 0% 92%;
+    --chart-tooltip-foreground: 0 0% 98%;
+    --chart-series-1: 221 100% 73%;
+    --chart-series-2: 152 69% 58%;
+    --chart-series-3: 278 94% 78%;
+    --chart-series-4: 32 100% 67%;
+    --chart-series-5: 342 100% 77%;
+
+    /* Status tokens */
+    --status-success: 142 71% 70%;
+    --status-success-surface: 142 35% 18%;
+    --status-error: 0 84% 74%;
+    --status-error-surface: 0 38% 20%;
+    --status-warning: 45 100% 70%;
+    --status-warning-surface: 45 50% 18%;
+
+    /* Trend tokens */
+    --trend-positive: 142 71% 70%;
+    --trend-negative: 0 84% 74%;
   }
 }
 
@@ -79,8 +155,63 @@
   --color-ring: hsl(var(--ring));
   --color-trend-positive: hsl(var(--trend-positive));
   --color-trend-negative: hsl(var(--trend-negative));
+  --color-control-border: hsl(var(--control-border));
+  --color-input-border: hsl(var(--input-border));
+  --color-control-danger: hsl(var(--control-danger));
+  --color-control-danger-hover: hsl(var(--control-danger-hover));
+  --color-control-danger-hover-surface: hsl(var(--control-danger-hover-surface));
+  --color-chart-grid: hsl(var(--chart-grid));
+  --color-chart-axis: hsl(var(--chart-axis));
+  --color-chart-tooltip-foreground: hsl(var(--chart-tooltip-foreground));
+  --color-chart-series-1: hsl(var(--chart-series-1));
+  --color-chart-series-2: hsl(var(--chart-series-2));
+  --color-chart-series-3: hsl(var(--chart-series-3));
+  --color-chart-series-4: hsl(var(--chart-series-4));
+  --color-chart-series-5: hsl(var(--chart-series-5));
+  --color-status-success: hsl(var(--status-success));
+  --color-status-success-surface: hsl(var(--status-success-surface));
+  --color-status-error: hsl(var(--status-error));
+  --color-status-error-surface: hsl(var(--status-error-surface));
+  --color-status-warning: hsl(var(--status-warning));
+  --color-status-warning-surface: hsl(var(--status-warning-surface));
   --font-family-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Single reusable glass surface class */
+.glass-surface {
+  background: hsla(var(--glass-surface) / var(--glass-surface-alpha));
+  border: 1px solid hsla(var(--glass-border) / var(--glass-border-alpha));
+  box-shadow:
+    0 1px 2px hsla(var(--glass-shadow) / var(--glass-shadow-near-alpha)),
+    0 4px 16px hsla(var(--glass-shadow) / var(--glass-shadow-alpha));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+/* Reduced-transparency fallbacks — opaque card fill, no filters */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-surface {
+    background: hsl(var(--glass-opaque));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+html[data-reduced-transparency="true"] .glass-surface,
+html.reduced-transparency .glass-surface {
+  background: hsl(var(--glass-opaque));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Constrained-rendering: opaque fill, disable both filters for small/coarse/slow displays */
+@media (max-width: 767px), (pointer: coarse) and (hover: none), (update: slow) {
+  .glass-surface {
+    background: hsl(var(--glass-opaque));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 @layer base {
@@ -93,3 +224,4 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+

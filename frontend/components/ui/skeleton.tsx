@@ -13,7 +13,7 @@ export function Skeleton({ className, ...props }: SkeletonProps) {
 
 export function StatsCardSkeleton() {
   return (
-    <div className="rounded-lg border bg-card p-6" role="status" aria-busy="true">
+    <div className="rounded-lg border glass-surface p-6" role="status" aria-busy="true">
       <span className="sr-only">Loading statistics...</span>
       <div className="flex items-center justify-between space-x-4">
         <div className="space-y-2 flex-1">
@@ -56,7 +56,7 @@ export function ChartSkeleton() {
   const widths = ['60%', '75%', '50%', '85%', '70%']
 
   return (
-    <div className="rounded-lg border bg-card p-6" role="status" aria-busy="true">
+    <div className="rounded-lg border glass-surface p-6" role="status" aria-busy="true">
       <span className="sr-only">Loading chart...</span>
       <Skeleton className="h-6 w-48 mb-4" />
       <div className="space-y-2">

@@ -32,7 +32,7 @@ export function Navbar() {
   }
 
   return (
-    <nav className="border-b bg-background" aria-label="Main navigation">
+    <nav className="border-b glass-surface" aria-label="Main navigation">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">

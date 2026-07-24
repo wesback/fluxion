@@ -158,7 +158,7 @@ function WebhookForm({
           onBlur={() => setUrlError(validateWebhookUrl(url))}
           aria-invalid={urlError ? true : undefined}
         />
-        {urlError && <p className="text-xs text-destructive">{urlError}</p>}
+        {urlError && <p className="text-xs text-status-error">{urlError}</p>}
       </div>
       <div className="space-y-2">
         <Label>Event Types</Label>
@@ -171,7 +171,7 @@ function WebhookForm({
               className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 eventTypes.includes(type)
                   ? "bg-primary text-primary-foreground border-transparent"
-                  : "bg-background text-muted-foreground border-input hover:bg-accent"
+                  : "bg-background text-muted-foreground border-control-border hover:bg-accent"
               }`}
             >
               {type}
@@ -196,7 +196,7 @@ function WebhookForm({
           id="webhook-enabled"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
-          className="h-4 w-4 rounded border-input"
+          className="h-4 w-4 rounded border-control-border"
         />
         <Label htmlFor="webhook-enabled" className="font-normal">
           Enabled
@@ -391,7 +391,7 @@ function WebhooksContent() {
       {isLoading ? (
         <TableSkeleton rows={3} />
       ) : error ? (
-        <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+        <div className="p-4 rounded-lg border glass-surface border-status-error text-status-error">
           Failed to load webhooks. Please try again.
         </div>
       ) : webhooks.length === 0 ? (
@@ -477,7 +477,7 @@ function WebhooksContent() {
                         setDeleteTarget({ id: webhook.id, name: webhook.name })
                         setShowDeleteDialog(true)
                       }}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      className="text-control-danger hover:text-control-danger-hover hover:bg-control-danger-hover-surface"
                       aria-label={`Delete webhook ${webhook.name}`}
                       title="Delete"
                     >
@@ -629,8 +629,8 @@ function WebhooksContent() {
                   </span>
                 </div>
                 {testResult.error_message && (
-                  <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
-                    <p className="text-sm text-destructive">{testResult.error_message}</p>
+                  <div className="p-3 rounded-md glass-surface border-status-error">
+                    <p className="text-sm text-status-error">{testResult.error_message}</p>
                   </div>
                 )}
                 {testResult.response_body && (

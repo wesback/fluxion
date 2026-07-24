@@ -109,7 +109,7 @@ function APIKeysContent() {
       {isLoading ? (
         <TableSkeleton rows={3} />
       ) : error ? (
-        <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+        <div className="p-4 rounded-lg border glass-surface border-status-error text-status-error">
           Failed to load API keys. Please try again.
         </div>
       ) : (
@@ -177,7 +177,7 @@ function APIKeysContent() {
                             setDeleteTarget({ id: key.id, name: key.name })
                             setShowDeleteDialog(true)
                           }}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          className="text-control-danger hover:text-control-danger-hover hover:bg-control-danger-hover-surface"
                           aria-label={`Delete API key ${key.name}`}
                         >
                           <Trash2 className="w-4 h-4" aria-hidden="true" />
@@ -259,9 +259,9 @@ function APIKeysContent() {
                 <Copy className="w-4 h-4" aria-hidden="true" />
               </Button>
             </div>
-            <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
-              <p className="text-sm text-amber-800 dark:text-amber-200">
+            <div className="flex items-start gap-2 p-3 rounded-md bg-status-warning-surface border border-status-warning">
+              <AlertTriangle className="w-4 h-4 text-status-warning mt-0.5 shrink-0" aria-hidden="true" />
+              <p className="text-sm text-status-warning">
                 This is the only time the full API key will be displayed.
                 Store it securely — you won&apos;t be able to retrieve it later.
               </p>
