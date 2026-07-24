@@ -77,8 +77,8 @@ function PackagesContent() {
           {isLoading ? (
             <TableSkeleton rows={3} />
           ) : error ? (
-            <Card className="p-8">
-              <p className="text-destructive text-center">Failed to search for package. Please try again.</p>
+            <Card className="p-8 border-status-error">
+              <p className="text-status-error text-center">Failed to search for package. Please try again.</p>
             </Card>
           ) : hosts.length === 0 ? (
             <Card className="p-8 text-center text-muted-foreground">

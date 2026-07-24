@@ -22,7 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">
-        <nav className="flex md:flex-col gap-1 md:w-48 md:shrink-0" aria-label="Admin navigation">
+        <nav className="flex md:flex-col gap-1 md:w-48 md:shrink-0 glass-surface rounded-lg p-1" aria-label="Admin navigation">
           {adminNav.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href

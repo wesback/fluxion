@@ -3,6 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
 import { Navbar } from "@/components/navbar";
+import { DeviceMemoryGuard } from "@/components/device-memory-guard";
 import { Toaster } from "sonner";
 import { TelemetryProvider } from "@/components/telemetry-provider";
 
@@ -28,6 +29,7 @@ export default function RootLayout({
         <script src="/config.js" async></script>
       </head>
       <body className="antialiased">
+        <DeviceMemoryGuard />
         <a href="#main-content" className="skip-nav">Skip to main content</a>
         <TelemetryProvider>
           <ThemeProvider
@@ -38,7 +40,7 @@ export default function RootLayout({
           >
             <QueryProvider>
               <Navbar />
-              <main id="main-content" className="container mx-auto px-4 py-4 md:py-8">
+              <main id="main-content" className="container mx-auto px-4 pt-20 pb-4 md:pb-8">
                 {children}
               </main>
               <Toaster richColors position="top-right" />

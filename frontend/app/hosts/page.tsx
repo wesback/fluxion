@@ -123,7 +123,7 @@ function HostsContent() {
       {isLoading ? (
         <TableSkeleton rows={5} />
       ) : error ? (
-        <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+        <div className="p-4 rounded-lg border glass-surface border-status-error text-status-error">
           Failed to load hosts. Please try again.
         </div>
       ) : (

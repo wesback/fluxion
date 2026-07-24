@@ -92,7 +92,7 @@ function DashboardContent() {
             <StatsCardSkeleton />
           </>
         ) : statsError ? (
-          <div className="col-span-full p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+          <div className="col-span-full p-4 rounded-lg border glass-surface border-status-error text-status-error">
             Failed to load statistics
           </div>
         ) : stats ? (
@@ -140,7 +140,7 @@ function DashboardContent() {
             <ChartSkeleton />
           </>
         ) : statsError ? (
-          <div className="col-span-2 p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+          <div className="col-span-2 p-4 rounded-lg border glass-surface border-status-error text-status-error">
             Failed to load charts
           </div>
         ) : (
@@ -168,7 +168,7 @@ function DashboardContent() {
         {updatesLoading ? (
           <TableSkeleton rows={5} />
         ) : updatesError ? (
-          <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive">
+          <div className="p-4 rounded-lg border glass-surface border-status-error text-status-error">
             Failed to load recent updates
           </div>
         ) : (
