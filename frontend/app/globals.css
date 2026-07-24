@@ -396,26 +396,36 @@
 }
 
 @keyframes skeleton-shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 @layer base {
   .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: hsl(var(--background));
+  }
+
+  .skeleton-shimmer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
     background: linear-gradient(
       90deg,
-      hsl(var(--background)) 25%,
+      transparent 0%,
       hsl(var(--background-secondary)) 50%,
-      hsl(var(--background)) 75%
+      transparent 100%
     );
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.6s linear infinite;
+    animation: skeleton-shimmer 1.6s ease-in-out infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
     .skeleton-shimmer {
-      animation: none;
-      background: hsl(var(--background-secondary));
+      background: hsl(var(--background));
+    }
+    .skeleton-shimmer::before {
+      display: none;
     }
   }
 
