@@ -57,7 +57,7 @@ export function Navbar() {
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
                     "text-sm font-medium navbar-link",
-                    isActive && "navbar-link-active"
+                    isActive ? "navbar-link-active" : "text-muted-foreground"
                   )}
                 >
                   {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
@@ -101,8 +101,8 @@ export function Navbar() {
                 onClick={() => handleNavClick(item.name, item.href)}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "block rounded-md px-3 py-3 text-base font-medium hover:bg-accent min-h-11 navbar-link",
-                  isActive && "navbar-link-active bg-accent"
+                  "block rounded-md px-3 py-3 text-base font-medium min-h-11 navbar-link",
+                  isActive ? "navbar-link-active" : "text-muted-foreground"
                 )}
               >
                 {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
