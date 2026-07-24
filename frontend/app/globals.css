@@ -307,34 +307,35 @@ html.reduced-transparency .glass-surface {
   /* Three-layer ambient background: base fill (bg-background), top-left secondary
      radial, bottom-right accent radial, and 32px repeating grid lines on top. */
   body {
+    position: relative;
     background-image:
+      radial-gradient(ellipse 70% 50% at 0% 0%, hsl(var(--background-secondary) / 1) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 55% at 100% 100%, hsl(var(--accent-operational) / 0.06) 0%, transparent 55%),
       repeating-linear-gradient(
         0deg,
-        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
-        transparent 1px 32px
+        transparent 0 31px,
+        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
       ),
       repeating-linear-gradient(
         90deg,
-        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
-        transparent 1px 32px
-      ),
-      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(var(--accent-operational) / 0.12) 0%, transparent 70%),
-      radial-gradient(ellipse 70% 60% at 0% 0%, hsl(var(--background-secondary) / 0.80) 0%, transparent 70%);
+        transparent 0 31px,
+        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
+      );
   }
   .dark body {
     background-image:
+      radial-gradient(ellipse 70% 50% at 0% 0%, hsl(var(--background-secondary) / 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 55% at 100% 100%, hsl(var(--accent-operational) / 0.05) 0%, transparent 55%),
       repeating-linear-gradient(
         0deg,
-        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
-        transparent 1px 32px
+        transparent 0 31px,
+        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
       ),
       repeating-linear-gradient(
         90deg,
-        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
-        transparent 1px 32px
-      ),
-      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(var(--accent-operational) / 0.07) 0%, transparent 70%),
-      radial-gradient(ellipse 70% 60% at 0% 0%, hsl(var(--background-secondary) / 0.50) 0%, transparent 70%);
+        transparent 0 31px,
+        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
+      );
   }
 }
 
