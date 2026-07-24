@@ -159,9 +159,8 @@ describe("card glass primitive", () => {
   it("Card root does not duplicate border or shadow Tailwind utilities", () => {
     // glass-surface owns border and shadow; card.tsx should not also apply border-*/shadow-*
     const cardRootCn = card.match(/cn\(\s*"([^"]*glass-surface[^"]*)"/)
-    if (cardRootCn) {
-      assert.ok(!cardRootCn[1].includes("border bg-card shadow-sm"), "card root must not carry old opaque classes alongside glass-surface")
-    }
+    assert.ok(cardRootCn !== null, "card root must contain a cn() call with glass-surface class")
+    assert.ok(!cardRootCn[1].includes("border bg-card shadow-sm"), "card root must not carry old opaque classes alongside glass-surface")
   })
 })
 
@@ -231,21 +230,18 @@ describe("chart glass tooltip", () => {
   it("line-chart has no inline contentStyle object", () => {
     assert.ok(!line.includes("contentStyle"), "line-chart must not use inline contentStyle after GlassTooltip adoption")
   })
-  it("GlassTooltip includes tint fallback class when contrast requires it", () => {
-    // If the design-time contrast audit (Task 6 Step 1) determined that the composited
-    // glass-surface fill is below 4.5:1 against either text group, the tooltip container
-    // must carry the always-on semi-opaque tint fallback.  This assertion verifies that
-    // the class is present whenever the tint requirement applies.
-    // Implementation note: if contrast is confirmed ≥ 4.5:1 without the tint, this test
-    // may be updated to assert its absence; but the tint must never be silently dropped.
-    const requiresTint = tooltip.includes("bg-[hsl(var(--glass-opaque)")
-    if (requiresTint) {
-      assert.match(tooltip, /bg-\[hsl\(var\(--glass-opaque\)/)
-    } else {
-      // Tint not present — acceptable only if the contrast audit confirmed ≥ 4.5:1.
-      // Document that finding in a comment inside glass-tooltip.tsx.
-      assert.match(tooltip, /contrast|4\.5/)
-    }
+  it("GlassTooltip does not carry opaque tint class (contrast ≥4.5:1 confirmed without tint)", () => {
+    // Design-time contrast audit (Task 6 Step 1) confirmed both light and dark modes
+    // exceed 4.5:1 against text-foreground and text-muted-foreground without any tint.
+    // The opaque tint class must therefore be absent; if a future change drops contrast
+    // below 4.5:1, the tint must be added and this assertion updated accordingly.
+    assert.ok(
+      !tooltip.includes("bg-[hsl(var(--glass-opaque)"),
+      "GlassTooltip must not carry an opaque tint class when contrast is confirmed ≥4.5:1"
+    )
+    // The contrast audit decision must be documented in glass-tooltip.tsx.
+    assert.match(tooltip, /4\.5:1/, "contrast audit ratio must be documented in glass-tooltip.tsx")
+    assert.match(tooltip, /no opaque tint/, "contrast audit conclusion (no opaque tint) must be documented in glass-tooltip.tsx")
   })
 })
 
