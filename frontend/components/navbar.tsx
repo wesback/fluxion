@@ -32,7 +32,7 @@ export function Navbar() {
   }
 
   return (
-    <nav className="border-b glass-surface" aria-label="Main navigation">
+    <nav className="navbar-frosted" aria-label="Main navigation">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
@@ -56,10 +56,8 @@ export function Navbar() {
                   onClick={() => handleNavClick(item.name, item.href)}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "text-sm font-medium transition-colors hover:text-primary",
-                    isActive
-                      ? "text-foreground"
-                      : "text-muted-foreground"
+                    "text-sm font-medium navbar-link",
+                    isActive && "navbar-link-active"
                   )}
                 >
                   {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}
@@ -103,10 +101,8 @@ export function Navbar() {
                 onClick={() => handleNavClick(item.name, item.href)}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "block rounded-md px-3 py-3 text-base font-medium transition-colors hover:bg-accent hover:text-accent-foreground min-h-11",
-                  isActive
-                    ? "text-foreground bg-accent"
-                    : "text-muted-foreground"
+                  "block rounded-md px-3 py-3 text-base font-medium hover:bg-accent min-h-11 navbar-link",
+                  isActive && "navbar-link-active bg-accent"
                 )}
               >
                 {item.name === "Admin" && <Shield className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />}

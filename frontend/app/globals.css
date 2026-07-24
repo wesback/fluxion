@@ -256,6 +256,89 @@
   --opacity-glass-border: var(--glass-border-alpha);
 }
 
+/* ── Frosted navbar rail ─────────────────────────────────────────────── */
+.navbar-frosted {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 40;
+  background-color: hsl(var(--navbar-surface) / var(--navbar-surface-alpha));
+  -webkit-backdrop-filter: blur(var(--navbar-blur));
+  backdrop-filter: blur(var(--navbar-blur));
+}
+
+/* Frost line — gradient bottom border */
+.navbar-frosted::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    hsl(var(--frost-line-start) / var(--frost-line-alpha)),
+    hsl(var(--frost-line-end) / var(--frost-line-alpha))
+  );
+  pointer-events: none;
+}
+
+/* Navbar link tokens */
+.navbar-link {
+  color: hsl(var(--muted-foreground));
+  transition: color 150ms;
+}
+.navbar-link:hover {
+  color: hsl(var(--primary));
+}
+.navbar-link-active {
+  color: hsl(var(--foreground));
+}
+.navbar-link-active:hover {
+  color: hsl(var(--foreground));
+}
+
+/* Reduced-transparency: opaque fill, no blur, solid separator */
+@media (prefers-reduced-transparency: reduce) {
+  .navbar-frosted {
+    background-color: hsl(var(--card));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .navbar-frosted::after {
+    background: hsl(var(--border));
+  }
+}
+
+html[data-reduced-transparency="true"] .navbar-frosted,
+html.reduced-transparency .navbar-frosted {
+  background-color: hsl(var(--card));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Pointer-coarse / touch devices: heavier fill, no blur for performance */
+@media (pointer: coarse) and (hover: none) {
+  .navbar-frosted {
+    background-color: hsl(var(--card) / 0.95);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Low-memory devices: disable backdrop-filter */
+[data-low-memory] .navbar-frosted {
+  background-color: hsl(var(--card));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Browsers without backdrop-filter support */
+@supports not (backdrop-filter: blur(1px)) {
+  .navbar-frosted {
+    background-color: hsl(var(--card));
+  }
+}
+
 /* Single reusable glass surface class */
 .glass-surface {
   background-color: hsl(var(--glass-surface) / var(--glass-surface-alpha));
