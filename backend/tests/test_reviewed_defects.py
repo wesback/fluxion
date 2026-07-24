@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from fluxion.api.routes.admin_maintenance import retention_maintenance
 from fluxion.api.routes.query import (
     _get_host_updates_impl,
+    _get_package_hosts_impl,
     _get_recent_updates_impl,
 )
 from fluxion.api.routes.security import host_health
@@ -56,6 +57,29 @@ async def test_recent_updates_select_includes_security_flag():
     session = RecordingSession(SimpleNamespace(all=lambda: [row]))
 
     response = await _get_recent_updates_impl(20, 24, session)
+
+    assert response.items[0].is_security is True
+    assert "is_security" in session.statements[0].selected_columns.keys()
+
+
+@pytest.mark.asyncio
+async def test_package_hosts_select_includes_security_flag():
+    """Regression: outer stmt in _get_package_hosts_impl must project is_security.
+
+    Commit a98bed3 added is_security to the subquery and to the response dict
+    but omitted it from the outer stmt SELECT, causing an AttributeError on
+    every package search (HTTP 500 / "Failed to retrieve package hosts").
+    """
+    row = SimpleNamespace(
+        hostname="host-1",
+        package_name="nginx",
+        new_version="1.24.0",
+        update_timestamp=datetime.now(UTC),
+        is_security=True,
+    )
+    session = RecordingSession(SimpleNamespace(all=lambda: [row]))
+
+    response = await _get_package_hosts_impl("nginx", session)
 
     assert response.items[0].is_security is True
     assert "is_security" in session.statements[0].selected_columns.keys()

@@ -328,6 +328,7 @@ async def _get_package_hosts_impl(
             latest_update_subquery.c.package_name,
             latest_update_subquery.c.new_version,
             latest_update_subquery.c.update_timestamp,
+            latest_update_subquery.c.is_security,
         )
         .join(latest_update_subquery, Host.id == latest_update_subquery.c.host_id)
         .where(Host.archived_at.is_(None), latest_update_subquery.c.rn == 1)
