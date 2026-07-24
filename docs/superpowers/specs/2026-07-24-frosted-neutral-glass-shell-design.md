@@ -15,6 +15,26 @@ Evolve the Fluxion frontend from the restrained glass layer (2026-07-11) into a 
 
 ---
 
+## Prerequisites
+
+This spec is a targeted evolution of the **Restrained Glass UI** system introduced in `docs/superpowers/specs/2026-07-11-restrained-glass-ui.md`. It is **not self-contained**. Before implementing, an automated validation gate must confirm that all of the following are present in the codebase:
+
+| Requirement | Verification |
+|---|---|
+| `.glass-surface` class | Encodes `backdrop-filter`, translucent fill, and hairline border |
+| `--glass-surface`, `--glass-surface-alpha` | Defined in `:root` and `.dark` |
+| `--glass-border`, `--glass-border-alpha` | Defined in `:root` and `.dark` |
+| `--glass-blur` | Defined in `:root` and `.dark` |
+| `--glass-shadow`, `--glass-shadow-alpha`, `--glass-shadow-near-alpha` | Defined in `:root` and `.dark` |
+| `--glass-opaque` | Defined in `:root` and `.dark` |
+| `--control-border`, `--input-border` | Defined in `:root` and `.dark` |
+| `--ring` | Defined in `:root` and `.dark` |
+| Opaque-table boundary | `Table` carries `bg-card!` class |
+
+If any requirement above is unmet, apply the 2026-07-11 spec first and do not proceed with this spec until the gate passes.
+
+---
+
 ## Existing surfaces (baseline)
 
 From the previous spec and current codebase state:
@@ -47,7 +67,7 @@ Add the following named palette constants. These are **not** direct CSS variable
 | glass-white | `rgba(255,255,255,0.62)` | — |
 | ink | `#17202A` | — |
 | slate | `#5C6B78` | — |
-| operational-accent | `#2F7E9E` | — |
+| operational-accent | `#2C7396` | — |
 | charcoal | — | `#11161B` |
 | graphite | — | `#1A232B` |
 | muted-cyan-focus | — | `#5BB8D4` |
@@ -81,7 +101,7 @@ Extend `:root` and `.dark` with the following additions and replacements. Preser
   --ambient-grid-opacity: 0.025;
 
   /* Operational accent */
-  --accent-operational: 200 55% 40%;   /* #2F7E9E */
+  --accent-operational: 200 55% 38%;   /* #2C7396 — darkened one step vs. palette draft to clear ≥4.5:1 on composited navbar */
   --accent-operational-fg: 0 0% 100%;
 
   /* Signature frost line */
@@ -178,6 +198,8 @@ The navbar becomes a **frosted rail** fixed to the top of the viewport.
 - Active route: filled with `hsl(var(--accent-operational) / 0.12)` background pill or underline; text or icon colour shifts to `hsl(var(--accent-operational))`. No bold weight change on active; avoid layout shift.
 - Hover: `hsl(var(--accent-operational) / 0.06)` background, no border change.
 - Focus-visible: standard `outline` using existing `--ring` token; do not rely on the frosted surface for focus communication.
+- **Reduced-transparency fallback:** when `@media (prefers-reduced-transparency: reduce)` is active, remove `backdrop-filter` / `-webkit-backdrop-filter` and set `background-color: hsl(var(--background-secondary))` at 100% opacity. This is the navbar-specific solid-surface replacement; the `.glass-surface` fallback rules do not govern the navbar.
+- **Pointer-coarse / low-memory fallback:** on `@media (pointer: coarse)` or when `navigator.deviceMemory < 2` (detected via JS class on `<html>`), the navbar blur must also be stripped — apply the same solid-surface fallback (`hsl(var(--background-secondary))`) to avoid jank on low-end devices. The navbar must obey this boundary identically to how `.glass-surface` handles it.
 - The navbar must not obscure main content — `main` must carry appropriate `padding-top`.
 
 ### 2. Card — shared glass primitive
@@ -205,8 +227,8 @@ No changes to the opaque-table rule. Do not apply `.glass-surface` to table wrap
 
 Update skeleton shimmer to match the new palette:
 
-- Light: shimmer from `hsl(var(--background-secondary))` to `hsl(var(--cloud))` and back. No white flash.
-- Dark: shimmer from `hsl(var(--graphite))` to a slightly lighter graphite tint. No bright flash.
+- Light: shimmer from `hsl(var(--background))` to `hsl(var(--background-secondary))` and back. No white flash.
+- Dark: shimmer from `hsl(var(--background-secondary))` to a slightly lighter tint of the same (increase lightness by ~4–5 %). No bright flash.
 - Animation duration: `1.6s`. Respect `prefers-reduced-motion` — when set, remove the animation and render a static muted surface.
 - Skeleton shapes must not use glass/blur — they are opaque placeholder surfaces.
 
@@ -227,7 +249,7 @@ Update skeleton shimmer to match the new palette:
 
 ## Responsive constraints
 
-- Navbar frosted rail applies at all breakpoints. On mobile the rail may collapse to a bottom navigation bar or hamburger; glass treatment follows the element regardless of placement.
+- Navbar frosted rail applies at all breakpoints. On mobile the rail may collapse to a bottom navigation bar or hamburger; glass treatment follows the element regardless of placement. On `@media (pointer: coarse)` or low-memory devices, the navbar blur is stripped and the solid fallback is applied — see the Navbar section for the exact rule.
 - Ambient radial washes are full-viewport and scale naturally.
 - Ambient grid is a `background-image` repeat pattern; no responsive changes needed.
 - Card glass applies at all breakpoints. On small viewports, `backdrop-filter` is computationally heavier; cap blur at `12px` and ensure the solid fallback is tested on low-end hardware profiles.
@@ -241,7 +263,7 @@ Update skeleton shimmer to match the new palette:
 - All body and UI text must maintain ≥ 4.5:1 contrast ratio against its composited background (glass fill + backdrop colour).
 - Large text (≥ 18 px regular or ≥ 14 px bold) requires ≥ 3:1.
 - Control boundaries (`--control-border`, `--input-border`) require ≥ 3:1 against the adjacent surface.
-- The operational accent (`#2F7E9E`) on white (`#FFFFFF`) is 4.57:1 — acceptable for normal text. In dark mode the muted-cyan focus (`#5BB8D4`) on charcoal (`#11161B`) must be verified to meet ≥ 4.5:1 before use on text; use only for decorative/fill states if it falls short.
+- The operational accent (`#2C7396`) measured against the composited light-mode navbar surface (`rgba(255,255,255,0.72)` over `#F3F7FB` ≈ `#FCFDFE`) achieves ≥ 5:1 — sufficient for normal text. In dark mode the muted-cyan focus (`#5BB8D4`) on charcoal (`#11161B`) must be verified to meet ≥ 4.5:1 before use on text; use only for decorative/fill states if it falls short.
 
 ### Reduced motion
 
@@ -250,7 +272,8 @@ Update skeleton shimmer to match the new palette:
 
 ### Reduced transparency
 
-- The `prefers-reduced-transparency` media query (macOS/iOS) must trigger the solid fallback for all `.glass-surface` and navbar frosted elements.
+- The `prefers-reduced-transparency` media query (macOS/iOS) must trigger the solid fallback for all `.glass-surface` elements: override to `background-color: hsl(var(--glass-opaque))` and remove blur.
+- For the navbar specifically, the solid fallback is `background-color: hsl(var(--background-secondary))` at 100% opacity with `backdrop-filter` removed. This differs from the card fallback token and must be implemented as a separate rule targeting the navbar element.
 
 ### Performance
 
@@ -282,6 +305,7 @@ A build of this design spec passes validation when:
 ## Rollout notes
 
 1. **Token-first:** implement all CSS custom property additions before touching component files. This keeps the diff reviewable and allows the solid fallback to be wired up before blur is activated.
+1a. **`@theme inline` promotion:** immediately after updating `:root` / `.dark`, register all new tokens in Tailwind's `@theme inline` block (Tailwind v4) so they are available as Tailwind utilities. Tokens to promote: `--background-secondary`, `--shell-surface`, `--shell-surface-alpha`, `--shell-border`, `--shell-border-alpha`, `--navbar-surface`, `--navbar-surface-alpha`, `--navbar-highlight`, `--navbar-highlight-alpha`, `--navbar-blur`, `--ambient-grid-opacity`, `--accent-operational`, `--accent-operational-fg`, `--frost-line-start`, `--frost-line-end`, `--frost-line-alpha`, `--glass-surface`, `--glass-surface-alpha`, `--glass-border`, `--glass-border-alpha`, `--glass-blur`. For Tailwind v3, add equivalent entries under `theme.extend` in `tailwind.config.ts`.
 2. **Component order:** (a) globals / tokens → (b) ambient background wrapper → (c) navbar → (d) card primitive → (e) skeleton → (f) chart tooltip. Test each step in isolation.
 3. **No feature flag needed** — changes are purely visual and do not alter routes, data, or interaction semantics. A single PR covering the full shell is acceptable.
 4. **Browser testing matrix:** Chrome, Firefox (note: Firefox has partial `backdrop-filter` support behind a flag historically — confirm current status), Safari, and Edge. Test the solid fallback path explicitly.
