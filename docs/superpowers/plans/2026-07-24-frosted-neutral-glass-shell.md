@@ -1068,7 +1068,52 @@ The test suite uses the Node built-in `node:test` runner with `node:assert`. It 
 
 ---
 
-## Task 8: Build and lint validation
+## Task 8: Paint Flashing manual verification
+
+**Files:** None created or modified — manual browser verification.
+
+This task addresses spec criterion 11: the three-layer ambient background applied to `body` must not trigger compositor-layer invalidations during normal scrolling. Because the ambient layers are CSS-only (no JavaScript animation, no `will-change` abuse), the browser should promote them to a single composited layer and never repaint them mid-scroll. Confirm this with Chrome's Paint Flashing overlay before merging.
+
+- [ ] **Step 1: Start the dev server**
+
+  ```bash
+  cd frontend && npm run dev
+  ```
+
+  Wait for `✓ Ready on http://localhost:3000` before continuing.
+
+- [ ] **Step 2: Open the app in Chrome and enable Paint Flashing**
+
+  1. Navigate to `http://localhost:3000` in Google Chrome (version 90 or later).
+  2. Open **Chrome DevTools** (`F12` / `Cmd+Option+I`).
+  3. Switch to the **Rendering** tab (if not visible: DevTools menu `⋮` → **More tools** → **Rendering**).
+  4. Check **Paint flashing** (the checkbox labelled "Paint flashing" or "Enable paint flashing"). The overlay highlights repainted regions in green.
+
+- [ ] **Step 3: Scroll and verify zero ambient-background repaints**
+
+  Slowly scroll the page from top to bottom and back. Observe the green flash overlay:
+
+  - **Pass:** The `body` ambient background area (the three radial-gradient layers behind all content) shows **no green-flash highlight** at any scroll position. Only interactive regions (hover states, focused inputs, animated elements) may flash.
+  - **Fail:** The full-page background flashes green on every scroll tick, indicating the ambient layers are being repainted by the CPU rather than composited by the GPU.
+
+  If the test **fails**, inspect `globals.css` for the `body` ambient rules. Common causes:
+  - A `background-attachment: fixed` value (forces repaint on scroll — replace with `background-attachment: scroll` and use `position: fixed` on a pseudo-element if needed).
+  - Missing `will-change: transform` or `isolation: isolate` on the compositing layer.
+  - A `filter` or `mix-blend-mode` property on `body` that breaks the compositing boundary.
+
+- [ ] **Step 4: Repeat in dark mode**
+
+  Toggle the app to dark theme (via the theme toggle in the navbar) and repeat Step 3. The dark-mode ambient gradient layers must also produce zero green-flash repaints.
+
+- [ ] **Step 5: Disable Paint Flashing**
+
+  Uncheck **Paint flashing** in the Rendering panel before closing DevTools.
+
+**Expected result:** Zero green-flash repaints on the `body` ambient background layers in both light and dark themes during normal scrolling.
+
+---
+
+## Task 9: Build and lint validation
 
 **Files:** None created or modified — read-only verification pass.
 
@@ -1209,6 +1254,7 @@ Before the PR is merged, verify each criterion from the spec:
 - [ ] `npm run lint` — no errors.
 - [ ] `npm run build` — clean build.
 - [ ] No blur value above `16px` in compiled CSS output.
+- [ ] Paint Flashing (Chrome DevTools → Rendering → Enable Paint Flashing): scroll the page in both light and dark themes and confirm body ambient background layers cause **zero green-flash repaints**. See Task 8 for full procedure.
 - [ ] `prefers-reduced-motion: reduce` — no shimmer animation, no box-shadow transition on glass or skeleton surfaces.
 - [ ] `prefers-reduced-transparency: reduce` — solid fallback on all `.glass-surface` and `.navbar-frosted` elements.
 - [ ] `@supports not (backdrop-filter)` — `.navbar-frosted` shows solid `hsl(var(--background-secondary))` on browsers without backdrop-filter support.
