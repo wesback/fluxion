@@ -425,7 +425,7 @@
       background: hsl(var(--background));
     }
     .skeleton-shimmer::before {
-      display: none;
+      animation: none;
     }
   }
 
