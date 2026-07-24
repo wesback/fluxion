@@ -224,7 +224,6 @@ This task is a blocking check. Do not proceed to Task 1 until all assertions bel
 
 **Files:**
 - Modify: `frontend/app/globals.css`
-- Modify: `frontend/app/layout.tsx`
 
 - [ ] **Step 1: Add ambient background CSS to `globals.css`**
 
@@ -298,23 +297,7 @@ This task is a blocking check. Do not proceed to Task 1 until all assertions bel
 
   Grid cell: 32 × 32 px (lines at position 31–32 px). Colour is `hsl(var(--foreground) / var(--ambient-grid-opacity))`. No external image files. No `will-change`, no `transition`, no `animation` on these rules.
 
-- [ ] **Step 2: Update `main` padding-top in `layout.tsx`**
-
-  The navbar will become `position: fixed` in Task 3. Update the `main` element in `frontend/app/layout.tsx` so content starts below it. Change:
-
-  ```tsx
-  <main id="main-content" className="container mx-auto px-4 py-4 md:py-8">
-  ```
-
-  to:
-
-  ```tsx
-  <main id="main-content" className="container mx-auto px-4 pt-20 pb-4 md:pb-8">
-  ```
-
-  `pt-20` = 5 rem = 80 px. The navbar is `h-16` (64 px) + 2 px frost line = 66 px; 80 px gives comfortable clearance. If the navbar height changes, adjust `pt-*` accordingly.
-
-- [ ] **Step 3: Build check**
+- [ ] **Step 2: Build check**
 
   ```bash
   cd frontend && npm run build 2>&1 | tail -20
@@ -322,10 +305,10 @@ This task is a blocking check. Do not proceed to Task 1 until all assertions bel
 
   Expected: build completes with `✓ Compiled successfully` and no TypeScript errors. The ambient CSS rules are valid CSS; the build must not fail.
 
-- [ ] **Step 4: Commit ambient background**
+- [ ] **Step 3: Commit ambient background**
 
   ```bash
-  git -C /home/wesleyb/git/fluxion add frontend/app/globals.css frontend/app/layout.tsx
+  git -C /home/wesleyb/git/fluxion add frontend/app/globals.css
   git -C /home/wesleyb/git/fluxion commit -m "feat: ambient three-layer body background"
   ```
 
@@ -361,11 +344,25 @@ This task is a blocking check. Do not proceed to Task 1 until all assertions bel
 
   This produces the `html[data-low-memory="true"]` selector used by the CSS fallback rule added in Step 3.
 
-- [ ] **Step 2: Mount `DeviceMemoryGuard` in `layout.tsx`**
+- [ ] **Step 2: Update `layout.tsx` — mount `DeviceMemoryGuard` and add `main` padding-top**
 
-  In `frontend/app/layout.tsx`:
+  In `frontend/app/layout.tsx`, make both changes in the same edit so there is no intermediate state where the navbar is fixed but `main` still uses the old `py-4` — the content dead zone is avoided entirely.
+
   1. Import `DeviceMemoryGuard` from `"@/components/device-memory-guard"`.
   2. Place `<DeviceMemoryGuard />` as the first child inside `<body>` (before the skip-nav link). It renders nothing; position is cosmetic only.
+  3. Update the `main` element so content starts below the fixed navbar. Change:
+
+  ```tsx
+  <main id="main-content" className="container mx-auto px-4 py-4 md:py-8">
+  ```
+
+  to:
+
+  ```tsx
+  <main id="main-content" className="container mx-auto px-4 pt-20 pb-4 md:pb-8">
+  ```
+
+  `pt-20` = 5 rem = 80 px. The navbar is `h-16` (64 px) + 2 px frost line = 66 px; 80 px gives comfortable clearance. If the navbar height changes, adjust `pt-*` accordingly.
 
   After the change the body opening should look like:
   ```tsx
@@ -446,6 +443,13 @@ This task is a blocking check. Do not proceed to Task 1 until all assertions bel
     background-color: hsl(var(--background-secondary));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+  }
+
+  /* Solid fallback: browser does not support backdrop-filter */
+  @supports not (backdrop-filter: blur(1px)) {
+    .navbar-frosted {
+      background-color: hsl(var(--background-secondary));
+    }
   }
   ```
 
@@ -919,6 +923,9 @@ The test suite uses the Node built-in `node:test` runner with `node:assert`. It 
         "navbar must not use the old opaque border-b bg-background class string"
       )
     })
+    it("has @supports not (backdrop-filter) fallback for navbar", () => {
+      assert.match(css, /@supports not \(backdrop-filter[\s\S]*\.navbar-frosted/)
+    })
   })
 
   // ── Group 5: Card primitive ────────────────────────────────────────────────
@@ -959,6 +966,9 @@ The test suite uses the Node built-in `node:test` runner with `node:assert`. It 
     })
     it("Skeleton does not use animate-pulse", () => {
       assert.ok(!sk.includes("animate-pulse"), "Skeleton must not use animate-pulse after palette shimmer update")
+    })
+    it("base Skeleton does not use bg-muted", () => {
+      assert.ok(!sk.includes("bg-muted"), "base Skeleton must not use bg-muted after palette shimmer update")
     })
     it("accessibility attributes preserved on StatsCardSkeleton", () => {
       assert.match(sk, /role="status"/)
@@ -1096,6 +1106,74 @@ The test suite uses the Node built-in `node:test` runner with `node:assert`. It 
 
   Expected: both `bg-card!` on `Table` and `bg-muted!` on `TableHeader` are present. If either is missing, restore before merging.
 
+- [ ] **Step 5: Lighthouse light/dark contrast audit**
+
+  Run a Lighthouse accessibility audit against both colour themes to confirm zero `color-contrast` failures. The frosted-neutral palette must satisfy WCAG 2.1 AA: **4.5:1** minimum for normal text (< 18 px regular, < 14 px bold) and **3:1** for large text. Neo's review identified these as the critical thresholds for the new token pairs.
+
+  **Reference ratios (from Neo's review):**
+
+  | Token pair | Required ratio |
+  |---|---|
+  | `--foreground` on `--background` | ≥ 7:1 (AAA) |
+  | `--muted-foreground` on `--background` | ≥ 4.5:1 (AA) |
+  | `--accent-operational-fg` on `--accent-operational` | ≥ 4.5:1 (AA) |
+  | `--foreground` on `.glass-surface` semi-transparent fill | ≥ 4.5:1 (AA) |
+
+  **Prerequisites:** dev server running (`cd frontend && npm run dev` in a separate terminal).
+
+  **Light theme audit:**
+
+  ```bash
+  npx --yes lighthouse http://localhost:3000 \
+    --only-categories=accessibility \
+    --output=json \
+    --quiet \
+    --chrome-flags="--headless --no-sandbox" \
+    --output-path=lighthouse-light.json
+
+  node --input-type=module << 'EOF'
+  import { readFileSync } from "node:fs"
+  const r = JSON.parse(readFileSync("lighthouse-light.json", "utf8"))
+  const items = r.audits?.["color-contrast"]?.details?.items ?? []
+  if (items.length > 0) {
+    console.error(`CONTRAST FAIL (light): ${items.length} violation(s)`)
+    items.slice(0, 5).forEach(i => console.error(" -", i.node?.snippet))
+    process.exit(1)
+  }
+  console.log("PASS (light): 0 contrast failures")
+  EOF
+  rm -f lighthouse-light.json
+  ```
+
+  **Dark theme audit:**
+
+  In Chrome DevTools → Rendering panel, set **Emulate CSS media feature `prefers-color-scheme`** to `dark` so the app's `ThemeProvider` applies the `.dark` class. Then run Lighthouse from the DevTools Lighthouse panel, or repeat the CLI audit with dark emulation:
+
+  ```bash
+  npx --yes lighthouse http://localhost:3000 \
+    --only-categories=accessibility \
+    --output=json \
+    --quiet \
+    --chrome-flags="--headless --no-sandbox" \
+    --emulated-form-factor=desktop \
+    --output-path=lighthouse-dark.json
+
+  node --input-type=module << 'EOF'
+  import { readFileSync } from "node:fs"
+  const r = JSON.parse(readFileSync("lighthouse-dark.json", "utf8"))
+  const items = r.audits?.["color-contrast"]?.details?.items ?? []
+  if (items.length > 0) {
+    console.error(`CONTRAST FAIL (dark): ${items.length} violation(s)`)
+    items.slice(0, 5).forEach(i => console.error(" -", i.node?.snippet))
+    process.exit(1)
+  }
+  console.log("PASS (dark): 0 contrast failures")
+  EOF
+  rm -f lighthouse-dark.json
+  ```
+
+  Expected: both light and dark runs exit 0 with `PASS: 0 contrast failures`. If any violation is reported, adjust the failing token value in `globals.css` (both `:root` and `.dark`) before merging.
+
 ---
 
 ## Commit summary
@@ -1103,7 +1181,7 @@ The test suite uses the Node built-in `node:test` runner with `node:assert`. It 
 | Commit message | Files |
 |---|---|
 | `feat: add frosted-neutral-glass shell tokens` | `globals.css` |
-| `feat: ambient three-layer body background` | `globals.css`, `layout.tsx` |
+| `feat: ambient three-layer body background` | `globals.css` |
 | `feat: navbar frosted rail with frost-line and fallbacks` | `device-memory-guard.tsx`, `layout.tsx`, `navbar.tsx`, `globals.css` |
 | `feat: card glass-surface primitive tightened to full spec` | `globals.css`, `card.tsx` |
 | `feat: skeleton palette-aware shimmer with reduced-motion fallback` | `globals.css`, `skeleton.tsx` |
@@ -1133,3 +1211,5 @@ Before the PR is merged, verify each criterion from the spec:
 - [ ] No blur value above `16px` in compiled CSS output.
 - [ ] `prefers-reduced-motion: reduce` — no shimmer animation, no box-shadow transition on glass or skeleton surfaces.
 - [ ] `prefers-reduced-transparency: reduce` — solid fallback on all `.glass-surface` and `.navbar-frosted` elements.
+- [ ] `@supports not (backdrop-filter)` — `.navbar-frosted` shows solid `hsl(var(--background-secondary))` on browsers without backdrop-filter support.
+- [ ] Lighthouse accessibility audit — zero `color-contrast` failures in both light and dark themes; reference ratios: `--foreground` on `--background` ≥ 7:1, `--muted-foreground` on `--background` ≥ 4.5:1, `--accent-operational-fg` on `--accent-operational` ≥ 4.5:1 (per Neo's review).
