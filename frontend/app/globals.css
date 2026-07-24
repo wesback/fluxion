@@ -183,7 +183,7 @@
 
 @layer base {
   .skip-nav {
-    @apply absolute left-0 top-0 -translate-y-full bg-primary text-primary-foreground px-4 py-2 z-50 focus:translate-y-0 transition-transform;
+    @apply absolute left-0 top-0 -translate-y-full bg-primary text-primary-foreground px-4 py-2 z-[60] focus:translate-y-0 transition-transform;
   }
 
   /* ── Frosted navbar rail ─────────────────────────────────────────────── */
