@@ -19,8 +19,11 @@ export function GlassTooltip({ active, payload, label }: GlassTooltipProps) {
         <p className="text-muted-foreground font-medium mb-1">{label}</p>
       )}
       {payload.map((entry, i) => (
-        <p key={i} className="text-foreground text-xs">
-          {entry.name ? `${entry.name}: ` : ""}{entry.value}
+        <p key={i} className="text-xs flex gap-1">
+          {entry.name && (
+            <span className="text-muted-foreground">{entry.name}:</span>
+          )}
+          <span className="text-foreground">{entry.value}</span>
         </p>
       ))}
     </div>
