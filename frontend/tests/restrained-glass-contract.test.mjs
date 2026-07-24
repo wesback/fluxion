@@ -81,11 +81,11 @@ test("tokens and transparency fallback", () => {
   // two-layer shadow
   assert.ok(css.includes("--glass-shadow"), "glass-surface must reference --glass-shadow")
 
-  // ── Exact spec token values ───────────────────────────────────────────────
+  // ── Exact spec token values (2026-07-24 frosted-neutral supersession) ────
   // :root
-  assert.ok(css.includes("--glass-surface-alpha: 0.78"), ":root --glass-surface-alpha must be 0.78")
-  assert.ok(css.includes("--glass-border: 220 13% 88%"), ":root --glass-border must be 220 13% 88%")
-  assert.ok(css.includes("--glass-border-alpha: 0.72"), ":root --glass-border-alpha must be 0.72")
+  assert.ok(css.includes("--glass-surface-alpha: 0.62"), ":root --glass-surface-alpha must be 0.62")
+  assert.ok(css.includes("--glass-border: 213 30% 88%"), ":root --glass-border must be 213 30% 88%")
+  assert.ok(css.includes("--glass-border-alpha: 0.68"), ":root --glass-border-alpha must be 0.68")
   assert.ok(css.includes("--glass-shadow: 222 47% 11%"), ":root --glass-shadow must be 222 47% 11%")
   assert.ok(css.includes("--glass-shadow-near-alpha: 0.08"), ":root --glass-shadow-near-alpha must be 0.08")
   assert.ok(css.includes("--glass-shadow-alpha: 0.12"), ":root --glass-shadow-alpha must be 0.12")
@@ -93,9 +93,9 @@ test("tokens and transparency fallback", () => {
   assert.ok(css.includes("--control-border: 0 0% 52%"), ":root --control-border must be 0 0% 52%")
   assert.ok(css.includes("--input-border: 0 0% 52%"), ":root --input-border must be 0 0% 52%")
   // .dark
-  assert.ok(css.includes("--glass-surface: 0 0% 12%"), ".dark --glass-surface must be 0 0% 12%")
-  assert.ok(css.includes("--glass-surface-alpha: 0.82"), ".dark --glass-surface-alpha must be 0.82")
-  assert.ok(css.includes("--glass-border-alpha: 0.14"), ".dark --glass-border-alpha must be 0.14")
+  assert.ok(css.includes("--glass-surface: 0 0% 100%"), ".dark --glass-surface must be 0 0% 100% (semi-transparent white)")
+  assert.ok(css.includes("--glass-surface-alpha: 0.05"), ".dark --glass-surface-alpha must be 0.05")
+  assert.ok(css.includes("--glass-border-alpha: 0.10"), ".dark --glass-border-alpha must be 0.10")
   assert.ok(css.includes("--glass-shadow-near-alpha: 0.28"), ".dark --glass-shadow-near-alpha must be 0.28")
   assert.ok(css.includes("--glass-shadow-alpha: 0.32"), ".dark --glass-shadow-alpha must be 0.32")
   assert.ok(css.includes("--control-border: 0 0% 65%"), ".dark --control-border must be 0 0% 65%")
@@ -111,14 +111,14 @@ test("tokens and transparency fallback", () => {
     ".glass-surface outer shadow must be 0 12px 28px -6px hsl(...)"
   )
 
-  // ── background-color and border-color longhands ───────────────────────────
+  // ── background-color longhand and glass-border token usage ───────────────
   assert.ok(
     css.includes("background-color: hsl(var(--glass-surface)"),
     ".glass-surface must use background-color (not background shorthand)"
   )
   assert.ok(
-    css.includes("border-color: hsl(var(--glass-border)"),
-    ".glass-surface must use border-color (not border shorthand color)"
+    css.includes("hsl(var(--glass-border)"),
+    ".glass-surface must reference the --glass-border token"
   )
 
   // ── Reduced-transparency fallback properties ──────────────────────────────
@@ -182,7 +182,7 @@ test("shared primitive adoption", () => {
   assert.ok(!badge.includes("text-emerald-"), "Badge must not use hard-coded text-emerald-* classes")
 
   const skeleton = read("components/ui/skeleton.tsx")
-  assert.ok(skeleton.includes("glass-surface"), "StatsCardSkeleton/ChartSkeleton must use glass-surface")
+  assert.ok(skeleton.includes("skeleton-shimmer"), "Skeleton must use skeleton-shimmer class (non-glass per frosted-neutral shell)")
   assert.ok(skeleton.includes('role="status"'), "skeleton must retain role=status")
   assert.ok(skeleton.includes("aria-busy"), "skeleton must retain aria-busy")
   assert.ok(skeleton.includes("sr-only"), "skeleton must retain sr-only loading text")
@@ -259,11 +259,12 @@ test("shared chart and navigation", () => {
 
   // Glass tooltip component
   assert.ok(glassTooltip.includes("glass-surface"), "GlassTooltip must use glass-surface class")
-  assert.ok(glassTooltip.includes("chart-tooltip-foreground"), "GlassTooltip must use chart-tooltip-foreground")
+  assert.ok(glassTooltip.includes("text-foreground"), "GlassTooltip must use text-foreground for values")
+  assert.ok(glassTooltip.includes("text-muted-foreground"), "GlassTooltip must use text-muted-foreground for labels")
 
   // Navbar
   const navbar = read("components/navbar.tsx")
-  assert.ok(navbar.includes("glass-surface"), "Navbar must use glass-surface class")
+  assert.ok(navbar.includes("navbar-frosted"), "Navbar must use navbar-frosted class")
   assert.ok(!navbar.includes("bg-background"), "Navbar nav element must not use competing bg-background")
   assert.ok(navbar.includes('aria-label'), "Navbar must retain aria-label")
   assert.ok(navbar.includes('aria-current'), "Navbar must retain aria-current")
