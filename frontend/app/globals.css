@@ -304,5 +304,37 @@ html.reduced-transparency .glass-surface {
     font-family: var(--font-family-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+  /* Three-layer ambient background: base fill (bg-background), top-left secondary
+     radial, bottom-right accent radial, and 32px repeating grid lines on top. */
+  body {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
+        transparent 1px 32px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
+        transparent 1px 32px
+      ),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(var(--accent-operational) / 0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 70% 60% at 0% 0%, hsl(var(--background-secondary) / 0.80) 0%, transparent 70%);
+  }
+  .dark body {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
+        transparent 1px 32px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        hsl(var(--border) / var(--ambient-grid-opacity)) 0 1px,
+        transparent 1px 32px
+      ),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(var(--accent-operational) / 0.07) 0%, transparent 70%),
+      radial-gradient(ellipse 70% 60% at 0% 0%, hsl(var(--background-secondary) / 0.50) 0%, transparent 70%);
+  }
 }
 
