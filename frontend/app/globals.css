@@ -347,7 +347,7 @@
 
 /* Interactive glass surface: animate box-shadow on interaction */
 .glass-surface[data-interactive] {
-  transition: box-shadow 200ms ease;
+  transition: box-shadow 150ms ease;
 }
 
 /* Reduced-transparency fallbacks — opaque card fill, semantic border, no filters */
