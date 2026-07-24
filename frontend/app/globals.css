@@ -239,6 +239,21 @@
   --color-frost-line-end: hsl(var(--frost-line-end));
   --font-family-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Frosted shell — color tokens */
+  --color-glass-surface: hsl(var(--glass-surface));
+  --color-glass-border: hsl(var(--glass-border));
+  /* Frosted shell — blur tokens */
+  --blur-navbar: var(--navbar-blur);
+  --blur-glass: var(--glass-blur);
+  /* Frosted shell — opacity/alpha tokens */
+  --opacity-shell-surface: var(--shell-surface-alpha);
+  --opacity-shell-border: var(--shell-border-alpha);
+  --opacity-navbar-surface: var(--navbar-surface-alpha);
+  --opacity-navbar-highlight: var(--navbar-highlight-alpha);
+  --opacity-ambient-grid: var(--ambient-grid-opacity);
+  --opacity-frost-line: var(--frost-line-alpha);
+  --opacity-glass-surface: var(--glass-surface-alpha);
+  --opacity-glass-border: var(--glass-border-alpha);
 }
 
 /* Single reusable glass surface class */
