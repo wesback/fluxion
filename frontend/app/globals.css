@@ -196,6 +196,9 @@
     border-bottom: 1px solid hsl(var(--navbar-highlight) / var(--navbar-highlight-alpha));
     -webkit-backdrop-filter: blur(var(--navbar-blur));
     backdrop-filter: blur(var(--navbar-blur));
+    /* Landscape iPad rounded corners: keep nav content clear of the curve. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* Frost line — gradient top accent */

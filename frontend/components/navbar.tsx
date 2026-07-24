@@ -44,7 +44,7 @@ export function Navbar() {
               <Activity className="h-6 w-6" aria-hidden="true" />
               <span>Fluxion</span>
             </Link>
-            <div className="hidden md:flex gap-6">
+            <div className="hidden lg:flex gap-6">
               {navigation.map((item) => {
                 const isActive = item.href === "/"
                   ? pathname === "/"
@@ -72,7 +72,7 @@ export function Navbar() {
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <button
-              className="inline-flex items-center justify-center rounded-md p-2 md:hidden hover:bg-accent hover:text-accent-foreground min-h-11 min-w-11"
+              className="inline-flex items-center justify-center rounded-md p-2 lg:hidden hover:bg-accent hover:text-accent-foreground min-h-11 min-w-11"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-expanded={mobileMenuOpen}
               aria-controls="mobile-menu"
@@ -88,7 +88,7 @@ export function Navbar() {
         </div>
       </div>
       {mobileMenuOpen && (
-        <div id="mobile-menu" className="border-t md:hidden">
+        <div id="mobile-menu" className="border-t lg:hidden">
           <div className="container mx-auto px-4 py-2 space-y-1">
             {navigation.map((item) => {
               const isActive = item.href === "/"

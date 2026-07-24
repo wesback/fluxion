@@ -147,6 +147,25 @@ describe("navbar frosted rail", () => {
   it("has @supports not (backdrop-filter) fallback for navbar", () => {
     assert.match(css, /@supports not \(backdrop-filter[\s\S]*\.navbar-frosted/)
   })
+
+  // Regression guard: the full horizontal nav must switch on at `lg:` (1024px),
+  // not `md:` (768px). 768px and 820px are real iPad portrait widths (mini,
+  // Air/Pro 11") that cannot fit 7 nav items + icons horizontally — at `md:`
+  // the nav wrapped and overlapped the theme toggle/hamburger button. `lg:`
+  // is the narrowest breakpoint that measured clean (no wrap/overflow) across
+  // the full iPad portrait+landscape matrix. See .squad/decisions/inbox/morpheus-*.
+  it("desktop nav switches on at lg: (not md:) to clear the iPad portrait range", () => {
+    assert.match(navbar, /hidden lg:flex gap-6/)
+    assert.ok(!/hidden md:flex/.test(navbar), "navbar must not reintroduce the md: (768px) horizontal-nav switch")
+  })
+  it("mobile menu toggle and panel hide at lg: (matching the nav switch)", () => {
+    assert.match(navbar, /p-2 lg:hidden/)
+    assert.match(navbar, /border-t lg:hidden/)
+  })
+  it("navbar-frosted pads for safe-area insets (landscape iPad rounded corners)", () => {
+    assert.match(css, /\.navbar-frosted[\s\S]*env\(safe-area-inset-left\)/)
+    assert.match(css, /\.navbar-frosted[\s\S]*env\(safe-area-inset-right\)/)
+  })
 })
 
 // ── Group 5: Card primitive ────────────────────────────────────────────────
@@ -282,5 +301,23 @@ describe("device memory guard", () => {
   })
   it("layout.tsx mounts DeviceMemoryGuard", () => {
     assert.match(layout, /DeviceMemoryGuard/)
+  })
+})
+
+// ── Group 10: Viewport / iPad shell regression guard ───────────────────────
+describe("viewport and full-height shell", () => {
+  const layout = read("app/layout.tsx")
+  const css = read("app/globals.css")
+
+  it("exports a viewport config with viewport-fit: cover for safe-area insets", () => {
+    assert.match(layout, /export const viewport[\s\S]*viewportFit:\s*"cover"/)
+  })
+  it("does not lock zoom via maximumScale or userScalable (accessibility floor)", () => {
+    assert.ok(!/maximumScale/.test(layout), "layout.tsx must not set maximumScale")
+    assert.ok(!/userScalable/.test(layout), "layout.tsx must not set userScalable")
+  })
+  it("no raw 100vh remains in globals.css or layout.tsx (iOS toolbar overflow trap)", () => {
+    assert.ok(!/100vh/.test(css), "globals.css must not use 100vh")
+    assert.ok(!/100vh/.test(layout), "layout.tsx must not use 100vh")
   })
 })

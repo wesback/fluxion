@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
@@ -15,6 +15,16 @@ export const metadata: Metadata = {
     description: "Track Linux package updates across multiple hosts",
     type: "website",
   },
+};
+
+// viewport-fit=cover exposes env(safe-area-inset-*) so the fixed navbar can pad
+// around iPad's rounded corners / home indicator in landscape. Deliberately not
+// capping pinch-zoom or disabling scaling here — that's an accessibility
+// regression and does not fix layout.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
