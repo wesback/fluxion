@@ -1,0 +1,33 @@
+# AI-SDLC AgentRole and merge policy for the ep pipeline (scripts/onboard-repo.sh adds this file by PR).
+#
+# spec.governance is read from main, as GitHub serves it, by AI-SDLC's merge helper
+# (cli-merge-if-eligible, @ai-sdlc/pipeline-cli). With allowMerge: onGreenClean it merges a pipeline PR only when
+# the PR is from this repo, based on main, authored by a login in mergeAuthors, has a backlog task as provenance,
+# touches no governance-sensitive path (.github/, .ai-sdlc/ except evidence, AGENTS.md, ...), is CLEAN, and every
+# check and status on its head is green, including ai-sdlc/attestation (the pipeline's merge gate).
+#
+# To stop the pipeline merging in this repo at once: set allowMerge: never on main.
+apiVersion: ai-sdlc.io/v1alpha1
+kind: AgentRole
+metadata:
+  name: ep-pipeline
+spec:
+  role: developer
+  goal: Implement issue requirements with tests
+  tools:
+    - Edit
+    - Write
+    - Read
+    - Glob
+    - Grep
+    - Bash
+  constraints:
+    maxFilesPerChange: 15
+    requireTests: true
+    blockedPaths:
+      - .github/workflows/**
+      - .ai-sdlc/**
+  governance:
+    allowMerge: onGreenClean
+    mergeAuthors:
+      - wesback
