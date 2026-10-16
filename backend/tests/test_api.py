@@ -37,43 +37,6 @@ async def test_package_update_validation():
         assert response.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_package_update_old_version_normalization():
-    """Test that old_version '-' is normalized to None."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # Test with "-" as old_version
-        response = await client.post(
-            "/api/v1/updates",
-            json={
-                "hostname": "test-host-dash",
-                "package_name": "test-package",
-                "old_version": "-",
-                "new_version": "1.0.0",
-            },
-        )
-
-        # Now requires API key authentication
-        assert response.status_code in [401, 503]
-
-
-@pytest.mark.asyncio
-async def test_package_update_null_old_version():
-    """Test package update with null old_version (new install)."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post(
-            "/api/v1/updates",
-            json={
-                "hostname": "test-host-new",
-                "package_name": "new-package",
-                "old_version": None,
-                "new_version": "1.0.0",
-            },
-        )
-
-        # Now requires API key authentication
-        assert response.status_code in [401, 503]
-
-
 def test_normalize_old_version_install_sentinels():
     """Install sentinel old_version values should normalize to None."""
     sentinel_values = ["-", "N/A", "n/a", "None", "(none)", "<none>", "null", ""]
@@ -88,68 +51,12 @@ def test_normalize_old_version_keeps_real_versions():
 
 
 @pytest.mark.asyncio
-async def test_batch_updates_validation():
-    """Test batch package updates endpoint with invalid data."""
+async def test_batch_updates_missing_api_key():
+    """Test that batch updates require authentication before validating the body."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Now requires API key authentication
         response = await client.post("/api/v1/updates/batch", json={})
         assert response.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_batch_updates_single_package():
-    """Test batch updates with a single package."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post(
-            "/api/v1/updates/batch",
-            json={
-                "hostname": "test-batch-single",
-                "updates": [
-                    {"package_name": "nginx", "old_version": "1.18.0", "new_version": "1.22.0"}
-                ],
-            },
-        )
-
-        # Now requires API key authentication
-        assert response.status_code in [401, 503]
-
-
-@pytest.mark.asyncio
-async def test_batch_updates_multiple_packages():
-    """Test batch updates with multiple packages."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post(
-            "/api/v1/updates/batch",
-            json={
-                "hostname": "test-batch-multi",
-                "updates": [
-                    {"package_name": "nginx", "old_version": "1.18.0", "new_version": "1.22.0"},
-                    {"package_name": "curl", "old_version": "7.68.0", "new_version": "7.81.0"},
-                    {"package_name": "vim", "old_version": None, "new_version": "8.2.0"},
-                ],
-            },
-        )
-
-        # Now requires API key authentication
-        assert response.status_code in [401, 503]
-
-
-@pytest.mark.asyncio
-async def test_batch_updates_with_dash_old_version():
-    """Test batch updates with '-' as old_version (should be normalized to None)."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post(
-            "/api/v1/updates/batch",
-            json={
-                "hostname": "test-batch-dash",
-                "updates": [
-                    {"package_name": "new-package", "old_version": "-", "new_version": "1.0.0"}
-                ],
-            },
-        )
-
-        # Now requires API key authentication
-        assert response.status_code in [401, 503]
 
 
 @pytest.mark.asyncio

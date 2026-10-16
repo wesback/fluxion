@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-import pytest
+from starlette.routing import Match
+from starlette.types import Scope
 
 from fluxion.models.host import Host
 from fluxion.models.package_update import PackageUpdate
@@ -52,15 +53,18 @@ def test_hosts_can_represent_archived_identity_and_package_manager() -> None:
     assert "package_manager" in PackageUpdate.__table__.c
 
 
-@pytest.mark.asyncio
-async def test_analytics_routes_are_registered() -> None:
+def test_analytics_routes_are_registered() -> None:
     from fluxion.main import app
 
     paths = app.openapi()["paths"]
     assert "/api/v1/activity/analytics" in paths
-    assert any(route.path == "/api/v1/activity" for route in app.routes)
-    assert any(route.path == "/api/v1/kernels" for route in app.routes)
-    assert any(route.path == "/api/v1/admin/ingest/diagnostics" for route in app.routes)
+    for path in (
+        "/api/v1/activity",
+        "/api/v1/kernels",
+        "/api/v1/admin/ingest/diagnostics",
+    ):
+        scope: Scope = {"type": "http", "path": path, "method": "GET", "root_path": ""}
+        assert any(route.matches(scope)[0] is Match.FULL for route in app.routes), path
     assert "/api/v1/kernel/fleet" in paths
     assert "/api/v1/admin/diagnostics/ingest" in paths
     assert "/api/v1/admin/maintenance/retention" in paths

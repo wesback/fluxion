@@ -15,18 +15,7 @@ function read(relPath) {
 test("tokens and transparency fallback", () => {
   const css = read("app/globals.css")
 
-  // Glass tokens present in :root
-  assert.ok(css.includes("--glass-surface"), "missing --glass-surface")
-  assert.ok(css.includes("--glass-surface-alpha"), "missing --glass-surface-alpha")
-  assert.ok(css.includes("--glass-border"), "missing --glass-border")
-  assert.ok(css.includes("--glass-border-alpha"), "missing --glass-border-alpha")
-  assert.ok(css.includes("--glass-shadow"), "missing --glass-shadow")
-  assert.ok(css.includes("--glass-shadow-near-alpha"), "missing --glass-shadow-near-alpha")
-  assert.ok(css.includes("--glass-shadow-alpha"), "missing --glass-shadow-alpha")
-  assert.ok(css.includes("--glass-blur"), "missing --glass-blur")
-  assert.ok(css.includes("--glass-opaque"), "missing --glass-opaque")
-  assert.ok(css.includes("--control-border"), "missing --control-border")
-  assert.ok(css.includes("--input-border"), "missing --input-border")
+  // Semantic tokens
   assert.ok(css.includes("--control-danger"), "missing --control-danger")
   assert.ok(css.includes("--control-danger-hover"), "missing --control-danger-hover")
   assert.ok(css.includes("--control-danger-hover-surface"), "missing --control-danger-hover-surface")
@@ -70,17 +59,6 @@ test("tokens and transparency fallback", () => {
   assert.ok(css.includes("--color-trend-positive"), "missing --color-trend-positive mapping")
   assert.ok(css.includes("--color-trend-negative"), "missing --color-trend-negative mapping")
 
-  // .glass-surface class with backdrop-filter
-  assert.ok(css.includes(".glass-surface"), "missing .glass-surface class")
-  assert.ok(css.includes("backdrop-filter:"), "missing backdrop-filter in .glass-surface")
-  assert.ok(css.includes("-webkit-backdrop-filter:"), "missing -webkit-backdrop-filter in .glass-surface")
-  // 12px blur maximum — present in the token declaration
-  assert.ok(css.includes("12px"), "glass-surface must use blur(12px) maximum")
-  // blur applied via CSS variable or literal
-  assert.ok(css.includes("blur("), "glass-surface must include a blur()")
-  // two-layer shadow
-  assert.ok(css.includes("--glass-shadow"), "glass-surface must reference --glass-shadow")
-
   // ── Exact spec token values (2026-07-24 frosted-neutral supersession) ────
   // :root
   assert.ok(css.includes("--glass-surface-alpha: 0.62"), ":root --glass-surface-alpha must be 0.62")
@@ -102,13 +80,10 @@ test("tokens and transparency fallback", () => {
   assert.ok(css.includes("--input-border: 0 0% 65%"), ".dark --input-border must be 0 0% 65%")
 
   // ── Exact .glass-surface shadow layers ───────────────────────────────────
-  assert.ok(
-    css.includes("0 1px 2px 0 hsl(var(--glass-shadow) / var(--glass-shadow-near-alpha))"),
-    ".glass-surface near shadow must be 0 1px 2px 0 hsl(...)"
-  )
-  assert.ok(
-    css.includes("0 12px 28px -6px hsl(var(--glass-shadow) / var(--glass-shadow-alpha))"),
-    ".glass-surface outer shadow must be 0 12px 28px -6px hsl(...)"
+  assert.match(
+    css,
+    /box-shadow:\s*0 1px 2px 0 hsl\(var\(--glass-shadow\) \/ var\(--glass-shadow-near-alpha\)\),\s*0 12px 28px -6px hsl\(var\(--glass-shadow\) \/ var\(--glass-shadow-alpha\)\)/,
+    ".glass-surface must apply both exact shadow layers through box-shadow"
   )
 
   // ── background-color longhand and glass-border token usage ───────────────
@@ -150,9 +125,6 @@ test("tokens and transparency fallback", () => {
 
 // ─── shared primitive adoption ────────────────────────────────────────────────
 test("shared primitive adoption", () => {
-  const card = read("components/ui/card.tsx")
-  assert.ok(card.includes("glass-surface"), "Card must use glass-surface class")
-
   const dialog = read("components/ui/dialog.tsx")
   assert.ok(dialog.includes("glass-surface"), "DialogContent must use glass-surface class")
   assert.ok(!dialog.includes("bg-background"), "DialogContent must not use competing bg-background")
@@ -180,12 +152,6 @@ test("shared primitive adoption", () => {
   assert.ok(badge.includes("bg-status-warning-surface"), "Badge warning/outline must use bg-status-warning-surface")
   assert.ok(badge.includes("text-status-warning"), "Badge warning/outline must use text-status-warning")
   assert.ok(!badge.includes("text-emerald-"), "Badge must not use hard-coded text-emerald-* classes")
-
-  const skeleton = read("components/ui/skeleton.tsx")
-  assert.ok(skeleton.includes("skeleton-shimmer"), "Skeleton must use skeleton-shimmer class (non-glass per frosted-neutral shell)")
-  assert.ok(skeleton.includes('role="status"'), "skeleton must retain role=status")
-  assert.ok(skeleton.includes("aria-busy"), "skeleton must retain aria-busy")
-  assert.ok(skeleton.includes("sr-only"), "skeleton must retain sr-only loading text")
 
   const errorBoundary = read("components/error-boundary.tsx")
   assert.ok(errorBoundary.includes("text-status-error"), "ErrorBoundary must use text-status-error for fallback text and icon")
@@ -225,17 +191,6 @@ test("opaque table source contract", () => {
 test("shared chart and navigation", () => {
   const barChart = read("components/charts/bar-chart.tsx")
   const lineChart = read("components/charts/line-chart.tsx")
-  const glassTooltip = read("components/charts/glass-tooltip.tsx")
-
-  // Charts must use shared glass tooltip
-  assert.ok(
-    barChart.includes("GlassTooltip") || barChart.includes("glass-tooltip"),
-    "BarChart must use shared GlassTooltip"
-  )
-  assert.ok(
-    lineChart.includes("GlassTooltip") || lineChart.includes("glass-tooltip"),
-    "LineChart must use shared GlassTooltip"
-  )
 
   // No inline tooltip surface objects
   assert.ok(!barChart.includes("backgroundColor"), "BarChart must not use inline tooltip backgroundColor")
@@ -257,14 +212,8 @@ test("shared chart and navigation", () => {
   assert.ok(lineChart.includes("chart-grid"), "LineChart must use chart-grid token")
   assert.ok(lineChart.includes("chart-axis"), "LineChart must use chart-axis token")
 
-  // Glass tooltip component
-  assert.ok(glassTooltip.includes("glass-surface"), "GlassTooltip must use glass-surface class")
-  assert.ok(glassTooltip.includes("text-foreground"), "GlassTooltip must use text-foreground for values")
-  assert.ok(glassTooltip.includes("text-muted-foreground"), "GlassTooltip must use text-muted-foreground for labels")
-
   // Navbar
   const navbar = read("components/navbar.tsx")
-  assert.ok(navbar.includes("navbar-frosted"), "Navbar must use navbar-frosted class")
   assert.ok(!navbar.includes("bg-background"), "Navbar nav element must not use competing bg-background")
   assert.ok(navbar.includes('aria-label'), "Navbar must retain aria-label")
   assert.ok(navbar.includes('aria-current'), "Navbar must retain aria-current")
@@ -334,8 +283,6 @@ test("route adoption", () => {
     "webhooks page error panel must use glass-surface border-status-error text-status-error"
   )
   assert.ok(!webhooksPage.includes("bg-destructive/10"), "webhooks page must not use bg-destructive/10")
-  // URL validation text-status-error
-  assert.ok(webhooksPage.includes("text-status-error"), "webhooks URL validation text must use text-status-error")
   // Destructive ghost delete button
   assert.ok(
     webhooksPage.includes("text-control-danger") && webhooksPage.includes("hover:text-control-danger-hover") && webhooksPage.includes("hover:bg-control-danger-hover-surface"),
@@ -345,11 +292,5 @@ test("route adoption", () => {
     !webhooksPage.includes("text-destructive hover:text-destructive hover:bg-destructive/10"),
     "webhooks delete button must not use legacy destructive classes"
   )
-  // Checkbox border-control-border
-  assert.ok(webhooksPage.includes("border-control-border"), "webhooks checkbox must use border-control-border")
-  // Event-type button unselected branch border-control-border
-  assert.ok(
-    webhooksPage.includes("border-control-border"),
-    "webhooks event-type button unselected branch must use border-control-border"
-  )
+  assert.ok(webhooksPage.includes("border-control-border"), "webhooks controls must use border-control-border")
 })

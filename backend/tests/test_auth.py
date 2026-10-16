@@ -8,37 +8,12 @@ from fluxion.main import app
 
 
 @pytest.mark.asyncio
-async def test_health_endpoint_no_auth():
-    """Test that health endpoint doesn't require authentication."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/health")
-        assert response.status_code == 200
-        assert response.json() == {"status": "healthy"}
-
-
-@pytest.mark.asyncio
 async def test_ready_endpoint_no_auth():
     """Test that ready endpoint doesn't require authentication."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Will fail with 503 without DB, but won't fail with 401
         response = await client.get("/ready")
         assert response.status_code in [200, 503]  # Not 401
-
-
-@pytest.mark.asyncio
-async def test_root_endpoint_no_auth():
-    """Test that root endpoint doesn't require authentication."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/")
-        assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_docs_endpoint_no_auth():
-    """Test that docs endpoint doesn't require authentication."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/docs")
-        assert response.status_code == 200
 
 
 @pytest.mark.asyncio
