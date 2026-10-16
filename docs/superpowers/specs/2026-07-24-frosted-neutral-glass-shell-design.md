@@ -310,4 +310,4 @@ A build of this design spec passes validation when:
 3. **No feature flag needed** — changes are purely visual and do not alter routes, data, or interaction semantics. A single PR covering the full shell is acceptable.
 4. **Browser testing matrix:** Chrome, Firefox (note: Firefox has partial `backdrop-filter` support behind a flag historically — confirm current status), Safari, and Edge. Test the solid fallback path explicitly.
 5. **Design token ownership:** all palette and shell tokens live in `frontend/app/globals.css`. No tokens may be hardcoded in component files.
-6. **Copilot agent note:** when implementing, the agent (Morpheus — Frontend Engineer) must not modify routes, tests unrelated to visual regression, or backend files. Commit scope is `frontend/app/globals.css` and the shared UI primitive files.
+6. **Implementation scope:** do not modify routes, tests unrelated to visual regression, or backend files. Commit scope is `frontend/app/globals.css` and the shared UI primitive files.
