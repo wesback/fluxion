@@ -28,6 +28,17 @@ Before setting up the workflows, ensure you have these tools installed:
 
 ## Workflows
 
+### `build-push-dockerhub.yml`
+
+Builds and publishes the backend and frontend images to Docker Hub. It runs only when manually dispatched from the Actions tab or with `gh workflow run build-push-dockerhub.yml --ref main`; it no longer builds on pushes or pull requests.
+
+**Image tags generated:**
+- `main` → `latest`, `main`, and `sha-{commit}`
+- `develop` → `dev-latest`, `develop`, and `sha-{commit}`
+- Other selected branches → branch name and `sha-{commit}`
+
+The `latest` tag is published when the workflow is manually run against `main`. The workflow also runs Trivy scans and updates Docker Hub descriptions for `main`.
+
 ### `build-push-acr.yml`
 
 Builds Docker images and pushes them to Azure Container Registry (ACR).
