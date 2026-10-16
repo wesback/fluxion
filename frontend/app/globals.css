@@ -2,10 +2,34 @@
 
 @layer base {
   :root {
+    /* Shared semantic theme tokens */
+    --background: #F8FAFC;
+    --surface: #FFFFFF;
+    --surface-elevated: rgba(255,255,255,0.88);
+    --surface-opaque: #FFFFFF;
+    --surface-subtle: #F1F5F9;
+    --surface-hover: #EAF2F8;
+    --surface-selected: rgba(2,132,199,0.10);
+    --foreground: #0F172A;
+    --foreground-muted: #475569;
+    --foreground-subtle: #52627A;
+    --foreground-disabled: #94A3B8;
+    --border-subtle: rgba(15,23,42,0.08);
+    --border-default: rgba(71,85,105,0.20);
+    --border-control: #64748B;
+    --accent-primary: #0284C7;
+    --accent-secondary: #7C3AED;
+    --accent-text: #0369A1;
+    --accent-secondary-text: #6D28D9;
+    --action-primary: #0369A1;
+    --action-primary-hover: #075985;
+    --on-action-primary: #FFFFFF;
+    --focus-ring: #0369A1;
+    --status-danger: #BE123C;
+    --background-grid: rgba(71,85,105,0.04);
+
     /* Page background — ice wash */
-    --background: 214 36% 97%;           /* #F3F7FB ice */
     --background-secondary: 213 30% 93%; /* #E6EEF5 cloud */
-    --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
@@ -92,10 +116,34 @@
   }
 
   .dark {
+    /* Shared semantic theme tokens */
+    --background: #070B14;
+    --surface: #0F172A;
+    --surface-elevated: rgba(17,25,40,0.75);
+    --surface-opaque: #111928;
+    --surface-subtle: #111C30;
+    --surface-hover: #17243A;
+    --surface-selected: rgba(0,229,255,0.10);
+    --foreground: #E6EDF7;
+    --foreground-muted: #94A3B8;
+    --foreground-subtle: #A3B1C6;
+    --foreground-disabled: #64748B;
+    --border-subtle: rgba(255,255,255,0.08);
+    --border-default: rgba(148,163,184,0.22);
+    --border-control: #64748B;
+    --accent-primary: #00E5FF;
+    --accent-secondary: #7C3AED;
+    --accent-text: #00E5FF;
+    --accent-secondary-text: #C4B5FD;
+    --action-primary: #00E5FF;
+    --action-primary-hover: #67EFFF;
+    --on-action-primary: #070B14;
+    --focus-ring: #00E5FF;
+    --status-danger: #FF5D7A;
+    --background-grid: rgba(148,163,184,0.04);
+
     /* Page background — charcoal */
-    --background: 216 23% 9%;            /* #11161B charcoal */
     --background-secondary: 214 23% 13%; /* #1A232B graphite */
-    --foreground: 0 0% 98%;
     --card: 0 0% 3.9%;
     --card-foreground: 0 0% 98%;
     --popover: 0 0% 3.9%;
@@ -268,25 +316,25 @@
 }
 
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--surface-opaque);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--surface-elevated);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--action-primary);
+  --color-primary-foreground: var(--on-action-primary);
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  --color-muted: var(--surface-subtle);
+  --color-muted-foreground: var(--foreground-muted);
+  --color-accent: var(--surface-selected);
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: var(--status-danger);
+  --color-destructive-foreground: var(--surface);
+  --color-border: var(--border-default);
+  --color-input: var(--border-control);
+  --color-ring: var(--focus-ring);
   --color-trend-positive: hsl(var(--trend-positive));
   --color-trend-negative: hsl(var(--trend-negative));
   --color-control-border: hsl(var(--control-border));
@@ -422,7 +470,7 @@
   .skeleton-shimmer {
     position: relative;
     overflow: hidden;
-    background: hsl(var(--background));
+    background: var(--background);
   }
 
   .skeleton-shimmer::before {
@@ -432,7 +480,7 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      hsl(var(--background-secondary)) 50%,
+      var(--surface-subtle) 50%,
       transparent 100%
     );
     animation: skeleton-shimmer 1.6s ease-in-out infinite;
@@ -440,7 +488,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .skeleton-shimmer {
-      background: hsl(var(--background));
+      background: var(--background);
     }
     .skeleton-shimmer::before {
       animation: none;
@@ -461,33 +509,32 @@
   body {
     position: relative;
     background-image:
-      radial-gradient(ellipse 70% 50% at 0% 0%, hsl(var(--background-secondary) / 1) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 0% 0%, var(--surface-subtle) 0%, transparent 60%),
       radial-gradient(ellipse 60% 55% at 100% 100%, hsl(var(--accent-operational) / 0.06) 0%, transparent 55%),
       repeating-linear-gradient(
         0deg,
         transparent 0 31px,
-        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
+        var(--background-grid) 31px 32px
       ),
       repeating-linear-gradient(
         90deg,
         transparent 0 31px,
-        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
+        var(--background-grid) 31px 32px
       );
   }
   .dark body {
     background-image:
-      radial-gradient(ellipse 70% 50% at 0% 0%, hsl(var(--background-secondary) / 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 0% 0%, color-mix(in srgb, var(--surface-subtle) 4%, transparent) 0%, transparent 60%),
       radial-gradient(ellipse 60% 55% at 100% 100%, hsl(var(--accent-operational) / 0.05) 0%, transparent 55%),
       repeating-linear-gradient(
         0deg,
         transparent 0 31px,
-        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
+        var(--background-grid) 31px 32px
       ),
       repeating-linear-gradient(
         90deg,
         transparent 0 31px,
-        hsl(var(--foreground) / var(--ambient-grid-opacity)) 31px 32px
+        var(--background-grid) 31px 32px
       );
   }
 }
-
