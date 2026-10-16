@@ -71,6 +71,15 @@ A modern, responsive Next.js frontend for the Fluxion package update tracking sy
 - `npm run build` - Build for production
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
+- `npm run test:ui-contract` - Run all UI source contracts and executable table-sanitizer tests
+- `npm run test:frosted-glass` - Run focused frosted-shell contracts
+
+The frosted-shell suite owns shared Card, Skeleton, navbar, and tooltip adoption.
+The restrained-glass suite owns exact glass shadow layers, control/status/chart
+tokens, opaque table wiring, and route-specific styling. Table background-utility
+filtering is exercised separately through the sanitizer's public function.
+Source contracts guard design and accessibility requirements; they do not replace
+browser rendering or contrast checks.
 
 ## API Integration
 

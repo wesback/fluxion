@@ -92,9 +92,6 @@ describe("glass-surface class", () => {
   it("encodes glass border with alpha", () => {
     assert.match(css, /hsl\(var\(--glass-border\)\s*\/\s*var\(--glass-border-alpha\)\)/)
   })
-  it("encodes two-layer box-shadow", () => {
-    assert.match(css, /box-shadow:[\s\S]*0 1px 2px[\s\S]*0 12px 28px -6px/)
-  })
   it("has prefers-reduced-transparency fallback removing backdrop-filter", () => {
     assert.match(css, /@media\s*\(prefers-reduced-transparency:\s*reduce\)[\s\S]*\.glass-surface[\s\S]*backdrop-filter:\s*none/)
   })
@@ -175,12 +172,6 @@ describe("card glass primitive", () => {
   it("Card root uses glass-surface class", () => {
     assert.match(card, /glass-surface/)
   })
-  it("Card root does not duplicate border or shadow Tailwind utilities", () => {
-    // glass-surface owns border and shadow; card.tsx should not also apply border-*/shadow-*
-    const cardRootCn = card.match(/cn\(\s*"([^"]*glass-surface[^"]*)"/)
-    assert.ok(cardRootCn !== null, "card root must contain a cn() call with glass-surface class")
-    assert.ok(!cardRootCn[1].includes("border bg-card shadow-sm"), "card root must not carry old opaque classes alongside glass-surface")
-  })
 })
 
 // ── Group 6: Skeleton shimmer ──────────────────────────────────────────────
@@ -232,36 +223,17 @@ describe("chart glass tooltip", () => {
   it("GlassTooltip uses text-muted-foreground for labels", () => {
     assert.match(tooltip, /text-muted-foreground/)
   })
-  it("bar-chart imports GlassTooltip", () => {
-    assert.match(bar, /GlassTooltip/)
-  })
   it("bar-chart passes content prop to Tooltip", () => {
     assert.match(bar, /content=\{<GlassTooltip/)
   })
   it("bar-chart has no inline contentStyle object", () => {
     assert.ok(!bar.includes("contentStyle"), "bar-chart must not use inline contentStyle after GlassTooltip adoption")
   })
-  it("line-chart imports GlassTooltip", () => {
-    assert.match(line, /GlassTooltip/)
-  })
   it("line-chart passes content prop to Tooltip", () => {
     assert.match(line, /content=\{<GlassTooltip/)
   })
   it("line-chart has no inline contentStyle object", () => {
     assert.ok(!line.includes("contentStyle"), "line-chart must not use inline contentStyle after GlassTooltip adoption")
-  })
-  it("GlassTooltip does not carry opaque tint class (contrast ≥4.5:1 confirmed without tint)", () => {
-    // Design-time contrast audit (Task 6 Step 1) confirmed both light and dark modes
-    // exceed 4.5:1 against text-foreground and text-muted-foreground without any tint.
-    // The opaque tint class must therefore be absent; if a future change drops contrast
-    // below 4.5:1, the tint must be added and this assertion updated accordingly.
-    assert.ok(
-      !tooltip.includes("bg-[hsl(var(--glass-opaque)"),
-      "GlassTooltip must not carry an opaque tint class when contrast is confirmed ≥4.5:1"
-    )
-    // The contrast audit decision must be documented in glass-tooltip.tsx.
-    assert.match(tooltip, /4\.5:1/, "contrast audit ratio must be documented in glass-tooltip.tsx")
-    assert.match(tooltip, /no opaque tint/, "contrast audit conclusion (no opaque tint) must be documented in glass-tooltip.tsx")
   })
   it("GlassTooltip applies glass-surface-tooltip modifier for dark-mode chart contrast", () => {
     // Dark mode: glass-surface-alpha 0.05 is nearly transparent over bright chart series.
@@ -275,19 +247,7 @@ describe("chart glass tooltip", () => {
   })
 })
 
-// ── Group 8: Opaque table boundary (unchanged) ─────────────────────────────
-describe("opaque table boundary unchanged", () => {
-  const table = read("components/ui/table.tsx")
-
-  it("Table carries bg-card! opaque boundary", () => {
-    assert.match(table, /bg-card!/)
-  })
-  it("TableHeader carries bg-muted! opaque boundary", () => {
-    assert.match(table, /bg-muted!/)
-  })
-})
-
-// ── Group 9: DeviceMemoryGuard ─────────────────────────────────────────────
+// ── Group 8: DeviceMemoryGuard ─────────────────────────────────────────────
 describe("device memory guard", () => {
   const guard = read("components/device-memory-guard.tsx")
   const layout = read("app/layout.tsx")
@@ -304,7 +264,7 @@ describe("device memory guard", () => {
   })
 })
 
-// ── Group 10: Viewport / iPad shell regression guard ───────────────────────
+// ── Group 9: Viewport / iPad shell regression guard ───────────────────────
 describe("viewport and full-height shell", () => {
   const layout = read("app/layout.tsx")
   const css = read("app/globals.css")

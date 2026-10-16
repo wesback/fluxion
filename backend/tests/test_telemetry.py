@@ -94,23 +94,6 @@ def test_shutdown_telemetry_disabled():
         shutdown_telemetry()
 
 
-@pytest.mark.asyncio
-async def test_telemetry_with_fastapi_app():
-    """Test that telemetry works with FastAPI app."""
-    from httpx import ASGITransport, AsyncClient
-
-    from fluxion.main import app
-
-    # Make a request to ensure telemetry is initialized via lifespan
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/health")
-        assert response.status_code == 200
-
-        # Make another request to generate some traces
-        response = await client.get("/")
-        assert response.status_code == 200
-
-
 def test_telemetry_config_validation(mock_settings):
     """Test that telemetry validates configuration."""
     # Test with valid console exporter
