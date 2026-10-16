@@ -2,7 +2,6 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Agent:** Morpheus — Frontend Engineer  
 **Spec:** `docs/superpowers/specs/2026-07-24-frosted-neutral-glass-shell-design.md`  
 **Scope:** `globals.css` token additions, ambient background, navbar frosted rail, Card glass primitive, Skeleton shimmer, chart tooltip, contract tests, prerequisite gate.
 

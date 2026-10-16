@@ -150,7 +150,7 @@ describe("navbar frosted rail", () => {
   // Air/Pro 11") that cannot fit 7 nav items + icons horizontally — at `md:`
   // the nav wrapped and overlapped the theme toggle/hamburger button. `lg:`
   // is the narrowest breakpoint that measured clean (no wrap/overflow) across
-  // the full iPad portrait+landscape matrix. See .squad/decisions/inbox/morpheus-*.
+  // the full iPad portrait+landscape matrix.
   it("desktop nav switches on at lg: (not md:) to clear the iPad portrait range", () => {
     assert.match(navbar, /hidden lg:flex gap-6/)
     assert.ok(!/hidden md:flex/.test(navbar), "navbar must not reintroduce the md: (768px) horizontal-nav switch")
