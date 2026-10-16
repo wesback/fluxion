@@ -59,51 +59,40 @@ test("tokens and transparency fallback", () => {
   assert.ok(css.includes("--color-trend-positive"), "missing --color-trend-positive mapping")
   assert.ok(css.includes("--color-trend-negative"), "missing --color-trend-negative mapping")
 
-  // ── Exact spec token values (2026-07-24 frosted-neutral supersession) ────
-  // :root
-  assert.ok(css.includes("--glass-surface-alpha: 0.62"), ":root --glass-surface-alpha must be 0.62")
-  assert.ok(css.includes("--glass-border: 213 30% 88%"), ":root --glass-border must be 213 30% 88%")
-  assert.ok(css.includes("--glass-border-alpha: 0.68"), ":root --glass-border-alpha must be 0.68")
-  assert.ok(css.includes("--glass-shadow: 222 47% 11%"), ":root --glass-shadow must be 222 47% 11%")
-  assert.ok(css.includes("--glass-shadow-near-alpha: 0.08"), ":root --glass-shadow-near-alpha must be 0.08")
-  assert.ok(css.includes("--glass-shadow-alpha: 0.12"), ":root --glass-shadow-alpha must be 0.12")
-  assert.ok(css.includes("--glass-opaque: var(--card)"), "--glass-opaque must be var(--card) in both themes")
-  assert.ok(css.includes("--control-border: 0 0% 52%"), ":root --control-border must be 0 0% 52%")
-  assert.ok(css.includes("--input-border: 0 0% 52%"), ":root --input-border must be 0 0% 52%")
-  // .dark
-  assert.ok(css.includes("--glass-surface: 0 0% 100%"), ".dark --glass-surface must be 0 0% 100% (semi-transparent white)")
-  assert.ok(css.includes("--glass-surface-alpha: 0.05"), ".dark --glass-surface-alpha must be 0.05")
-  assert.ok(css.includes("--glass-border-alpha: 0.10"), ".dark --glass-border-alpha must be 0.10")
-  assert.ok(css.includes("--glass-shadow-near-alpha: 0.28"), ".dark --glass-shadow-near-alpha must be 0.28")
-  assert.ok(css.includes("--glass-shadow-alpha: 0.32"), ".dark --glass-shadow-alpha must be 0.32")
-  assert.ok(css.includes("--control-border: 0 0% 65%"), ".dark --control-border must be 0 0% 65%")
-  assert.ok(css.includes("--input-border: 0 0% 65%"), ".dark --input-border must be 0 0% 65%")
-
-  // ── Exact .glass-surface shadow layers ───────────────────────────────────
+  // ── Semantic glass geometry ──────────────────────────────────────────────
+  assert.ok(css.includes("--radius-card: 24px"), "card radius must be 24px")
+  assert.ok(css.includes("--radius-control: 10px"), "control radius must be 10px")
+  assert.ok(css.includes("--glass-blur: 20px"), "glass blur must be 20px")
+  assert.ok(css.includes("--glass-opaque: var(--surface-opaque)"), "opaque fallback must use the opaque semantic surface")
+  assert.ok(css.includes("--control-border: var(--border-control)"), "control border must use the semantic control border")
+  assert.ok(css.includes("--input-border: var(--border-control)"), "input border must use the semantic control border")
+  assert.ok(css.includes("--glass-surface: var(--surface-elevated)"), "glass fill must use the elevated semantic surface")
+  assert.ok(css.includes("--glass-border: var(--border-subtle)"), "glass border must use the subtle semantic border")
+  assert.ok(css.includes("--glass-shadow: var(--shadow-soft)"), "glass shadow must use the shared soft shadow")
   assert.match(
     css,
-    /box-shadow:\s*0 1px 2px 0 hsl\(var\(--glass-shadow\) \/ var\(--glass-shadow-near-alpha\)\),\s*0 12px 28px -6px hsl\(var\(--glass-shadow\) \/ var\(--glass-shadow-alpha\)\)/,
-    ".glass-surface must apply both exact shadow layers through box-shadow"
+    /\.glass-surface\s*\{[^}]*box-shadow:\s*var\(--shadow-soft\)/,
+    ".glass-surface must use the exact shared shadow token"
   )
 
-  // ── background-color longhand and glass-border token usage ───────────────
+  // ── Semantic background and border usage ─────────────────────────────────
   assert.ok(
-    css.includes("background-color: hsl(var(--glass-surface)"),
-    ".glass-surface must use background-color (not background shorthand)"
+    css.includes("background-color: var(--surface-elevated)"),
+    ".glass-surface must use the elevated surface longhand"
   )
   assert.ok(
-    css.includes("hsl(var(--glass-border)"),
-    ".glass-surface must reference the --glass-border token"
+    css.includes("border: 1px solid var(--border-subtle)"),
+    ".glass-surface must use the subtle border token"
   )
 
-  // ── Reduced-transparency fallback properties ──────────────────────────────
+  // ── Reduced-transparency fallback properties ─────────────────────────────
   assert.ok(
-    css.includes("background-color: hsl(var(--card))"),
-    "reduced-transparency fallback must use background-color: hsl(var(--card))"
+    css.includes("background-color: var(--surface-opaque)"),
+    "reduced-transparency fallback must use the opaque semantic surface"
   )
   assert.ok(
-    css.includes("border-color: hsl(var(--border))"),
-    "reduced-transparency fallback must use border-color: hsl(var(--border))"
+    css.includes("border-color: var(--border-subtle)"),
+    "reduced-transparency fallback must use the semantic border"
   )
 
   // reduced-transparency fallbacks

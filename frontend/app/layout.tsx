@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
@@ -6,6 +7,14 @@ import { Navbar } from "@/components/navbar";
 import { DeviceMemoryGuard } from "@/components/device-memory-guard";
 import { Toaster } from "sonner";
 import { TelemetryProvider } from "@/components/telemetry-provider";
+
+const interVariable = localFont({
+  src: "./fonts/InterVariable.woff2",
+  variable: "--font-inter-variable",
+  weight: "100 900",
+  display: "swap",
+  fallback: ["system-ui", "sans-serif"],
+});
 
 export const metadata: Metadata = {
   title: "Fluxion - Package Update Tracking",
@@ -38,7 +47,7 @@ export default function RootLayout({
         {/* Runtime configuration injected at container startup */}
         <script src="/config.js" async></script>
       </head>
-      <body className="antialiased">
+      <body className={`${interVariable.variable} antialiased`}>
         <DeviceMemoryGuard />
         <a href="#main-content" className="skip-nav">Skip to main content</a>
         <TelemetryProvider>

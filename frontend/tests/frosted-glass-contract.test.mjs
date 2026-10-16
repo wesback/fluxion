@@ -15,41 +15,23 @@ function read(rel) {
 describe("token system", () => {
   const css = read("app/globals.css")
 
-  it("defines --background-secondary in :root", () => {
-    assert.match(css, /--background-secondary:\s*213 30% 93%/)
+  it("aliases the legacy secondary background to the semantic subtle surface", () => {
+    assert.match(css, /--background-secondary:\s*var\(--surface-subtle\)/)
   })
-  it("defines --background-secondary in .dark", () => {
-    assert.match(css, /--background-secondary:\s*214 23% 13%/)
+  it("uses the shared glass blur for the navbar", () => {
+    assert.match(css, /--navbar-blur:\s*var\(--glass-blur\)/)
   })
-  it("defines --navbar-blur: 14px in :root", () => {
-    assert.match(css, /--navbar-blur:\s*14px/)
+  it("aliases the operational accent to the semantic primary accent", () => {
+    assert.match(css, /--accent-operational:\s*var\(--accent-primary\)/)
   })
-  it("defines --accent-operational in :root", () => {
-    assert.match(css, /--accent-operational:\s*200 55% 38%/)
+  it("uses the shared 20px glass blur", () => {
+    assert.match(css, /--glass-blur:\s*20px/)
   })
-  it("defines --accent-operational in .dark", () => {
-    assert.match(css, /--accent-operational:\s*196 52% 58%/)
+  it("registers the operational accent as the semantic primary accent", () => {
+    assert.match(css, /--color-accent-operational:\s*var\(--accent-primary\)/)
   })
-  it("defines --frost-line-alpha: 0.80 in :root", () => {
-    assert.match(css, /--frost-line-alpha:\s*0\.80/)
-  })
-  it("defines --frost-line-alpha: 0.12 in .dark", () => {
-    assert.match(css, /--frost-line-alpha:\s*0\.12/)
-  })
-  it("defines --glass-blur: 12px", () => {
-    assert.match(css, /--glass-blur:\s*12px/)
-  })
-  it("no blur value exceeds 16px anywhere in globals.css", () => {
-    const blurValues = [...css.matchAll(/blur\((\d+)px\)/g)].map(m => parseInt(m[1]))
-    for (const v of blurValues) {
-      assert.ok(v <= 16, `Found blur(${v}px) which exceeds the 16px cap`)
-    }
-  })
-  it("registers --color-accent-operational in @theme inline", () => {
-    assert.match(css, /--color-accent-operational:\s*hsl\(var\(--accent-operational\)\)/)
-  })
-  it("registers --color-background-secondary in @theme inline", () => {
-    assert.match(css, /--color-background-secondary:\s*hsl\(var\(--background-secondary\)\)/)
+  it("registers the legacy secondary background as the subtle surface", () => {
+    assert.match(css, /--color-background-secondary:\s*var\(--surface-subtle\)/)
   })
 })
 
@@ -71,8 +53,9 @@ describe("ambient background", () => {
       assert.ok(!block.includes("animation:"), "body block must not contain animation")
     }
   })
-  it("accent-operational used at reduced opacity in radial wash", () => {
-    assert.match(css, /var\(--accent-operational\)\s*\/\s*0\.0[456]/)
+  it("uses semantic accent background tokens for ambient washes", () => {
+    assert.match(css, /var\(--background-accent-primary\)/)
+    assert.match(css, /var\(--background-accent-secondary\)/)
   })
 })
 
@@ -86,11 +69,11 @@ describe("glass-surface class", () => {
   it("encodes -webkit-backdrop-filter with --glass-blur", () => {
     assert.match(css, /-webkit-backdrop-filter:\s*blur\(var\(--glass-blur\)\)/)
   })
-  it("encodes glass fill with alpha", () => {
-    assert.match(css, /hsl\(var\(--glass-surface\)\s*\/\s*var\(--glass-surface-alpha\)\)/)
+  it("encodes glass fill with the elevated surface token", () => {
+    assert.match(css, /background-color:\s*var\(--surface-elevated\)/)
   })
-  it("encodes glass border with alpha", () => {
-    assert.match(css, /hsl\(var\(--glass-border\)\s*\/\s*var\(--glass-border-alpha\)\)/)
+  it("encodes glass border with the subtle border token", () => {
+    assert.match(css, /border:\s*1px solid var\(--border-subtle\)/)
   })
   it("has prefers-reduced-transparency fallback removing backdrop-filter", () => {
     assert.match(css, /@media\s*\(prefers-reduced-transparency:\s*reduce\)[\s\S]*\.glass-surface[\s\S]*backdrop-filter:\s*none/)
@@ -117,8 +100,8 @@ describe("navbar frosted rail", () => {
   it("defines navbar frost-line ::before pseudo-element", () => {
     assert.match(css, /\.navbar-frosted::before[\s\S]*height:\s*2px/)
   })
-  it("frost-line uses gradient with frost-line tokens", () => {
-    assert.match(css, /frost-line-start[\s\S]*frost-line-end/)
+  it("frost-line uses semantic accent background tokens", () => {
+    assert.match(css, /linear-gradient\(to right, var\(--background-accent-primary\), var\(--background-accent-secondary\)\)/)
   })
   it("defines reduced-transparency fallback for navbar", () => {
     assert.match(css, /prefers-reduced-transparency[\s\S]*\.navbar-frosted[\s\S]*backdrop-filter:\s*none/)
@@ -182,8 +165,9 @@ describe("skeleton shimmer", () => {
   it("defines @keyframes skeleton-shimmer", () => {
     assert.match(css, /@keyframes skeleton-shimmer/)
   })
-  it("shimmer uses --background and --background-secondary", () => {
-    assert.match(css, /hsl\(var\(--background\)\)[\s\S]*hsl\(var\(--background-secondary\)\)/)
+  it("shimmer uses the background and subtle surface tokens", () => {
+    assert.match(css, /background:\s*var\(--background\)/)
+    assert.match(css, /var\(--surface-subtle\)/)
   })
   it("animation duration is 1.6s", () => {
     assert.match(css, /1\.6s/)
