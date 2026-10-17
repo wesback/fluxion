@@ -235,35 +235,55 @@ test("alertsDoNotPoll", async () => {
     !/refetchInterval/.test(hostHook) && !/setInterval|refetchInterval/.test(pageSource))
   configure({ items: [{ hostname: "one", last_seen: null }] })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const originalSetTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
   const originalSetInterval = globalThis.setInterval
   const originalClearInterval = globalThis.clearInterval
-  const intervals = new Map()
-  let intervalClock = 0
-  let nextIntervalId = 0
-  globalThis.setInterval = (callback, delay, ...args) => {
-    const interval = {
+  const timers = new Map()
+  let timerClock = 0
+  let nextTimerId = 0
+  globalThis.setTimeout = (callback, delay, ...args) => {
+    const id = ++nextTimerId
+    timers.set(id, {
       callback: () => callback(...args),
       delay: Number(delay),
-      nextAt: intervalClock + Number(delay),
-    }
-    intervals.set(++nextIntervalId, interval)
-    return nextIntervalId
+      nextAt: timerClock + Number(delay),
+      interval: false,
+    })
+    return id
   }
-  globalThis.clearInterval = (id) => intervals.delete(id)
-  const advanceIntervals = (milliseconds) => {
-    const end = intervalClock + milliseconds
+  globalThis.clearTimeout = (id) => timers.delete(id)
+  globalThis.setInterval = (callback, delay, ...args) => {
+    const id = ++nextTimerId
+    timers.set(id, {
+      callback: () => callback(...args),
+      delay: Number(delay),
+      nextAt: timerClock + Number(delay),
+      interval: true,
+    })
+    return id
+  }
+  globalThis.clearInterval = (id) => timers.delete(id)
+  const advanceTimers = async (milliseconds) => {
+    const end = timerClock + milliseconds
+    let callbacksRun = 0
     while (true) {
-      const due = [...intervals.entries()]
-        .filter(([, interval]) => interval.nextAt <= end)
+      const due = [...timers.entries()]
+        .filter(([, timer]) => timer.nextAt <= end)
         .sort(([, a], [, b]) => a.nextAt - b.nextAt)[0]
       if (!due) break
-      const [, interval] = due
-      intervalClock = interval.nextAt
-      interval.nextAt += interval.delay
-      interval.callback()
+      const [id, timer] = due
+      timerClock = timer.nextAt
+      currentTime = fixedTime + timerClock
+      if (timer.interval) timer.nextAt += timer.delay
+      else timers.delete(id)
+      timer.callback()
+      await Promise.resolve()
+      callbacksRun += 1
+      assert.ok(callbacksRun < 10000, "fake clock must not enter an unbounded timer loop")
     }
-    intervalClock = end
-    currentTime += milliseconds
+    timerClock = end
+    currentTime = fixedTime + timerClock
   }
   let unsubscribe
   queryClientForPage = true
@@ -274,7 +294,7 @@ test("alertsDoNotPoll", async () => {
     assert.deepEqual(observedRequests, ["/api/hosts"])
     const observer = new QueryObserver(client, pageHostQueryOptions)
     unsubscribe = observer.subscribe(() => {})
-    advanceIntervals(2 * 60 * 1000)
+    await advanceTimers(2 * 60 * 1000)
     await new Promise((resolve) => setImmediate(resolve))
     assert.deepEqual(observedRequests, ["/api/hosts"])
     assert.equal(typeof refreshButtonProps.onClick, "function")
@@ -283,6 +303,8 @@ test("alertsDoNotPoll", async () => {
   } finally {
     unsubscribe?.()
     queryClientForPage = false
+    globalThis.setTimeout = originalSetTimeout
+    globalThis.clearTimeout = originalClearTimeout
     globalThis.setInterval = originalSetInterval
     globalThis.clearInterval = originalClearInterval
     client.clear()

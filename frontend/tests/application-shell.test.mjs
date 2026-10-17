@@ -166,6 +166,12 @@ test("navigationActiveState", () => {
       `${pathname} rendered aria-current values`
     )
   }
+
+  assert.deepEqual(
+    renderPrimaryNavigation("/alerts").filter(({ current }) => current === "page"),
+    [{ href: "/alerts", current: "page" }],
+    "/alerts must render Alerts as the only current primary navigation item"
+  )
 })
 
 test("sharedLandmarksAndRoutes", () => {
