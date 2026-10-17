@@ -12,11 +12,114 @@ function declarationsIn(selector) {
   const block = css.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`))
   assert.ok(block, `missing CSS block for ${selector}`)
 
+  return parseDeclarations(block[1])
+}
+
+function parseDeclarations(body) {
   return Object.fromEntries(
-    [...block[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)]
+    [...body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)]
       .map(([, name, value]) => [name, value.trim()])
   )
 }
+
+function ruleBodyIn(stylesheet, selector) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const block = stylesheet.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`))
+  assert.ok(block, `missing CSS block for ${selector}`)
+
+  return block[1]
+}
+
+function atRuleBlock(atRule, fromIndex = 0) {
+  const start = css.indexOf(atRule, fromIndex)
+  assert.notEqual(start, -1, `missing CSS at-rule ${atRule}`)
+  const open = css.indexOf("{", start + atRule.length)
+  assert.notEqual(open, -1, `missing CSS block for ${atRule}`)
+
+  let depth = 0
+  for (let index = open; index < css.length; index += 1) {
+    if (css[index] === "{") depth += 1
+    if (css[index] === "}") depth -= 1
+    if (depth === 0) {
+      return { body: css.slice(open + 1, index), full: css.slice(start, index + 1) }
+    }
+  }
+
+  assert.fail(`unclosed CSS block for ${atRule}`)
+}
+
+function assertDeclarations(actual, expected, label) {
+  for (const [name, value] of Object.entries(expected)) {
+    assert.equal(actual[name], value, `${label} ${name}`)
+  }
+}
+
+test("glassGeometryAndOpaqueFallbacks", () => {
+  assertDeclarations(declarationsIn(":root"), {
+    "--radius-card": "24px",
+    "--radius-control": "10px",
+    "--glass-blur": "20px",
+    "--card-hover-offset": "-4px",
+  }, ":root")
+  assertDeclarations(declarationsIn(".dark"), {
+    "--glass-blur": "20px",
+  }, ".dark")
+
+  const glassSurface = parseDeclarations(ruleBodyIn(css, ".glass-surface"))
+  assertDeclarations(glassSurface, {
+    border: "1px solid var(--border-subtle)",
+    "border-radius": "var(--radius-card)",
+  }, ".glass-surface")
+
+  const hoverMedia = atRuleBlock("@media (hover: hover) and (pointer: fine)")
+  const hoverRule = parseDeclarations(ruleBodyIn(hoverMedia.body, ".glass-surface:hover"))
+  assertDeclarations(hoverRule, {
+    transform: "translateY(var(--card-hover-offset))",
+  }, ".glass-surface:hover")
+  assert.doesNotMatch(
+    css.replace(hoverMedia.full, ""),
+    /\.glass-surface:hover/,
+    ".glass-surface:hover must appear only inside the fine-pointer hover media query"
+  )
+
+  const reducedMedia = atRuleBlock(
+    "@media (prefers-reduced-transparency: reduce)",
+    css.indexOf("@layer components")
+  )
+  const scriptReducedFallback = css.match(
+    /html\[data-reduced-transparency="true"\]\s+\.glass-surface,\s*html\.reduced-transparency\s+\.glass-surface\s*\{([^}]*)\}/
+  )
+  assert.ok(scriptReducedFallback, "missing both script reduced-transparency selectors")
+  const reducedCases = [
+    [".glass-surface in prefers-reduced-transparency", ruleBodyIn(reducedMedia.body, ".glass-surface")],
+    [
+      "html[data-reduced-transparency=\"true\"] .glass-surface and html.reduced-transparency .glass-surface",
+      scriptReducedFallback[1],
+    ],
+  ]
+  const reducedExpected = {
+    "background-color": "hsl(var(--card))",
+    "border-color": "hsl(var(--border))",
+    "-webkit-backdrop-filter": "none",
+    "backdrop-filter": "none",
+  }
+  for (const [label, body] of reducedCases) {
+    assertDeclarations(parseDeclarations(body), reducedExpected, label)
+  }
+
+  const constrainedMedia = atRuleBlock(
+    "@media (max-width: 767px), (pointer: coarse) and (hover: none), (update: slow)"
+  )
+  assertDeclarations(
+    parseDeclarations(ruleBodyIn(constrainedMedia.body, ".glass-surface")),
+    {
+      "background-color": "hsl(var(--glass-opaque))",
+      "-webkit-backdrop-filter": "none",
+      "backdrop-filter": "none",
+    },
+    "constrained-rendering .glass-surface"
+  )
+})
 
 test("coreSemanticTokensUseExactLightAndDarkValues", () => {
   const expected = {

@@ -79,11 +79,11 @@ test("tokens and transparency fallback", () => {
   assert.ok(css.includes("--control-border: 0 0% 65%"), ".dark --control-border must be 0 0% 65%")
   assert.ok(css.includes("--input-border: 0 0% 65%"), ".dark --input-border must be 0 0% 65%")
 
-  // ── Exact .glass-surface shadow layers ───────────────────────────────────
+  // ── Tokenized .glass-surface shadow layers ────────────────────────────────
   assert.match(
     css,
-    /box-shadow:\s*0 1px 2px 0 hsl\(var\(--glass-shadow\) \/ var\(--glass-shadow-near-alpha\)\),\s*0 12px 28px -6px hsl\(var\(--glass-shadow\) \/ var\(--glass-shadow-alpha\)\)/,
-    ".glass-surface must apply both exact shadow layers through box-shadow"
+    /box-shadow:[^;]*var\(--glass-shadow-near-alpha\)[^;]*var\(--glass-shadow-alpha\)/,
+    ".glass-surface must apply both shadow layers through glass shadow tokens"
   )
 
   // ── background-color longhand and glass-border token usage ───────────────

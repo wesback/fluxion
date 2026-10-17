@@ -36,13 +36,13 @@ describe("token system", () => {
   it("defines --frost-line-alpha: 0.12 in .dark", () => {
     assert.match(css, /--frost-line-alpha:\s*0\.12/)
   })
-  it("defines --glass-blur: 12px", () => {
-    assert.match(css, /--glass-blur:\s*12px/)
+  it("defines --glass-blur: 20px", () => {
+    assert.match(css, /--glass-blur:\s*20px/)
   })
-  it("no blur value exceeds 16px anywhere in globals.css", () => {
+  it("no blur value exceeds 20px anywhere in globals.css", () => {
     const blurValues = [...css.matchAll(/blur\((\d+)px\)/g)].map(m => parseInt(m[1]))
     for (const v of blurValues) {
-      assert.ok(v <= 16, `Found blur(${v}px) which exceeds the 16px cap`)
+      assert.ok(v <= 20, `Found blur(${v}px) which exceeds the 20px cap`)
     }
   })
   it("registers --color-accent-operational in @theme inline", () => {
@@ -89,8 +89,8 @@ describe("glass-surface class", () => {
   it("encodes glass fill with alpha", () => {
     assert.match(css, /hsl\(var\(--glass-surface\)\s*\/\s*var\(--glass-surface-alpha\)\)/)
   })
-  it("encodes glass border with alpha", () => {
-    assert.match(css, /hsl\(var\(--glass-border\)\s*\/\s*var\(--glass-border-alpha\)\)/)
+  it("encodes glass border with the shared subtle-border token", () => {
+    assert.match(css, /border:\s*1px solid var\(--border-subtle\)/)
   })
   it("has prefers-reduced-transparency fallback removing backdrop-filter", () => {
     assert.match(css, /@media\s*\(prefers-reduced-transparency:\s*reduce\)[\s\S]*\.glass-surface[\s\S]*backdrop-filter:\s*none/)
