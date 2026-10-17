@@ -91,6 +91,10 @@ Each rule comes from a story that stopped for a person because it was missing (D
   tests for the old value and name them in the story with "updated in this story" (butlercompass #931 stopped because five existing
   tests asserted the glass and gold look the story removed, and a fix round may not edit tests). A criterion that contradicts an
   existing test says which of the two wins.
+- **Few checks, and each one matters.** A criterion that audits a long list (more than about 15 selectors, properties, files or regular
+  expressions) invites one new finding per review round, and a fixer that cannot satisfy it without breaking an older test
+  (butlercompass #931: about 60 properties; four hours). State the rule once ("no Dossier rule uses a colour literal") and let the test
+  enumerate the cases from the code or a fixture; the criterion names that test and the cases that must be rejected, not every selector.
 
 ### Before you finish (the implementing and fixing agent)
 
@@ -149,6 +153,13 @@ planning is on, so say in the PR whether the change needs new stories.
 ### A change that must be large
 
 The pipeline keeps a story under 300 lines (500 once the repository has earned it): reviewers read the whole diff, and the pipeline merges small changes on its own. When a change cannot be split (a rename across the codebase, a framework upgrade, a codemod), a person may add the label `ai-sdlc:large-change` to the issue. The implementer and the fixer may then change up to 1500 lines, the reviewers are told to read it file by file, and the pull request always waits for a person to merge it. Only a person sets the label; do not add it yourself and do not copy it to a story you split.
+
+### Working on a story yourself
+
+Add `ai-sdlc:manual` to the issue before you touch its branch: the dispatcher, the doctor and a running cycle then leave the story alone (a
+running cycle stops at its next step). Remove the label when you hand it back. A story that stops again and again (three stops in a day, or
+two more than two hours apart) is labelled `ai-sdlc:parked` with a comment that lists the options: simplify the story, split it, do it by
+hand (add `ai-sdlc:manual`), or drop it. Nothing retries a parked story; remove `ai-sdlc:parked` and `ai-sdlc:needs-human` to hand it back.
 
 ### After you label it
 
