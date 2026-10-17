@@ -7,10 +7,6 @@ interface StatsCardProps {
   value: string | number
   icon: LucideIcon
   description?: string
-  trend?: {
-    value: number
-    isPositive: boolean
-  }
   className?: string
 }
 
@@ -19,27 +15,20 @@ export function StatsCard({
   value, 
   icon: Icon, 
   description, 
-  trend,
   className 
 }: StatsCardProps) {
   return (
-    <Card className={cn("transition-all hover:shadow-md", className)}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+    <Card data-interactive="true" className={cn("dashboard-stat-card", className)}>
+      <CardHeader className="dashboard-stat-header p-0">
+        <CardTitle className="dashboard-stat-title">{title}</CardTitle>
+        <span className="dashboard-stat-icon">
+          <Icon className="h-4 w-4" aria-hidden="true" />
+        </span>
       </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+      <CardContent className="p-0">
+        <div className="dashboard-stat-value">{value}</div>
         {description && (
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
-        )}
-        {trend && (
-          <p className={cn(
-            "text-xs mt-1",
-            trend.isPositive ? "text-trend-positive" : "text-trend-negative"
-          )}>
-            {trend.isPositive ? "+" : ""}{trend.value}% from last period
-          </p>
+          <p className="dashboard-stat-description">{description}</p>
         )}
       </CardContent>
     </Card>

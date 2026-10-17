@@ -59,9 +59,8 @@ test("tokens and transparency fallback", () => {
   assert.ok(css.includes("--color-trend-positive"), "missing --color-trend-positive mapping")
   assert.ok(css.includes("--color-trend-negative"), "missing --color-trend-negative mapping")
 
-  // ── Exact spec token values (2026-07-24 frosted-neutral supersession) ────
-  // :root
-  assert.ok(css.includes("--glass-surface-alpha: 0.62"), ":root --glass-surface-alpha must be 0.62")
+  // ── Exact glass token values ──────────────────────────────────────────────
+  assert.ok(css.includes("--glass-surface-alpha: 0.84"), ":root --glass-surface-alpha must be 0.84")
   assert.ok(css.includes("--glass-border: 213 30% 88%"), ":root --glass-border must be 213 30% 88%")
   assert.ok(css.includes("--glass-border-alpha: 0.68"), ":root --glass-border-alpha must be 0.68")
   assert.ok(css.includes("--glass-shadow: 222 47% 11%"), ":root --glass-shadow must be 222 47% 11%")
@@ -71,9 +70,9 @@ test("tokens and transparency fallback", () => {
   assert.ok(css.includes("--control-border: 0 0% 52%"), ":root --control-border must be 0 0% 52%")
   assert.ok(css.includes("--input-border: 0 0% 52%"), ":root --input-border must be 0 0% 52%")
   // .dark
-  assert.ok(css.includes("--glass-surface: 0 0% 100%"), ".dark --glass-surface must be 0 0% 100% (semi-transparent white)")
-  assert.ok(css.includes("--glass-surface-alpha: 0.05"), ".dark --glass-surface-alpha must be 0.05")
-  assert.ok(css.includes("--glass-border-alpha: 0.10"), ".dark --glass-border-alpha must be 0.10")
+  assert.ok(css.includes("--glass-surface: 216 36% 13%"), ".dark --glass-surface must match its layered navy surface")
+  assert.ok(css.includes("--glass-surface-alpha: 0.94"), ".dark --glass-surface-alpha must be 0.94")
+  assert.ok(css.includes("--glass-border-alpha: 0.52"), ".dark --glass-border-alpha must be 0.52")
   assert.ok(css.includes("--glass-shadow-near-alpha: 0.28"), ".dark --glass-shadow-near-alpha must be 0.28")
   assert.ok(css.includes("--glass-shadow-alpha: 0.32"), ".dark --glass-shadow-alpha must be 0.32")
   assert.ok(css.includes("--control-border: 0 0% 65%"), ".dark --control-border must be 0 0% 65%")
@@ -157,8 +156,7 @@ test("shared primitive adoption", () => {
   assert.ok(errorBoundary.includes("text-status-error"), "ErrorBoundary must use text-status-error for fallback text and icon")
 
   const statsCard = read("components/stats-card.tsx")
-  assert.ok(statsCard.includes("text-trend-positive"), "StatsCard must use text-trend-positive")
-  assert.ok(statsCard.includes("text-trend-negative"), "StatsCard must use text-trend-negative")
+  assert.ok(!statsCard.includes("from last period"), "StatsCard must not imply unsupported period-over-period data")
 })
 
 // ─── opaque table source contract ────────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import type { FormEvent } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,19 +10,19 @@ import { formatDistanceToNow } from "date-fns"
 import { usePackageSearch } from "@/lib/hooks/use-api"
 import { TableSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { useQueryState } from "@/lib/hooks/use-query-state"
 
 function PackagesContent() {
-  const [packageName, setPackageName] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
+  const [searchQuery, setSearchQuery] = useQueryState("q")
 
   const { data, isLoading, error } = usePackageSearch(searchQuery)
 
   const hosts = data?.items || []
 
-  const handleSearch = () => {
-    if (packageName.trim()) {
-      setSearchQuery(packageName.trim())
-    }
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    setSearchQuery(String(formData.get("packageName") ?? "").trim())
   }
 
   return (
@@ -43,18 +43,20 @@ function PackagesContent() {
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={(e) => { e.preventDefault(); handleSearch() }} className="flex gap-2">
+          <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
+                key={searchQuery}
+                name="packageName"
+                required
                 placeholder="Enter package name or partial match (e.g., nginx, lib, python)"
-                value={packageName}
-                onChange={(e) => setPackageName(e.target.value)}
+                defaultValue={searchQuery}
                 className="pl-10"
                 aria-label="Search packages"
               />
             </div>
-            <Button type="submit" disabled={isLoading || !packageName.trim()}>
+            <Button type="submit" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
