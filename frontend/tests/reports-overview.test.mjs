@@ -125,3 +125,22 @@ test("hourlyReportChartLabelsIncludeTimes", () => {
   ])
   assert.notEqual(labels[0], labels[1])
 })
+
+test("dailyReportChartLabelsPreserveCalendarDatesInNegativeTimezones", () => {
+  const previousTimezone = process.env.TZ
+  process.env.TZ = "America/Los_Angeles"
+  try {
+    search = "?from=2026-10-16&to=2026-10-16&bucket=day"
+    activity = { items: [
+      { bucket: "2026-10-16", updates: 7, installs: 0, upgrades: 7, security_updates: 0, kernel_updates: 0 },
+    ] }
+    const markup = renderReport(search)
+    const chartMarkup = markup.match(/<div role="img" aria-label="Updates over time">([\s\S]*?)<\/div>/)?.[1]
+    assert.notEqual(chartMarkup, undefined)
+    const labels = [...chartMarkup.matchAll(/<span[^>]*>([^<]+)<\/span>/g)].map(([, label]) => label)
+    assert.deepEqual(labels, ["Oct 16: 7"])
+  } finally {
+    if (previousTimezone === undefined) delete process.env.TZ
+    else process.env.TZ = previousTimezone
+  }
+})
