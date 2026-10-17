@@ -27,6 +27,14 @@
     --focus-ring: #0369A1;
     --status-danger: #BE123C;
     --background-grid: rgba(71,85,105,0.04);
+    --table-surface: #FFFFFF;
+    --table-header: #F1F5F9;
+    --table-row-hover: #EAF2F8;
+    --overlay-scrim: rgba(15,23,42,0.32);
+    --background-accent-primary: rgba(2,132,199,0.05);
+    --background-accent-secondary: rgba(124,58,237,0.05);
+    --glow-primary: rgba(2,132,199,0.08);
+    --shadow-soft: 0 8px 24px rgba(15,23,42,0.06);
 
     /* Page background — ice wash */
     --background-secondary: 213 30% 93%; /* #E6EEF5 cloud */
@@ -93,9 +101,15 @@
     --control-danger-hover-surface: 0 70% 94%;
 
     /* Chart tokens */
-    --chart-grid: 0 0% 45%;
-    --chart-axis: 0 0% 20%;
-    --chart-tooltip-foreground: 0 0% 9%;
+    --chart-cyan: #0284C7;
+    --chart-blue: #2563EB;
+    --chart-violet: #7C3AED;
+    --chart-magenta: #A21CAF;
+    --chart-blue-soft: #0369A1;
+    --chart-grid: rgba(71,85,105,0.10);
+    --chart-axis: #475569;
+    --chart-tooltip: #FFFFFF;
+    --chart-tooltip-foreground: #0F172A;
     --chart-series-1: 221 83% 36%;
     --chart-series-2: 152 68% 25%;
     --chart-series-3: 278 73% 35%;
@@ -103,12 +117,17 @@
     --chart-series-5: 342 70% 36%;
 
     /* Status tokens */
-    --status-success: 142 71% 24%;
-    --status-success-surface: 142 45% 92%;
+    --status-success: #047857;
+    --status-success-surface: #ECFDF5;
     --status-error: 0 72% 34%;
     --status-error-surface: 0 70% 94%;
-    --status-warning: 32 92% 25%;
-    --status-warning-surface: 45 100% 92%;
+    --status-warning: #92400E;
+    --status-warning-surface: #FFFBEB;
+    --status-danger-surface: #FFF1F2;
+    --status-info: #075985;
+    --status-info-surface: #F0F9FF;
+    --status-unknown: #475569;
+    --status-unknown-surface: #F1F5F9;
 
     /* Trend tokens */
     --trend-positive: 142 71% 24%;
@@ -141,6 +160,14 @@
     --focus-ring: #00E5FF;
     --status-danger: #FF5D7A;
     --background-grid: rgba(148,163,184,0.04);
+    --table-surface: #0F172A;
+    --table-header: #162137;
+    --table-row-hover: #1A2940;
+    --overlay-scrim: rgba(7,11,20,0.72);
+    --background-accent-primary: rgba(0,229,255,0.08);
+    --background-accent-secondary: rgba(124,58,237,0.09);
+    --glow-primary: rgba(0,229,255,0.12);
+    --shadow-soft: 0 8px 24px rgba(2,6,23,0.16);
 
     /* Page background — charcoal */
     --background-secondary: 214 23% 13%; /* #1A232B graphite */
@@ -206,9 +233,15 @@
     --control-danger-hover-surface: 0 38% 20%;
 
     /* Chart tokens */
-    --chart-grid: 0 0% 64%;
-    --chart-axis: 0 0% 92%;
-    --chart-tooltip-foreground: 0 0% 98%;
+    --chart-cyan: #00E5FF;
+    --chart-blue: #60A5FA;
+    --chart-violet: #A78BFA;
+    --chart-magenta: #E879F9;
+    --chart-blue-soft: #7DD3FC;
+    --chart-grid: rgba(148,163,184,0.12);
+    --chart-axis: #94A3B8;
+    --chart-tooltip: #111928;
+    --chart-tooltip-foreground: #E6EDF7;
     --chart-series-1: 221 100% 73%;
     --chart-series-2: 152 69% 58%;
     --chart-series-3: 278 94% 78%;
@@ -216,12 +249,17 @@
     --chart-series-5: 342 100% 77%;
 
     /* Status tokens */
-    --status-success: 142 71% 70%;
-    --status-success-surface: 142 35% 18%;
+    --status-success: #00D68F;
+    --status-success-surface: rgba(0,214,143,0.12);
     --status-error: 0 84% 74%;
     --status-error-surface: 0 38% 20%;
-    --status-warning: 45 100% 70%;
-    --status-warning-surface: 45 50% 18%;
+    --status-warning: #FFB020;
+    --status-warning-surface: rgba(255,176,32,0.12);
+    --status-danger-surface: rgba(255,93,122,0.12);
+    --status-info: #7DD3FC;
+    --status-info-surface: rgba(125,211,252,0.10);
+    --status-unknown: #CBD5E1;
+    --status-unknown-surface: #1E293B;
 
     /* Trend tokens */
     --trend-positive: 142 71% 70%;
@@ -342,20 +380,32 @@
   --color-control-danger: hsl(var(--control-danger));
   --color-control-danger-hover: hsl(var(--control-danger-hover));
   --color-control-danger-hover-surface: hsl(var(--control-danger-hover-surface));
-  --color-chart-grid: hsl(var(--chart-grid));
-  --color-chart-axis: hsl(var(--chart-axis));
-  --color-chart-tooltip-foreground: hsl(var(--chart-tooltip-foreground));
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-surface: var(--status-danger-surface);
+  --color-status-info: var(--status-info);
+  --color-status-info-surface: var(--status-info-surface);
+  --color-status-unknown: var(--status-unknown);
+  --color-status-unknown-surface: var(--status-unknown-surface);
+  --color-chart-cyan: var(--chart-cyan);
+  --color-chart-blue: var(--chart-blue);
+  --color-chart-violet: var(--chart-violet);
+  --color-chart-magenta: var(--chart-magenta);
+  --color-chart-blue-soft: var(--chart-blue-soft);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+  --color-chart-tooltip: var(--chart-tooltip);
+  --color-chart-tooltip-foreground: var(--chart-tooltip-foreground);
   --color-chart-series-1: hsl(var(--chart-series-1));
   --color-chart-series-2: hsl(var(--chart-series-2));
   --color-chart-series-3: hsl(var(--chart-series-3));
   --color-chart-series-4: hsl(var(--chart-series-4));
   --color-chart-series-5: hsl(var(--chart-series-5));
-  --color-status-success: hsl(var(--status-success));
-  --color-status-success-surface: hsl(var(--status-success-surface));
+  --color-status-success: var(--status-success);
+  --color-status-success-surface: var(--status-success-surface);
   --color-status-error: hsl(var(--status-error));
   --color-status-error-surface: hsl(var(--status-error-surface));
-  --color-status-warning: hsl(var(--status-warning));
-  --color-status-warning-surface: hsl(var(--status-warning-surface));
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-surface: var(--status-warning-surface);
   --color-background-secondary: hsl(var(--background-secondary));
   --color-shell-surface: hsl(var(--shell-surface));
   --color-shell-border: hsl(var(--shell-border));
