@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url)
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const React = require("react")
 const { renderToStaticMarkup } = require("react-dom/server")
-const { QueryClient, QueryClientProvider, useQuery } = require("@tanstack/react-query")
+const { QueryClient, QueryClientProvider, QueryObserver, useQuery } = require("@tanstack/react-query")
 const ts = require("typescript")
 const fixedTime = Date.parse("2026-01-01T00:00:00.000Z")
 let currentTime = fixedTime
@@ -18,6 +18,8 @@ let queryClientForPage = false
 let observedRequests = []
 let fetchSpyCalls = []
 let adminHookCalls = []
+let pageHostQueryOptions
+let refreshButtonProps
 class FixedDate extends Date {
   constructor(...args) { super(...(args.length ? args : [currentTime])) }
   static now() { return currentTime }
@@ -28,8 +30,18 @@ runInNewContext(ts.transpileModule(readFileSync(join(root, "lib/host-health.ts")
 }).outputText, { exports: helper.exports, Date: FixedDate })
 const days = (value) => new Date(currentTime - value * 86400000).toISOString()
 let query
-let requests = 0
 const pageSource = readFileSync(join(root, "app/alerts/page.tsx"), "utf8")
+function makeHostQueryOptions(options = {}) {
+  return {
+    queryKey: ["hosts"],
+    queryFn: async () => {
+      observedRequests.push("/api/hosts")
+      return query?.data
+    },
+    staleTime: Infinity,
+    ...options,
+  }
+}
 const page = { exports: {} }
 runInNewContext(ts.transpileModule(pageSource, {
   compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS },
@@ -41,15 +53,17 @@ runInNewContext(ts.transpileModule(pageSource, {
     if (name === "react/jsx-runtime") return require("react/jsx-runtime")
     if (name === "next/link") return { default: ({ children, ...props }) => React.createElement("a", props, children) }
     if (name === "lucide-react") return { AlertTriangle: () => null, RefreshCw: () => null }
-    if (name === "@/components/ui/button") return { Button: ({ children, ...props }) => React.createElement("button", props, children) }
+    if (name === "@/components/ui/button") return { Button: ({ children, ...props }) => {
+      refreshButtonProps = props
+      return React.createElement("button", props, children)
+    } }
     if (name === "@/lib/host-health") return helper.exports
     if (name === "@/lib/hooks/use-api") return {
-      useHosts: () => queryClientForPage
-        ? useQuery({ queryKey: ["hosts"], queryFn: async () => {
-          observedRequests.push("/api/hosts")
-          return query
-        }, staleTime: Infinity })
-        : query,
+      useHosts: (options) => {
+        if (!queryClientForPage) return query
+        pageHostQueryOptions = makeHostQueryOptions(options)
+        return useQuery(pageHostQueryOptions)
+      },
       useIngestDiagnostics: () => useAdminQuery("/api/admin/ingest-diagnostics"),
       useWebhookCoverage: () => useAdminQuery("/api/admin/webhook-coverage"),
       useWebhooks: () => useAdminQuery("/api/admin/webhooks"),
@@ -73,9 +87,8 @@ function useAdminQuery(endpoint) {
   })
 }
 function configure(data, options = {}) {
-  requests = options.requests ?? 1
   query = { data, isLoading: false, isFetching: false, error: null,
-    dataUpdatedAt: data ? fixedTime : 0, refetch: async () => { requests++; return { data } }, ...options }
+    dataUpdatedAt: data ? fixedTime : 0, refetch: async () => ({ data }), ...options }
 }
 function resolve(node) {
   if (Array.isArray(node)) return node.map((child, index) => {
@@ -221,11 +234,57 @@ test("alertsDoNotPoll", async () => {
   assert.ok(/useHosts\(\)/.test(pageSource) && /queryKey:\s*queryKeys\.hosts/.test(hostHook) &&
     !/refetchInterval/.test(hostHook) && !/setInterval|refetchInterval/.test(pageSource))
   configure({ items: [{ hostname: "one", last_seen: null }] })
-  const { tree } = render()
-  const before = requests
-  currentTime += 2 * 60 * 1000
-  assert.equal(requests, before)
-  const refresh = elements(tree, (e) => e.type === "button")[0]
-  await refresh.props.onClick()
-  assert.equal(requests, before + 1)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const originalSetInterval = globalThis.setInterval
+  const originalClearInterval = globalThis.clearInterval
+  const intervals = new Map()
+  let intervalClock = 0
+  let nextIntervalId = 0
+  globalThis.setInterval = (callback, delay, ...args) => {
+    const interval = {
+      callback: () => callback(...args),
+      delay: Number(delay),
+      nextAt: intervalClock + Number(delay),
+    }
+    intervals.set(++nextIntervalId, interval)
+    return nextIntervalId
+  }
+  globalThis.clearInterval = (id) => intervals.delete(id)
+  const advanceIntervals = (milliseconds) => {
+    const end = intervalClock + milliseconds
+    while (true) {
+      const due = [...intervals.entries()]
+        .filter(([, interval]) => interval.nextAt <= end)
+        .sort(([, a], [, b]) => a.nextAt - b.nextAt)[0]
+      if (!due) break
+      const [, interval] = due
+      intervalClock = interval.nextAt
+      interval.nextAt += interval.delay
+      interval.callback()
+    }
+    intervalClock = end
+    currentTime += milliseconds
+  }
+  let unsubscribe
+  queryClientForPage = true
+  observedRequests = []
+  try {
+    await client.fetchQuery(makeHostQueryOptions())
+    renderWithQueryClient(client)
+    assert.deepEqual(observedRequests, ["/api/hosts"])
+    const observer = new QueryObserver(client, pageHostQueryOptions)
+    unsubscribe = observer.subscribe(() => {})
+    advanceIntervals(2 * 60 * 1000)
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(observedRequests, ["/api/hosts"])
+    assert.equal(typeof refreshButtonProps.onClick, "function")
+    await refreshButtonProps.onClick()
+    assert.deepEqual(observedRequests, ["/api/hosts", "/api/hosts"])
+  } finally {
+    unsubscribe?.()
+    queryClientForPage = false
+    globalThis.setInterval = originalSetInterval
+    globalThis.clearInterval = originalClearInterval
+    client.clear()
+  }
 })
