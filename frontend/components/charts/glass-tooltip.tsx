@@ -12,9 +12,11 @@ import type { NameType, ValueType } from "recharts/types/component/DefaultToolti
 //           hsl(var(--card)/0.82) giving muted-foreground ≥7:1 over any chart color.
 // Both modes exceed 4.5:1. Light: no opaque tint; Dark: glass-surface-tooltip modifier.
 
-type GlassTooltipProps = Partial<TooltipContentProps<ValueType, NameType>>
+type GlassTooltipProps = Partial<TooltipContentProps<ValueType, NameType>> & {
+  valueUnit?: string
+}
 
-export function GlassTooltip({ active, payload, label }: GlassTooltipProps) {
+export function GlassTooltip({ active, payload, label, valueUnit = "update" }: GlassTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
 
   return (
@@ -27,7 +29,9 @@ export function GlassTooltip({ active, payload, label }: GlassTooltipProps) {
           {entry.name && (
             <span className="text-muted-foreground">{entry.name}:</span>
           )}
-          <span className="text-foreground">{entry.value}</span>
+          <span className="text-foreground">
+            {entry.value} {valueUnit}{entry.value === 1 ? "" : "s"}
+          </span>
         </p>
       ))}
     </div>
