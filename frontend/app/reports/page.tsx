@@ -1,7 +1,7 @@
 "use client"
 
 import { Activity as ActivityIcon, RefreshCw } from "lucide-react"
-import { useActivity } from "@/lib/hooks/use-api"
+import { useActivity, useSecurityFeed } from "@/lib/hooks/use-api"
 import type { ActivityPoint } from "@/lib/api"
 import { useQueryState, useQueryStateReady } from "@/lib/hooks/use-query-state"
 import { FilterBar } from "@/components/filter-bar"
@@ -59,6 +59,32 @@ export function activityOptionsForReport(filters: ReportFilters) {
     ...(filters.kernel !== undefined && { is_kernel: filters.kernel }), bucket: filters.bucket,
   }
 }
+export function securityOptionsForReport(filters: ReportFilters) {
+  return {
+    ...(filters.host && { hostname: filters.host }), ...(filters.packageName && { package_name: filters.packageName }),
+    from_date: `${filters.fromDate}T00:00:00.000Z`, to_date: `${filters.toDate}T23:59:59.999Z`,
+  }
+}
+function hostsHref(hostname: string) {
+  return `/hosts?${new URLSearchParams({ q: hostname }).toString()}`
+}
+function activityHref(filters: ReportFilters) {
+  const params = new URLSearchParams()
+  if (filters.host) params.set("host", filters.host)
+  if (filters.packageName) params.set("package", filters.packageName)
+  params.set("from", filters.fromDate)
+  params.set("to", filters.toDate)
+  if (filters.security !== undefined) params.set("security", String(filters.security))
+  if (filters.install !== undefined) params.set("install", String(filters.install))
+  if (filters.kernel !== undefined) params.set("kernel", String(filters.kernel))
+  params.set("bucket", filters.bucket)
+  return `/activity?${params.toString()}`
+}
+function securityHref(hostname: string, packageName: string, window: string) {
+  const params = new URLSearchParams({ host: hostname, package: packageName, window })
+  return `/security?${params.toString()}`
+}
+function reportWindow(fromDate: string, toDate: string) { return Date.parse(toDate) - Date.parse(fromDate) < 86_400_000 ? "24" : "168" }
 export function sumActivityBuckets(items: ActivityPoint[]) {
   return items.reduce((totals, item) => ({
     updates: totals.updates + item.updates,
@@ -81,8 +107,12 @@ function ReportsContent() {
   const queryReady = useQueryStateReady()
   const filters = typeof window === "undefined" ? null : parseReportFilters(window.location.search)
   const enabled = queryReady && filters !== null
-  const { data, isLoading, error, refetch } = useActivity(
+  const { data, isLoading, isFetching, error, dataUpdatedAt, refetch } = useActivity(
     filters ? activityOptionsForReport(filters) : {},
+    { enabled },
+  )
+  const securityQuery = useSecurityFeed(
+    filters ? securityOptionsForReport(filters) : {},
     { enabled },
   )
   const series = data?.items ?? []
@@ -108,7 +138,10 @@ function ReportsContent() {
     window.history.replaceState({}, "", window.location.pathname)
   }
 
-  const refresh = () => toast.promise(refetch(), {
+  const refresh = () => toast.promise(Promise.all([
+    refetch({ throwOnError: true }),
+    securityQuery.refetch({ throwOnError: true }),
+  ]), {
     loading: "Refreshing reports...",
     success: "Reports refreshed",
     error: "Failed to refresh reports",
@@ -124,8 +157,8 @@ function ReportsContent() {
           </div>
           <p className="text-muted-foreground">Bounded activity totals and update volume.</p>
         </div>
-        <Button variant="outline" onClick={refresh} disabled={isLoading || !enabled}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} aria-hidden="true" />
+        <Button variant="outline" onClick={refresh} disabled={isFetching || securityQuery.isFetching || !enabled}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${isFetching || securityQuery.isFetching ? "animate-spin" : ""}`} aria-hidden="true" />
           Refresh
         </Button>
       </div>
@@ -165,24 +198,95 @@ function ReportsContent() {
         </fieldset>
       </FilterBar>
 
-      {isLoading || !queryReady ? <ChartSkeleton /> : error ? (
-        <Card className="p-8" role="alert"><p className="text-destructive">Failed to load reports. Please try again.</p></Card>
-      ) : filters === null ? (
+      {filters === null && queryReady ? (
         <Card className="p-8" role="alert"><p className="text-destructive">Report filters are invalid. Clear filters to continue.</p></Card>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <StatsCard title="Updates" value={totals.updates} icon={ActivityIcon} />
-            <StatsCard title="Installs" value={totals.installs} icon={ActivityIcon} />
-            <StatsCard title="Upgrades" value={totals.upgrades} icon={ActivityIcon} />
-            <StatsCard title="Security Updates" value={totals.security} icon={ActivityIcon} />
-            <StatsCard title="Kernel Updates" value={totals.kernels} icon={ActivityIcon} />
-          </div>
-          <LineChart title="Updates over time" data={chartData} />
+          <section aria-labelledby="activity-report-heading" className="space-y-4">
+            <h2 id="activity-report-heading" className="text-xl font-semibold">Activity</h2>
+            <ReportSourceStatus title="Activity" isLoading={!queryReady || isLoading} error={error} data={data} updatedAt={dataUpdatedAt} />
+            {data && (
+              <>
+                {series.length === 0 ? <ReportEmpty>There is no activity for this report.</ReportEmpty> : (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                      <StatsCard title="Updates" value={totals.updates} icon={ActivityIcon} />
+                      <StatsCard title="Installs" value={totals.installs} icon={ActivityIcon} />
+                      <StatsCard title="Upgrades" value={totals.upgrades} icon={ActivityIcon} />
+                      <StatsCard title="Security Updates" value={totals.security} icon={ActivityIcon} />
+                      <StatsCard title="Kernel Updates" value={totals.kernels} icon={ActivityIcon} />
+                    </div>
+                    <LineChart title="Updates over time" data={chartData} />
+                    <ul aria-label="Activity buckets" className="space-y-2">
+                      {series.map((point, index) => (
+                        <li key={`${point.bucket}-${index}`} className="flex flex-wrap items-center justify-between gap-2">
+                          <span>{point.bucket}</span><span>{point.updates} updates</span>
+                          {filters && <a className="text-primary underline-offset-4 hover:underline" href={activityHref(filters)}>View activity</a>}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
+            )}
+          </section>
+          <section aria-labelledby="security-report-heading" className="space-y-4">
+            <h2 id="security-report-heading" className="text-xl font-semibold">Security</h2>
+            <ReportSourceStatus title="Security" isLoading={!queryReady || securityQuery.isLoading} error={securityQuery.error} data={securityQuery.data} updatedAt={securityQuery.dataUpdatedAt} />
+            {securityQuery.data && (
+              securityQuery.data.items.length === 0 ? <ReportEmpty>There are no security updates for this report.</ReportEmpty> : (
+                <div className="space-y-3">
+                  {securityQuery.data.items.map((item, index) => (
+                    <Card key={`${item.hostname}-${item.package_name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 p-4">
+                      <div>
+                        <p>{item.old_version ?? "New install"} → {item.new_version}</p>
+                        <p>
+                          <a className="text-primary underline-offset-4 hover:underline" href={hostsHref(item.hostname)}>{item.hostname}</a>
+                          {" · "}
+                          <a className="text-primary underline-offset-4 hover:underline" href={securityHref(item.hostname, item.package_name, reportWindow(filters?.fromDate ?? defaults.fromDate, filters?.toDate ?? defaults.toDate))}>{item.package_name}</a>
+                        </p>
+                      </div>
+                      {filters && (
+                        <a className="text-primary underline-offset-4 hover:underline"
+                          href={activityHref({ ...filters, host: item.hostname, packageName: item.package_name })}>
+                          View related activity
+                        </a>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )
+            )}
+          </section>
         </>
       )}
     </div>
   )
+}
+
+function errorStatus(error: unknown) {
+  return error !== null && typeof error === "object" && "status" in error && typeof error.status === "number"
+    ? error.status
+    : undefined
+}
+function ReportSourceStatus({ title, isLoading, error, data, updatedAt }: {
+  title: string; isLoading: boolean; error: unknown; data: unknown; updatedAt: number
+}) {
+  if (!data) {
+    if (isLoading || !error) return <ChartSkeleton />
+    const denied = errorStatus(error) === 401 || errorStatus(error) === 403
+    return <Card className="p-6" role="alert"><p className="text-destructive">
+      {denied ? `Access denied to ${title.toLowerCase()} report.` : `Failed to load ${title.toLowerCase()} report. Please try again.`}
+    </p></Card>
+  }
+  if (!error) return null
+  const timestamp = updatedAt > 0 ? new Date(updatedAt).toISOString() : ""
+  return <p role="status">This report is stale. Last successful response:{" "}
+    {timestamp ? <time dateTime={timestamp}>{timestamp}</time> : "time unavailable"}
+  </p>
+}
+function ReportEmpty({ children }: { children: React.ReactNode }) {
+  return <Card className="p-6 text-muted-foreground">{children}</Card>
 }
 
 export default function ReportsPage() {
