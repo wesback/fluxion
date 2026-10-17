@@ -22,8 +22,8 @@ export async function GET(request: Request) {
     return new Response(response.data, {
       status: response.status,
       headers: {
-        "Content-Type": response.headers["content-type"] || "application/octet-stream",
-        "Content-Disposition": response.headers["content-disposition"] || "attachment",
+        "Content-Type": String(response.headers["content-type"] || "application/octet-stream"),
+        "Content-Disposition": String(response.headers["content-disposition"] || "attachment"),
       },
     })
   } catch (error) {

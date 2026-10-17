@@ -182,8 +182,10 @@ describe("skeleton shimmer", () => {
   it("defines @keyframes skeleton-shimmer", () => {
     assert.match(css, /@keyframes skeleton-shimmer/)
   })
-  it("shimmer uses --background and --background-secondary", () => {
-    assert.match(css, /hsl\(var\(--background\)\)[\s\S]*hsl\(var\(--background-secondary\)\)/)
+  it("shimmer uses --background and --surface-subtle semantic tokens", () => {
+    assert.match(css, /\.skeleton-shimmer\s*\{[^}]*background:\s*var\(--background\);/)
+    assert.match(css, /\.skeleton-shimmer::before\s*\{[^}]*var\(--surface-subtle\) 50%/)
+    assert.doesNotMatch(css, /hsl\(var\(--background\)\)/)
   })
   it("animation duration is 1.6s", () => {
     assert.match(css, /1\.6s/)
