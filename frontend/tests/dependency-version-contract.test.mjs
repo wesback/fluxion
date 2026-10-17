@@ -245,3 +245,166 @@ test("test_runtime_manifest_versions_match_lockfile", () => {
     /resolved package version differs: @tanstack\/react-query/,
   )
 })
+
+const developmentPackageNames = [
+  "@tailwindcss/postcss",
+  "@tanstack/react-query-devtools",
+  "@types/node",
+  "@types/react",
+  "@types/react-dom",
+  "eslint",
+  "eslint-config-next",
+  "tailwindcss",
+  "typescript",
+]
+const expectedDevelopmentVersions = {
+  "@tailwindcss/postcss": "4.3.3",
+  "@tanstack/react-query-devtools": "5.104.3",
+  "@types/node": "26.6.5",
+  "@types/react": "19.3.0",
+  "@types/react-dom": "19.3.0",
+  eslint: "10.13.0",
+  "eslint-config-next": "16.4.2",
+  tailwindcss: "4.3.3",
+  typescript: "7.0.2",
+}
+
+const developmentReleaseEvidence = {
+  "@tailwindcss/postcss": { selected: ["4.3.3", "not published"], higherStableReleasesConsidered: [] },
+  "@tanstack/react-query-devtools": { selected: ["5.104.3", "not published"], higherStableReleasesConsidered: [] },
+  "@types/node": { selected: ["26.6.5", "not published"], higherStableReleasesConsidered: [] },
+  "@types/react": { selected: ["19.3.0", "not published"], higherStableReleasesConsidered: [] },
+  "@types/react-dom": { selected: ["19.3.0", "not published"], higherStableReleasesConsidered: [] },
+  eslint: {
+    selected: ["10.13.0", "^20.19.0 || ^22.13.0 || >=24"],
+    higherStableReleasesConsidered: [],
+  },
+  "eslint-config-next": { selected: ["16.4.2", "not published"], higherStableReleasesConsidered: [] },
+  tailwindcss: { selected: ["4.3.3", "not published"], higherStableReleasesConsidered: [] },
+  typescript: { selected: ["7.0.2", ">=16.20.0"], higherStableReleasesConsidered: [] },
+}
+
+function assertDevelopmentTargetsMatchExpectedVersions(manifestFixture, expectedVersions) {
+  assert.deepEqual(Object.keys(expectedVersions).sort(), [...developmentPackageNames].sort())
+
+  for (const name of developmentPackageNames) {
+    const version = manifestFixture.devDependencies?.[name]
+    assert.ok(Object.hasOwn(manifestFixture.devDependencies ?? {}, name), `manifest devDependency is missing: ${name}`)
+    assert.match(version, /^\d+\.\d+\.\d+$/, `${name} must not use a range or prerelease`)
+    assert.equal(version, expectedVersions[name], `${name} must use its expected exact version`)
+  }
+}
+
+function assertDevelopmentManifestLockfileMatches(manifestFixture, lockfileFixture) {
+  const manifestDependencies = manifestFixture.devDependencies
+  const rootDependencies = lockfileFixture.packages?.[""]?.devDependencies
+
+  for (const name of developmentPackageNames) {
+    assert.ok(Object.hasOwn(manifestDependencies ?? {}, name), `manifest devDependency is missing: ${name}`)
+    assert.ok(Object.hasOwn(rootDependencies ?? {}, name), `lockfile root devDependency is missing: ${name}`)
+    assert.equal(rootDependencies[name], manifestDependencies[name], `lockfile root declaration differs: ${name}`)
+
+    const resolvedPackage = lockfileFixture.packages?.[`node_modules/${name}`]
+    assert.ok(resolvedPackage, `resolved lockfile package is missing: ${name}`)
+    assert.equal(resolvedPackage.version, manifestDependencies[name], `resolved package version differs: ${name}`)
+  }
+}
+
+function createDevelopmentFixtures() {
+  return {
+    manifest: {
+      devDependencies: { ...expectedDevelopmentVersions },
+    },
+    lockfile: {
+      packages: {
+        "": { devDependencies: { ...expectedDevelopmentVersions } },
+        ...Object.fromEntries(
+          developmentPackageNames.map((name) => [
+            `node_modules/${name}`,
+            { version: expectedDevelopmentVersions[name] },
+          ]),
+        ),
+      },
+    },
+  }
+}
+
+test("test_development_targets_match_expected_stable_versions", () => {
+  assert.deepEqual(Object.keys(developmentReleaseEvidence).sort(), [...developmentPackageNames].sort())
+  for (const [name, evidence] of Object.entries(developmentReleaseEvidence)) {
+    assert.equal(evidence.selected[0], expectedDevelopmentVersions[name])
+  }
+  assert.doesNotThrow(() =>
+    assertDevelopmentTargetsMatchExpectedVersions(manifest, expectedDevelopmentVersions),
+  )
+
+  let manifestFixture = { devDependencies: { ...expectedDevelopmentVersions } }
+  delete manifestFixture.devDependencies["@tailwindcss/postcss"]
+  assert.throws(
+    () => assertDevelopmentTargetsMatchExpectedVersions(manifestFixture, expectedDevelopmentVersions),
+    /manifest devDependency is missing: @tailwindcss\/postcss/,
+  )
+
+  for (const version of ["4.3.2", "^4.3.3", "4.3.3-beta.1"]) {
+    manifestFixture = {
+      devDependencies: { ...expectedDevelopmentVersions, "@tailwindcss/postcss": version },
+    }
+    assert.throws(
+      () => assertDevelopmentTargetsMatchExpectedVersions(manifestFixture, expectedDevelopmentVersions),
+      version.startsWith("^")
+        ? /@tailwindcss\/postcss must not use a range or prerelease/
+        : version.includes("-")
+          ? /@tailwindcss\/postcss must not use a range or prerelease/
+          : /@tailwindcss\/postcss must use its expected exact version/,
+    )
+  }
+
+  assert.throws(
+    () =>
+      assertDevelopmentTargetsMatchExpectedVersions(manifest, {
+        ...expectedDevelopmentVersions,
+        extra: "1.0.0",
+      }),
+    /deep-equal/,
+  )
+})
+
+test("test_development_manifest_versions_match_lockfile", () => {
+  let fixtures = createDevelopmentFixtures()
+  assert.doesNotThrow(() => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile))
+
+  fixtures = createDevelopmentFixtures()
+  delete fixtures.manifest.devDependencies["@tailwindcss/postcss"]
+  assert.throws(
+    () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /manifest devDependency is missing: @tailwindcss\/postcss/,
+  )
+
+  fixtures = createDevelopmentFixtures()
+  delete fixtures.lockfile.packages[""].devDependencies["@tailwindcss/postcss"]
+  assert.throws(
+    () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /lockfile root devDependency is missing: @tailwindcss\/postcss/,
+  )
+
+  fixtures = createDevelopmentFixtures()
+  delete fixtures.lockfile.packages["node_modules/@tailwindcss/postcss"]
+  assert.throws(
+    () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /resolved lockfile package is missing: @tailwindcss\/postcss/,
+  )
+
+  fixtures = createDevelopmentFixtures()
+  fixtures.lockfile.packages[""].devDependencies["@tailwindcss/postcss"] = "4.3.2"
+  assert.throws(
+    () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /lockfile root declaration differs: @tailwindcss\/postcss/,
+  )
+
+  fixtures = createDevelopmentFixtures()
+  fixtures.lockfile.packages["node_modules/@tailwindcss/postcss"].version = "4.3.2"
+  assert.throws(
+    () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /resolved package version differs: @tailwindcss\/postcss/,
+  )
+})
