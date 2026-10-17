@@ -56,6 +56,9 @@
     --input: 0 0% 89.8%;
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
+    --radius-card: 24px;
+    --radius-control: 10px;
+    --card-hover-offset: -4px;
 
     /* Frosted shell tokens */
     --shell-surface: 0 0% 100%;
@@ -90,7 +93,7 @@
     --glass-shadow: 222 47% 11%;
     --glass-shadow-near-alpha: 0.08;
     --glass-shadow-alpha: 0.12;
-    --glass-blur: 12px;
+    --glass-blur: 20px;
     --glass-opaque: var(--card);
 
     /* Control tokens */
@@ -222,7 +225,7 @@
     --glass-shadow: 0 0% 0%;
     --glass-shadow-near-alpha: 0.28;
     --glass-shadow-alpha: 0.32;
-    --glass-blur: 12px;
+    --glass-blur: 20px;
     --glass-opaque: var(--card);
 
     /* Control tokens */
@@ -438,13 +441,19 @@
   /* Single reusable glass surface class */
   .glass-surface {
     background-color: hsl(var(--glass-surface) / var(--glass-surface-alpha));
-    border: 1px solid hsl(var(--glass-border) / var(--glass-border-alpha));
-    border-radius: var(--radius);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
     box-shadow:
       0 1px 2px 0 hsl(var(--glass-shadow) / var(--glass-shadow-near-alpha)),
       0 12px 28px -6px hsl(var(--glass-shadow) / var(--glass-shadow-alpha));
     -webkit-backdrop-filter: blur(var(--glass-blur));
     backdrop-filter: blur(var(--glass-blur));
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .glass-surface:hover {
+      transform: translateY(var(--card-hover-offset));
+    }
   }
 
   /* Dark-mode tooltip: "smoked glass" — card/82 ensures muted-foreground ≥7:1 over
