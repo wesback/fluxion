@@ -50,7 +50,7 @@ function queryResult(source, fallbackData) {
     },
   }
 }
-function loadPage() {
+function loadPage(queryHooks) {
   const pageModule = { exports: {} }
   runInNewContext(compiled, {
     exports: pageModule.exports,
@@ -61,7 +61,7 @@ function loadPage() {
     require: (name) => {
       if (name === "react/jsx-runtime") return require("react/jsx-runtime")
       if (name === "lucide-react") return { Activity: Icon, RefreshCw: Icon }
-      if (name === "@/lib/hooks/use-api") return {
+      if (name === "@/lib/hooks/use-api") return queryHooks ?? {
         useActivity: (options, queryOptions) => {
           if (queryOptions.enabled) requests.push(options)
           return queryResult("activity", activity)
@@ -87,16 +87,19 @@ function loadPage() {
       if (name === "@/components/charts/line-chart") return { LineChart }
       if (name === "@/components/stats-card") return { StatsCard }
       if (name === "@/components/error-boundary") return { ErrorBoundary: ({ children }) => children }
-      if (name === "sonner") return { toast: { promise: noop } }
+      if (name === "sonner") return { toast: { promise: (promise) => promise } }
       throw new Error(`Unexpected reports dependency: ${name}`)
     },
   })
   return pageModule.exports
 }
-function renderReport(query) {
+function renderReport(query, { client, queryHooks } = {}) {
   search = query
   buttonActions = []
-  return renderToStaticMarkup(React.createElement(loadPage().default))
+  const page = React.createElement(loadPage(queryHooks).default)
+  return renderToStaticMarkup(client
+    ? React.createElement(require("@tanstack/react-query").QueryClientProvider, { client, children: page })
+    : page)
 }
 function setSources(next) {
   sourceMocks = { activity: null, security: null, ...next }
@@ -278,20 +281,113 @@ test("reportTextAndLinksAreSafe", () => {
 })
 
 test("reportsDoNotPoll", async () => {
-  setSources({ activity: { data: activityData() }, security: { data: securityData() } })
-  const hooks = readFileSync(hooksPath, "utf8")
-  assert.doesNotMatch(hooks.match(/const defaultQueryOptions = \{[\s\S]*?\n\}/)?.[0] ?? "", /refetchInterval/)
-  for (const name of ["useActivity", "useSecurityFeed"]) {
-    const start = hooks.indexOf(`export function ${name}(`), end = hooks.indexOf("\n}", start)
-    assert.ok(start >= 0 && end > start)
-    assert.doesNotMatch(hooks.slice(start, end), /refetchInterval/)
+  const { QueryClient, QueryObserver, useQuery } = require("@tanstack/react-query")
+  const apiCalls = { activity: 0, security: 0 }
+  const queryOptions = []
+  const apiHooksModule = { exports: {} }
+  const instrumentedApiClient = {
+    getActivity: async () => { apiCalls.activity += 1; return activityData() },
+    getSecurityFeed: async () => { apiCalls.security += 1; return securityData() },
   }
-  fakeNow = Date.UTC(2026, 9, 17, 6, 50)
-  renderReport("?from=2026-10-11&to=2026-10-17&bucket=day")
-  assert.deepEqual([requests.length, securityRequests.length], [1, 1])
-  fakeNow += 60 * 60 * 1000
-  assert.deepEqual([requests.length, securityRequests.length], [1, 1])
-  assert.equal(buttonActions.length, 1)
-  await buttonActions[0]()
-  assert.deepEqual(refreshCalls, { activity: 1, security: 1 })
+  const queryHooksSource = typescript.transpileModule(readFileSync(hooksPath, "utf8"), {
+    compilerOptions: { module: typescript.ModuleKind.CommonJS },
+  }).outputText
+  runInNewContext(queryHooksSource, {
+    exports: apiHooksModule.exports,
+    require: (name) => {
+      if (name === "@tanstack/react-query") return {
+        ...require("@tanstack/react-query"),
+        useQuery: (options) => {
+          queryOptions.push(options)
+          return useQuery(options)
+        },
+      }
+      if (name === "../telemetry/api-client") return {
+        instrumentedApiClient, ApiError: class ApiError extends Error {},
+      }
+      if (name === "sonner") return { toast: { error: noop } }
+      throw new Error(`Unexpected query hook dependency: ${name}`)
+    },
+  })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const originalDate = globalThis.Date
+  const originalSetTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
+  const originalSetInterval = globalThis.setInterval
+  const originalClearInterval = globalThis.clearInterval
+  const originalSetImmediate = globalThis.setImmediate
+  const originalFakeNow = fakeNow
+  const timerStart = fakeNow = Date.UTC(2026, 9, 17, 6, 50)
+  const timers = new Map()
+  let timerClock = 0
+  let nextTimerId = 0
+  globalThis.Date = class extends originalDate {
+    constructor(...args) { super(...(args.length ? args : [fakeNow])) }
+    static now() { return fakeNow }
+  }
+  globalThis.setTimeout = (callback, delay, ...args) => {
+    const id = ++nextTimerId
+    const timeout = Number.isFinite(Number(delay)) ? Number(delay) : 0
+    timers.set(id, { callback: () => callback(...args), delay: timeout, nextAt: timerClock + timeout, interval: false })
+    return id
+  }
+  globalThis.clearTimeout = (id) => timers.delete(id)
+  globalThis.setInterval = (callback, delay, ...args) => {
+    const id = ++nextTimerId
+    const timeout = Number.isFinite(Number(delay)) ? Number(delay) : 0
+    timers.set(id, { callback: () => callback(...args), delay: timeout, nextAt: timerClock + timeout, interval: true })
+    return id
+  }
+  globalThis.clearInterval = (id) => timers.delete(id)
+  const advanceTimers = async (milliseconds) => {
+    const end = timerClock + milliseconds
+    let callbacksRun = 0
+    while (true) {
+      const due = [...timers.entries()]
+        .filter(([, timer]) => timer.nextAt <= end)
+        .sort(([, a], [, b]) => a.nextAt - b.nextAt)[0]
+      if (!due) break
+      const [id, timer] = due
+      timerClock = timer.nextAt
+      fakeNow = timerStart + timerClock
+      if (timer.interval) timer.nextAt += Math.max(timer.delay, 1)
+      else timers.delete(id)
+      timer.callback()
+      await Promise.resolve()
+      await new Promise((resolve) => originalSetImmediate(resolve))
+      callbacksRun += 1
+      assert.ok(callbacksRun < 10000, "fake clock must not enter an unbounded timer loop")
+    }
+    timerClock = end
+    fakeNow = timerStart + timerClock
+  }
+  const subscriptions = []
+  try {
+    renderReport("?from=2026-10-11&to=2026-10-17&bucket=day", {
+      client: queryClient,
+      queryHooks: apiHooksModule.exports,
+    })
+    assert.deepEqual(queryOptions.map(({ queryKey }) => queryKey[0]), ["activity", "security"])
+    assert.deepEqual(apiCalls, { activity: 0, security: 0 })
+    await Promise.all(queryOptions.map((options) => queryClient.fetchQuery(options)))
+    assert.deepEqual(apiCalls, { activity: 1, security: 1 })
+    for (const options of queryOptions) {
+      const observer = new QueryObserver(queryClient, options)
+      subscriptions.push(observer.subscribe(() => {}))
+    }
+    await advanceTimers(60 * 60 * 1000)
+    assert.deepEqual(apiCalls, { activity: 1, security: 1 }, "idle reports must not issue periodic requests")
+    assert.equal(buttonActions.length, 1)
+    await buttonActions[0]()
+    assert.deepEqual(apiCalls, { activity: 2, security: 2 }, "refresh must issue one request per active source")
+  } finally {
+    subscriptions.forEach((unsubscribe) => unsubscribe())
+    queryClient.clear()
+    globalThis.Date = originalDate
+    globalThis.setTimeout = originalSetTimeout
+    globalThis.clearTimeout = originalClearTimeout
+    globalThis.setInterval = originalSetInterval
+    globalThis.clearInterval = originalClearInterval
+    fakeNow = originalFakeNow
+  }
 })
