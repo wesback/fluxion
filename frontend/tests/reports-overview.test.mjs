@@ -9,6 +9,7 @@ import { runInNewContext } from "node:vm"
 const require = createRequire(import.meta.url)
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const pagePath = join(root, "app/reports/page.tsx")
+const hooksPath = join(root, "lib/hooks/use-api.ts")
 assert.equal(existsSync(pagePath), true, "/reports page must exist")
 const React = require("react")
 const { renderToStaticMarkup } = require("react-dom/server")
@@ -18,34 +19,71 @@ const compiled = typescript.transpileModule(readFileSync(pagePath, "utf8"), { co
 } }).outputText
 let search = ""
 let activity = { items: [] }
+let security = { items: [] }
 const requests = []
+const securityRequests = []
+const refreshCalls = { activity: 0, security: 0 }
+let sourceMocks = { activity: null, security: null }
+let buttonActions = []
+let fakeNow = Date.now()
 const noop = () => {}
 const Icon = () => React.createElement("svg", { "aria-hidden": "true" })
 const StatsCard = ({ title, value }) => React.createElement("article", { "data-title": title }, React.createElement("h3", null, title), React.createElement("output", null, value))
 const LineChart = ({ title, data }) => React.createElement("div", { role: "img", "aria-label": title }, data.map((point) => React.createElement("span", { key: point.name }, `${point.name}: ${point.value}`)))
 const plain = (value) => JSON.parse(JSON.stringify(value))
+const dateClock = class extends Date {
+  constructor(...args) { super(...(args.length ? args : [fakeNow])) }
+  static now() { return fakeNow }
+}
+function queryResult(source, fallbackData) {
+  const mock = sourceMocks[source] ?? {}
+  const data = Object.hasOwn(mock, "data") ? mock.data : fallbackData
+  return {
+    data,
+    isLoading: mock.isLoading ?? false,
+    isFetching: mock.isFetching ?? false,
+    error: mock.error ?? null,
+    dataUpdatedAt: mock.dataUpdatedAt ?? 0,
+    refetch: () => {
+      refreshCalls[source] += 1
+      return Promise.resolve({ data })
+    },
+  }
+}
 function loadPage() {
   const pageModule = { exports: {} }
   runInNewContext(compiled, {
     exports: pageModule.exports,
     URLSearchParams,
+    Date: dateClock,
+    Promise,
     window: { get location() { return { search, pathname: "/reports" } }, history: { replaceState: noop } },
     require: (name) => {
       if (name === "react/jsx-runtime") return require("react/jsx-runtime")
       if (name === "lucide-react") return { Activity: Icon, RefreshCw: Icon }
-      if (name === "@/lib/hooks/use-api") return { useActivity: (options, queryOptions) => {
-        if (queryOptions.enabled) requests.push(options)
-        return { data: activity, isLoading: false, error: null, refetch: noop }
-      } }
+      if (name === "@/lib/hooks/use-api") return {
+        useActivity: (options, queryOptions) => {
+          if (queryOptions.enabled) requests.push(options)
+          return queryResult("activity", activity)
+        },
+        useSecurityFeed: (options, queryOptions) => {
+          if (queryOptions.enabled) securityRequests.push(options)
+          return queryResult("security", security)
+        },
+      }
       if (name === "@/lib/hooks/use-query-state") return {
         useQueryState: (key, fallback = "") => [new URLSearchParams(search).get(key) ?? fallback, noop], useQueryStateReady: () => true,
       }
       if (name === "@/components/filter-bar") return { FilterBar: ({ children }) => children }
-      if (name === "@/components/ui/skeleton") return { ChartSkeleton: () => null }
-      if (name === "@/components/ui/card") return { Card: ({ children }) => children }
+      if (name === "@/components/ui/skeleton") return { ChartSkeleton: () => React.createElement("div", { role: "status" }, "Loading report data...") }
+      if (name === "@/components/ui/card") return { Card: ({ children, ...props }) => React.createElement("div", props, children) }
       if (name === "@/components/ui/input") return { Input: (props) => React.createElement("input", props) }
       if (name === "@/components/ui/select") return { Select: (props) => React.createElement("select", props) }
-      if (name === "@/components/ui/button") return { Button: ({ children, ...props }) => React.createElement("button", props, children) }
+      if (name === "@/components/ui/button") return { Button: ({ children, onClick, ...props }) => {
+        delete props.variant
+        if (onClick) buttonActions.push(onClick)
+        return React.createElement("button", props, children)
+      } }
       if (name === "@/components/charts/line-chart") return { LineChart }
       if (name === "@/components/stats-card") return { StatsCard }
       if (name === "@/components/error-boundary") return { ErrorBoundary: ({ children }) => children }
@@ -57,7 +95,15 @@ function loadPage() {
 }
 function renderReport(query) {
   search = query
+  buttonActions = []
   return renderToStaticMarkup(React.createElement(loadPage().default))
+}
+function setSources(next) {
+  sourceMocks = { activity: null, security: null, ...next }
+  requests.length = 0
+  securityRequests.length = 0
+  refreshCalls.activity = 0
+  refreshCalls.security = 0
 }
 
 test("reportFilterContract", () => {
@@ -146,4 +192,106 @@ test("dailyReportChartLabelsPreserveCalendarDatesInNegativeTimezones", () => {
     if (previousTimezone === undefined) delete process.env.TZ
     else process.env.TZ = previousTimezone
   }
+})
+
+const activityData = (bucket = "2026-10-17", updates = 1) => ({ items: [{ bucket, updates, installs: 0, upgrades: updates, security_updates: 0, kernel_updates: 0 }] })
+const securityData = (hostname = "host-1", package_name = "pkg-1", new_version = "2") => ({ items: [{ hostname, package_name, old_version: "1", new_version }] })
+
+test("reportSourcesFailIndependently", () => {
+  const query = "?from=2026-10-11&to=2026-10-17&bucket=day"
+  setSources({ activity: { data: null, isLoading: true }, security: { data: null, isLoading: true } })
+  let markup = renderReport(query)
+  assert.equal((markup.match(/Loading report data\.\.\./g) ?? []).length, 2)
+
+  setSources({ activity: { data: { items: [] } }, security: { data: { items: [] } } })
+  markup = renderReport(query)
+  assert.match(markup, /There is no activity for this report\./)
+  assert.match(markup, /There are no security updates for this report\./)
+  assert.doesNotMatch(markup, /data-title="Updates"/)
+
+  for (const [source, status] of [["activity", 401], ["activity", 403], ["security", 401], ["security", 403]]) {
+    const other = source === "activity" ? "security" : "activity"
+    setSources({ [source]: { data: null, error: { status } }, [other]: { data: source === "activity" ? securityData("ok-host") : activityData() } })
+    markup = renderReport(query)
+    assert.match(markup, new RegExp(`Access denied to ${source} report\\.`))
+    assert.match(markup, source === "activity" ? /ok-host/ : /data-title="Updates"/)
+  }
+  for (const [source, status] of [["activity", 500], ["security", 502]]) {
+    const other = source === "activity" ? "security" : "activity"
+    setSources({ [source]: { data: null, error: { status } }, [other]: { data: source === "activity" ? securityData("ok-host") : activityData() } })
+    markup = renderReport(query)
+    assert.match(markup, new RegExp(`Failed to load ${source} report\\.`))
+    assert.match(markup, source === "activity" ? /ok-host/ : /data-title="Updates"/)
+    assert.doesNotMatch(markup, source === "activity" ? /data-title="Updates"/ : /There are no security updates/)
+  }
+  const updatedAt = fakeNow = Date.UTC(2026, 9, 17, 6, 45)
+  for (const source of ["activity", "security"]) {
+    const other = source === "activity" ? "security" : "activity"
+    setSources({
+      [source]: { data: source === "activity" ? activityData(undefined, 7) : securityData("cached-host"), error: { status: 500 }, dataUpdatedAt: updatedAt },
+      [other]: { data: source === "activity" ? securityData() : activityData() },
+    })
+    markup = renderReport(query)
+    const timestamp = new Date(updatedAt).toISOString()
+    assert.match(markup, new RegExp(`This report is stale[\\s\\S]*<time dateTime="${timestamp}">${timestamp}</time>`))
+    assert.match(markup, source === "activity" ? /data-title="Updates"/ : /cached-host/)
+    assert.doesNotMatch(markup, /Failed to load/)
+  }
+})
+
+test("reportDrilldownsUseSupportedRoutesAndParameters", () => {
+  setSources({ activity: { data: activityData("2026-10-16", 3) }, security: { data: securityData("host-2", "kernel") } })
+  const markup = renderReport("?host=node-1&package=openssl&from=2026-10-12&to=2026-10-16&security=false&install=true&kernel=false&bucket=week")
+  const urls = [...markup.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>/g)]
+    .map(([, href]) => new URL(href.replace(/&amp;/g, "&"), "https://reports.test"))
+  const allowed = { "/hosts": ["q"], "/activity": ["host", "package", "from", "to", "security", "install", "kernel", "bucket"], "/security": ["host", "package", "window"] }
+  const actual = urls.map((url) => `${url.pathname}?${url.searchParams}`).sort()
+  assert.deepEqual(actual, [
+    "/activity?host=node-1&package=openssl&from=2026-10-12&to=2026-10-16&security=false&install=true&kernel=false&bucket=week",
+    "/activity?host=host-2&package=kernel&from=2026-10-12&to=2026-10-16&security=false&install=true&kernel=false&bucket=week",
+    "/hosts?q=host-2", "/security?host=host-2&package=kernel&window=168",
+  ].sort())
+  for (const url of urls) {
+    assert.equal(url.origin, "https://reports.test")
+    assert.ok(allowed[url.pathname])
+    assert.ok([...url.searchParams.keys()].every((key) => allowed[url.pathname].includes(key)))
+  }
+})
+
+test("reportTextAndLinksAreSafe", () => {
+  const values = ['\"><svg onload=alert(1)>', "<img src=x onerror=alert(1)>", "javascript:alert(1)"]
+  const escaped = (value) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  for (const value of values) {
+    setSources({ activity: { data: activityData(value) }, security: { data: securityData(value, value, value) } })
+    const markup = renderReport("?from=2026-10-11&to=2026-10-17&bucket=day")
+    assert.ok(markup.includes(`<span>${escaped(value)}</span>`))
+    assert.ok(markup.includes(`>${escaped(value)}</a>`))
+    assert.ok(markup.includes(`<p>1 → ${escaped(value)}</p>`))
+    assert.doesNotMatch([...markup.matchAll(/<[^>]+>/g)].map(([tag]) => tag).join(" "), /<img\b|\son[a-z]+\s*=/i)
+    for (const [, raw] of markup.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>/g)) {
+      const href = raw.replace(/&amp;/g, "&"), url = new URL(href, "https://reports.test")
+      assert.equal(url.origin, "https://reports.test")
+      assert.ok(["/activity", "/hosts", "/security"].includes(url.pathname))
+      assert.doesNotMatch(href, /^javascript:/i)
+    }
+  }
+})
+
+test("reportsDoNotPoll", async () => {
+  setSources({ activity: { data: activityData() }, security: { data: securityData() } })
+  const hooks = readFileSync(hooksPath, "utf8")
+  assert.doesNotMatch(hooks.match(/const defaultQueryOptions = \{[\s\S]*?\n\}/)?.[0] ?? "", /refetchInterval/)
+  for (const name of ["useActivity", "useSecurityFeed"]) {
+    const start = hooks.indexOf(`export function ${name}(`), end = hooks.indexOf("\n}", start)
+    assert.ok(start >= 0 && end > start)
+    assert.doesNotMatch(hooks.slice(start, end), /refetchInterval/)
+  }
+  fakeNow = Date.UTC(2026, 9, 17, 6, 50)
+  renderReport("?from=2026-10-11&to=2026-10-17&bucket=day")
+  assert.deepEqual([requests.length, securityRequests.length], [1, 1])
+  fakeNow += 60 * 60 * 1000
+  assert.deepEqual([requests.length, securityRequests.length], [1, 1])
+  assert.equal(buttonActions.length, 1)
+  await buttonActions[0]()
+  assert.deepEqual(refreshCalls, { activity: 1, security: 1 })
 })
