@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
+const lockfile = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"))
 const packageNames = [
   "@opentelemetry/api",
   "@opentelemetry/context-zone",
@@ -204,6 +205,8 @@ test("test_runtime_targets_match_expected_stable_versions", () => {
 })
 
 test("test_runtime_manifest_versions_match_lockfile", () => {
+  assert.doesNotThrow(() => assertRuntimeManifestLockfileMatches(manifest, lockfile))
+
   let fixtures = createRuntimeFixtures()
   assert.doesNotThrow(() => assertRuntimeManifestLockfileMatches(fixtures.manifest, fixtures.lockfile))
 
