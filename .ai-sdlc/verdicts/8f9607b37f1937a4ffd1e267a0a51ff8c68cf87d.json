@@ -1,0 +1,204 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 105,
+  "branch": "ai-sdlc/issue-105",
+  "commitSha": "8f9607b37f1937a4ffd1e267a0a51ff8c68cf87d",
+  "round": 0,
+  "pipelineVersion": "360108b",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The manifest and lockfile pins are checked, but the required published engine and higher-release evidence is missing.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 272,
+          "message": "The recorded release evidence does not establish Node 20 compatibility or that higher stable releases exclude Node 20, as required by the first acceptance criterion.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The dependency release evidence records each selected version and its purported Node engine range, plus higher stable releases considered.",
+            "failureScenario": "A reviewer checking whether the nine pins are the highest stable releases that support Node 20 finds that seven selected entries say \"not published\" instead of giving an engine range, and every higherStableReleasesConsidered list is empty. The file therefore provides no evidence that the selections meet the issue's compatibility and highest-release requirements."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The manifest and lockfile contract tests cover their stated fixture cases. The release evidence does not meet the acceptance criterion for proving the selected versions’ Node engine support or that higher stable releases were considered.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 272,
+          "message": "The release evidence does not establish the required Node 20 compatibility or highest compatible versions: selected engine ranges are missing for eight packages, and no higher stable releases are recorded as considered.",
+          "confidence": 0.94,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "developmentReleaseEvidence records the selected version and engine metadata for each package, then the test checks only that selected[0] matches the expected version. All nine higherStableReleasesConsidered arrays are empty, and eight selected entries use \"not published\" instead of an engines.node range.",
+            "failureScenario": "If a selected release excludes Node 20 or a higher stable release supports Node 20, the committed evidence does not show it; the manifest can pass the version contract without satisfying the acceptance criterion for Node 20 compatibility and highest compatible version."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "No exploitable security vulnerability is evident in this dependency-only diff. The recorded release evidence does not satisfy the issue’s review-verified compatibility requirement.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 271,
+          "message": "The release evidence does not record the required Node engine ranges or the versions and engine ranges of higher stable releases considered.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The developmentReleaseEvidence entries record selected versions and Node engine metadata for the nine packages.",
+            "failureScenario": "A reviewer checking the acceptance criterion finds several selected releases recorded with \"not published\" instead of an engines.node range, and every higherStableReleasesConsidered list is empty. The required Node 20 compatibility and higher-release comparison therefore cannot be verified from the recorded evidence."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-green",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 0,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": false,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenExit": 1,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/dependency-version-contract.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
