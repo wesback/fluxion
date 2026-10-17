@@ -269,22 +269,20 @@ const expectedDevelopmentVersions = {
   typescript: "5.9.3",
 }
 
-// Queried from npm with `npm view <package>@<version> --json` and
-// `npm view <package> versions --json`. A null enginesNode means the published
-// metadata has no engines.node field, so it imposes no Node-version restriction.
+// Checked-in release metadata; null means the package publishes no engines.node field.
 const developmentReleaseEvidence = {
   "@tailwindcss/postcss": {
-    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode24: null },
     highestCompatibleStableVersion: "4.3.3",
     higherStableReleasesConsidered: [],
   },
   "@tanstack/react-query-devtools": {
-    selected: { version: "5.104.3", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    selected: { version: "5.104.3", enginesNode: null, enginesNodePublished: false, supportsNode24: null },
     highestCompatibleStableVersion: "5.104.3",
     higherStableReleasesConsidered: [],
   },
   "@types/node": {
-    selected: { version: "24.19.2", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    selected: { version: "24.19.2", enginesNode: null, enginesNodePublished: false, supportsNode24: null },
     highestCompatibleStableVersion: "24.19.2",
     higherStableReleasesConsidered: [
       {
@@ -295,12 +293,12 @@ const developmentReleaseEvidence = {
     ],
   },
   "@types/react": {
-    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode24: null },
     highestCompatibleStableVersion: "19.3.0",
     higherStableReleasesConsidered: [],
   },
   "@types/react-dom": {
-    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode24: null },
     highestCompatibleStableVersion: "19.3.0",
     higherStableReleasesConsidered: [],
   },
@@ -316,17 +314,21 @@ const developmentReleaseEvidence = {
       {
         version: "10.13.0",
         enginesNode: "^20.19.0 || ^22.13.0 || >=24",
-        excludedReason: "eslint-config-next's nested plugins declare peer support only through ESLint 9.",
+        excludedPeerRange: {
+          packageName: "eslint-plugin-import",
+          range: "^2 || ^3 || ^4 || ^5 || ^6 || ^7.2.0 || ^8 || ^9",
+        },
+        excludedReason: "eslint-plugin-import, eslint-plugin-jsx-a11y, and eslint-plugin-react in eslint-config-next exclude ESLint 10.",
       },
     ],
   },
   "eslint-config-next": {
-    selected: { version: "16.4.2", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    selected: { version: "16.4.2", enginesNode: null, enginesNodePublished: false, supportsNode24: null },
     highestCompatibleStableVersion: "16.4.2",
     higherStableReleasesConsidered: [],
   },
   tailwindcss: {
-    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode24: null },
     highestCompatibleStableVersion: "4.3.3",
     higherStableReleasesConsidered: [],
   },
@@ -342,10 +344,106 @@ const developmentReleaseEvidence = {
       {
         version: "7.0.2",
         enginesNode: ">=16.20.0",
-        excludedReason: "typescript-eslint 8.71.2 requires TypeScript <6.1.0; TypeScript 7 removes test tooling APIs.",
+        excludedPeerRange: { packageName: "typescript-eslint", range: ">=4.8.4 <6.1.0" },
+        excludedReason: "typescript-eslint 8.71.2 requires TypeScript >=4.8.4 <6.1.0; TypeScript 7 removes test tooling APIs.",
       },
     ],
   },
+}
+
+const developmentPeerEvidence = {
+  reactQueryDevtools: {
+    packageName: "@tanstack/react-query-devtools",
+    packageVersion: "5.104.3",
+    runtimePackageName: "@tanstack/react-query",
+    runtimeVersion: "5.104.3",
+    peerRange: "^5.104.3",
+  },
+  nextLint: {
+    packageName: "eslint-config-next",
+    packageVersion: "16.4.2",
+    eslint: {
+      version: "9.39.5",
+      constraints: [
+        ["eslint-config-next", "16.4.2", "node_modules/eslint-config-next", ">=9.0.0"],
+        ["eslint-plugin-import", "2.32.0", "node_modules/eslint-config-next/node_modules/eslint-plugin-import", "^2 || ^3 || ^4 || ^5 || ^6 || ^7.2.0 || ^8 || ^9"],
+        ["eslint-plugin-jsx-a11y", "6.10.2", "node_modules/eslint-config-next/node_modules/eslint-plugin-jsx-a11y", "^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9"],
+        ["eslint-plugin-react", "7.37.5", "node_modules/eslint-config-next/node_modules/eslint-plugin-react", "^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9.7"],
+      ],
+    },
+    typescript: {
+      version: "5.9.3",
+      constraints: [
+        ["eslint-config-next", "16.4.2", "node_modules/eslint-config-next", ">=3.3.1"],
+        ["typescript-eslint", "8.71.2", "node_modules/eslint-config-next/node_modules/typescript-eslint", ">=4.8.4 <6.1.0"],
+      ],
+    },
+  },
+}
+
+function satisfiesVersionRange(version, range) {
+  const parse = (value, partial = false) => {
+    if (typeof value !== "string" || !(partial ? /^\d+(?:\.\d+){0,2}$/ : /^\d+\.\d+\.\d+$/).test(value)) {
+      throw new TypeError(`Invalid version: ${value}`)
+    }
+    return value.split(".").map(Number).concat([0, 0]).slice(0, 3)
+  }
+  const target = parse(version)
+  if (typeof range !== "string" || !range.trim()) {
+    throw new TypeError(`Invalid version range: ${range}`)
+  }
+  const alternatives = range.split(/\s+\|\|\s+/).map((part) => part.trim().split(/\s+/))
+  if (alternatives.flat().some((part) => !/^(>=|<|\^)?\d+(?:\.\d+){0,2}$/.test(part))) {
+    throw new TypeError(`Invalid version range: ${range}`)
+  }
+  const compare = (left, right) => left[0] - right[0] || left[1] - right[1] || left[2] - right[2]
+  return alternatives.some((alternative) => {
+    return alternative.every((constraint) => {
+      const [, operator = "=", rawBoundary] = /^(>=|<|\^)?(\d+(?:\.\d+){0,2})$/.exec(constraint)
+      const boundary = parse(rawBoundary, true)
+      const comparison = compare(target, boundary)
+      if (operator === ">=") return comparison >= 0
+      if (operator === "<") return comparison < 0
+      if (operator === "=") return comparison === 0
+      return comparison >= 0 && compare(target, [boundary[0] + 1, 0, 0]) < 0
+    })
+  })
+}
+
+function assertDevelopmentReleaseEvidence(evidenceFixture, metadataProvider) {
+  assert.equal(typeof metadataProvider, "function", "a metadata provider is injected but never called")
+  assert.deepEqual(Object.keys(evidenceFixture).sort(), [...developmentPackageNames].sort())
+
+  for (const name of developmentPackageNames) {
+    const evidence = evidenceFixture[name]
+    assert.equal(evidence.selected.version, expectedDevelopmentVersions[name])
+    assert.equal(evidence.highestCompatibleStableVersion, expectedDevelopmentVersions[name])
+    assert.ok(evidence.selected.enginesNode === null || typeof evidence.selected.enginesNode === "string")
+    assert.equal(evidence.selected.enginesNodePublished, evidence.selected.enginesNode !== null)
+    if (evidence.selected.enginesNode === null) {
+      assert.equal(evidence.selected.supportsNode24, null, `${name} has no published Node engine range`)
+    } else {
+      assert.equal(
+        evidence.selected.supportsNode24,
+        satisfiesVersionRange("24.0.0", evidence.selected.enginesNode),
+        `${name} Node engine range evidence must be evaluated against Node 24.0.0`,
+      )
+    }
+  }
+
+  for (const evidence of Object.values(evidenceFixture)) {
+    for (const release of evidence.higherStableReleasesConsidered) {
+      assert.match(release.version, /^\d+\.\d+\.\d+$/)
+      assert.ok(release.enginesNode === null || typeof release.enginesNode === "string")
+      assert.ok(typeof release.excludedReason === "string" && release.excludedReason.length > 0)
+    }
+  }
+  assert.equal(evidenceFixture["@types/node"].higherStableReleasesConsidered[0].version, "26.6.5")
+  assert.equal(evidenceFixture.eslint.higherStableReleasesConsidered[0].version, "10.13.0")
+  assert.equal(
+    evidenceFixture.typescript.higherStableReleasesConsidered.find(({ excludedPeerRange }) => excludedPeerRange)?.version,
+    "7.0.2",
+  )
 }
 
 function assertDevelopmentTargetsMatchExpectedVersions(manifestFixture, expectedVersions) {
@@ -393,50 +491,101 @@ function createDevelopmentFixtures() {
   }
 }
 
-test("test_development_targets_match_expected_stable_versions", () => {
-  assert.deepEqual(Object.keys(developmentReleaseEvidence).sort(), [...developmentPackageNames].sort())
-  for (const [name, evidence] of Object.entries(developmentReleaseEvidence)) {
-    assert.equal(evidence.selected.version, expectedDevelopmentVersions[name])
-    assert.equal(evidence.highestCompatibleStableVersion, expectedDevelopmentVersions[name])
-    assert.ok(evidence.selected.enginesNode === null || typeof evidence.selected.enginesNode === "string")
-    // A package with no published engines.node field imposes no Node restriction; one with a range must include Node 24.
-    assert.equal(evidence.selected.enginesNodePublished, evidence.selected.enginesNode !== null)
-    assert.equal(evidence.selected.supportsNode24, true)
-    if (name === "@types/node") {
-      assert.deepEqual(evidence.higherStableReleasesConsidered, [
-        {
-          version: "26.6.5",
-          enginesNode: null,
-          excludedReason: "@types/node major must match the frontend Node 24 runtime.",
-        },
-      ])
-    } else if (name === "eslint") {
-      assert.deepEqual(evidence.higherStableReleasesConsidered, [
-        {
-          version: "10.13.0",
-          enginesNode: "^20.19.0 || ^22.13.0 || >=24",
-          excludedReason: "eslint-config-next's nested plugins declare peer support only through ESLint 9.",
-        },
-      ])
-    } else if (name === "typescript") {
-      assert.deepEqual(evidence.higherStableReleasesConsidered, [
-        {
-          version: "6.0.3",
-          enginesNode: ">=14.17",
-          excludedReason: "TypeScript 6 changes module interop behavior used by the existing test harness.",
-        },
-        {
-          version: "7.0.2",
-          enginesNode: ">=16.20.0",
-          excludedReason: "typescript-eslint 8.71.2 requires TypeScript <6.1.0; TypeScript 7 removes test tooling APIs.",
-        },
-      ])
-    } else {
-      assert.deepEqual(evidence.higherStableReleasesConsidered, [])
+function assertDevelopmentPeerContractsMatchRuntimeAndNextToolchain(manifestFixture, lockfileFixture, evidenceFixture) {
+  const devtoolsEvidence = evidenceFixture.reactQueryDevtools
+  const devtoolsPackage = lockfileFixture.packages?.[`node_modules/${devtoolsEvidence.packageName}`]
+  const runtimeVersion = manifestFixture.dependencies?.[devtoolsEvidence.runtimePackageName]
+  assert.equal(devtoolsEvidence.packageVersion, expectedDevelopmentVersions[devtoolsEvidence.packageName])
+  assert.equal(manifestFixture.devDependencies?.[devtoolsEvidence.packageName], devtoolsEvidence.packageVersion)
+  assert.equal(devtoolsPackage?.version, devtoolsEvidence.packageVersion)
+  assert.equal(devtoolsEvidence.runtimeVersion, runtimeVersion)
+  assert.equal(
+    lockfileFixture.packages?.[`node_modules/${devtoolsEvidence.runtimePackageName}`]?.version,
+    runtimeVersion,
+  )
+  assert.equal(
+    devtoolsPackage?.peerDependencies?.[devtoolsEvidence.runtimePackageName],
+    devtoolsEvidence.peerRange,
+  )
+  assert.ok(
+    satisfiesVersionRange(runtimeVersion, devtoolsEvidence.peerRange),
+    `peer range excludes ${devtoolsEvidence.runtimePackageName}@${runtimeVersion}`,
+  )
+
+  const nextLint = evidenceFixture.nextLint
+  const nextConfig = lockfileFixture.packages?.[`node_modules/${nextLint.packageName}`]
+  assert.equal(nextLint.packageVersion, expectedDevelopmentVersions[nextLint.packageName])
+  assert.equal(manifestFixture.devDependencies?.[nextLint.packageName], nextLint.packageVersion)
+  assert.equal(nextConfig?.version, nextLint.packageVersion)
+
+  for (const dependencyName of ["eslint", "typescript"]) {
+    const dependencyEvidence = nextLint[dependencyName]
+    assert.equal(dependencyEvidence.version, expectedDevelopmentVersions[dependencyName])
+    assert.equal(manifestFixture.devDependencies?.[dependencyName], dependencyEvidence.version)
+    for (const [packageName, packageVersion, lockfilePath, peerRange] of dependencyEvidence.constraints) {
+      const constraintPackage = lockfileFixture.packages?.[lockfilePath]
+      assert.ok(constraintPackage, `Next.js lint peer package is missing: ${packageName}`)
+      assert.equal(constraintPackage.version, packageVersion)
+      assert.equal(
+        constraintPackage.peerDependencies?.[dependencyName],
+        peerRange,
+        `${packageName} peer range evidence differs for ${dependencyName}`,
+      )
+      assert.ok(
+        satisfiesVersionRange(dependencyEvidence.version, peerRange),
+        `${dependencyName}@${dependencyEvidence.version} is outside ${packageName}'s peer range`,
+      )
     }
   }
+
+  const eslintHigher = developmentReleaseEvidence.eslint.higherStableReleasesConsidered[0]
+  const [, , , eslintPeerRange] = nextLint.eslint.constraints.find(
+    ([packageName]) => packageName === eslintHigher.excludedPeerRange.packageName,
+  )
+  assert.equal(eslintPeerRange, eslintHigher.excludedPeerRange.range)
+  assert.equal(satisfiesVersionRange(eslintHigher.version, eslintPeerRange), false)
+
+  const typescriptHigher = developmentReleaseEvidence.typescript.higherStableReleasesConsidered.find(
+    ({ excludedPeerRange }) => excludedPeerRange,
+  )
+  const [, , , typescriptPeerRange] = nextLint.typescript.constraints.find(
+    ([packageName]) => packageName === typescriptHigher.excludedPeerRange.packageName,
+  )
+  assert.equal(typescriptPeerRange, typescriptHigher.excludedPeerRange.range)
+  assert.equal(satisfiesVersionRange(typescriptHigher.version, typescriptPeerRange), false)
+}
+
+test("test_development_targets_match_expected_stable_versions", () => {
+  assertDevelopmentReleaseEvidence(developmentReleaseEvidence, () => assert.fail("release metadata must stay local"))
   assert.doesNotThrow(() =>
     assertDevelopmentTargetsMatchExpectedVersions(manifest, expectedDevelopmentVersions),
+  )
+  assert.equal(Number.parseInt(manifest.devDependencies["@types/node"].split(".")[0], 10), 24)
+  for (const [range, expected] of [
+    [">=24", true],
+    ["^24.0.0", true],
+    ["^18.18.0 || ^20.9.0 || >=21.1.0", true],
+    ["<24", false],
+    ["^20.0.0 || ^22.0.0", false],
+  ]) {
+    assert.equal(satisfiesVersionRange("24.0.0", range), expected, `${range} Node 24 result`)
+  }
+  assert.throws(() => satisfiesVersionRange("24.0.0", "invalid range"), /Invalid version range/)
+  assert.throws(() => satisfiesVersionRange("24.0.0", ">=24 || invalid"), /Invalid version range/)
+
+  const nodeTypesFromAnotherMajor = {
+    devDependencies: { ...expectedDevelopmentVersions, "@types/node": "26.6.5" },
+  }
+  assert.throws(
+    () => assertDevelopmentTargetsMatchExpectedVersions(nodeTypesFromAnotherMajor, expectedDevelopmentVersions),
+    /@types\/node must use its expected exact version/,
+  )
+
+  const falseNode24Claim = structuredClone(developmentReleaseEvidence)
+  falseNode24Claim.eslint.selected.enginesNode = "<24"
+  assert.throws(
+    () => assertDevelopmentReleaseEvidence(falseNode24Claim, () => {}),
+    /Node engine range evidence must be evaluated against Node 24\.0\.0/,
   )
 
   let manifestFixture = { devDependencies: { ...expectedDevelopmentVersions } }
@@ -467,6 +616,39 @@ test("test_development_targets_match_expected_stable_versions", () => {
         extra: "1.0.0",
       }),
     /deep-equal/,
+  )
+})
+
+test("test_development_release_evidence_uses_only_local_metadata", () => {
+  let metadataProviderCalls = 0
+  const countingMetadataProvider = () => {
+    metadataProviderCalls += 1
+    throw new Error("release metadata must come from checked-in evidence")
+  }
+
+  assert.doesNotThrow(() =>
+    assertDevelopmentReleaseEvidence(developmentReleaseEvidence, countingMetadataProvider),
+  )
+  assert.equal(metadataProviderCalls, 0)
+})
+
+test("test_development_peer_contracts_match_runtime_and_next_toolchain", () => {
+  assert.doesNotThrow(() => assertDevelopmentPeerContractsMatchRuntimeAndNextToolchain(manifest, lockfile, developmentPeerEvidence))
+
+  const incompatibleDevtoolsLock = structuredClone(lockfile)
+  const incompatibleDevtoolsEvidence = structuredClone(developmentPeerEvidence)
+  incompatibleDevtoolsLock.packages["node_modules/@tanstack/react-query-devtools"].peerDependencies[
+    "@tanstack/react-query"
+  ] = "^5.105.0"
+  incompatibleDevtoolsEvidence.reactQueryDevtools.peerRange = "^5.105.0"
+  assert.throws(
+    () =>
+      assertDevelopmentPeerContractsMatchRuntimeAndNextToolchain(
+        manifest,
+        incompatibleDevtoolsLock,
+        incompatibleDevtoolsEvidence,
+      ),
+    /peer range excludes @tanstack\/react-query@5\.104\.3/,
   )
 })
 
