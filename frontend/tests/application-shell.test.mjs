@@ -119,7 +119,7 @@ test("navigationDestinations", () => {
     ["Kernels", "/kernels"],
     ["Security", "/security"],
   ])
-  assert.equal(existsSync(join(root, "app/reports/page.tsx")), false)
+  assert.equal(existsSync(join(root, "app/reports/page.tsx")), true)
   assert.equal(existsSync(join(root, "app/alerts/page.tsx")), true)
 })
 
@@ -142,7 +142,8 @@ test("navigationActiveState", () => {
     ["/admin/api-keys", "/admin"],
     ["/admin/webhooks", "/admin"],
     ["/admin/diagnostics", "/admin"],
-    ["/reports", undefined],
+    ["/reports", "/reports"],
+    ["/reports-malicious", undefined],
     ["/hosts-malicious", undefined],
     ["/admin/unknown", undefined],
   ]

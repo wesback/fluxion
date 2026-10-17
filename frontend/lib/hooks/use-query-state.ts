@@ -27,3 +27,9 @@ export function useQueryState(key: string, defaultValue = "") {
 
   return [value, setValue] as const
 }
+
+export function useQueryStateReady() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => { const timer = window.setTimeout(() => setReady(true), 0); return () => window.clearTimeout(timer) }, [])
+  return ready
+}
