@@ -98,7 +98,7 @@ function renderReport(query, { client, queryHooks } = {}) {
   buttonActions = []
   const page = React.createElement(loadPage(queryHooks).default)
   return renderToStaticMarkup(client
-    ? React.createElement(require("@tanstack/react-query").QueryClientProvider, { client, children: page })
+    ? React.createElement(require("@tanstack/react-query").QueryClientProvider, { client }, page)
     : page)
 }
 function setSources(next) {
