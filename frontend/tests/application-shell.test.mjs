@@ -135,6 +135,7 @@ test("navigationActiveState", () => {
     ["/hosts/node-01", "/hosts"],
     ["/packages", "/packages"],
     ["/activity", "/activity"],
+    ["/alerts", "/alerts"],
     ["/security", "/security"],
     ["/kernels", "/kernels"],
     ["/admin", "/admin"],

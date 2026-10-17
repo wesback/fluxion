@@ -25,6 +25,7 @@ function activeNavigationHref(pathname: string): string | undefined {
   if (pathname === "/hosts" || pathname.startsWith("/hosts/")) return "/hosts"
   if (pathname === "/packages") return "/packages"
   if (pathname === "/activity") return "/activity"
+  if (pathname === "/alerts") return "/alerts"
   if (pathname === "/security") return "/security"
   if (pathname === "/kernels") return "/kernels"
   if (["/admin", "/admin/api-keys", "/admin/webhooks", "/admin/diagnostics"].includes(pathname)) return "/admin"

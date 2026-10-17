@@ -10,9 +10,14 @@ const require = createRequire(import.meta.url)
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const React = require("react")
 const { renderToStaticMarkup } = require("react-dom/server")
+const { QueryClient, QueryClientProvider, useQuery } = require("@tanstack/react-query")
 const ts = require("typescript")
 const fixedTime = Date.parse("2026-01-01T00:00:00.000Z")
 let currentTime = fixedTime
+let queryClientForPage = false
+let observedRequests = []
+let fetchSpyCalls = []
+let adminHookCalls = []
 class FixedDate extends Date {
   constructor(...args) { super(...(args.length ? args : [currentTime])) }
   static now() { return currentTime }
@@ -38,10 +43,35 @@ runInNewContext(ts.transpileModule(pageSource, {
     if (name === "lucide-react") return { AlertTriangle: () => null, RefreshCw: () => null }
     if (name === "@/components/ui/button") return { Button: ({ children, ...props }) => React.createElement("button", props, children) }
     if (name === "@/lib/host-health") return helper.exports
-    if (name === "@/lib/hooks/use-api") return { useHosts: () => query }
+    if (name === "@/lib/hooks/use-api") return {
+      useHosts: () => queryClientForPage
+        ? useQuery({ queryKey: ["hosts"], queryFn: async () => {
+          observedRequests.push("/api/hosts")
+          return query
+        }, staleTime: Infinity })
+        : query,
+      useIngestDiagnostics: () => useAdminQuery("/api/admin/ingest-diagnostics"),
+      useWebhookCoverage: () => useAdminQuery("/api/admin/webhook-coverage"),
+      useWebhooks: () => useAdminQuery("/api/admin/webhooks"),
+    }
     throw new Error(`Unexpected page dependency: ${name}`)
   },
+  fetch: async (url) => {
+    fetchSpyCalls.push(String(url))
+    return { ok: true, json: async () => ({}) }
+  },
 })
+function useAdminQuery(endpoint) {
+  adminHookCalls.push(endpoint)
+  return useQuery({
+    queryKey: [endpoint],
+    queryFn: async () => {
+      observedRequests.push(endpoint)
+      return { marker: `${endpoint}-response` }
+    },
+    retry: false,
+  })
+}
 function configure(data, options = {}) {
   requests = options.requests ?? 1
   query = { data, isLoading: false, isFetching: false, error: null,
@@ -61,6 +91,13 @@ function resolve(node) {
 }
 function render() {
   const tree = resolve(page.exports.default())
+  return { tree, markup: renderToStaticMarkup(tree) }
+}
+function renderWithQueryClient(client) {
+  const tree = React.createElement(QueryClientProvider, {
+    client,
+    children: React.createElement(page.exports.default),
+  })
   return { tree, markup: renderToStaticMarkup(tree) }
 }
 function elements(node, predicate, found = []) {
@@ -120,16 +157,33 @@ test("signalTextAndHostLinksAreSafe", () => {
   assert.doesNotMatch(markup, /<svg|<img|href="javascript:/)
 })
 test("adminDataIsNotRequestedOrCached", () => {
-  const { QueryClient } = require("@tanstack/react-query")
-  const client = new QueryClient()
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const secrets = ["diagnostics-secret", "coverage-secret", "webhooks-secret"]
   const keys = ["/api/admin/ingest-diagnostics", "/api/admin/webhook-coverage", "/api/admin/webhooks"]
   keys.forEach((key, i) => client.setQueryData([key], { marker: secrets[i] }))
-  configure({ items: [{ hostname: "reporting-host", last_seen: null }] })
-  const { markup } = render()
-  assert.equal(requests, 1)
+  const hostData = { items: [{ hostname: "reporting-host", last_seen: null }] }
+  configure(hostData)
+  client.setQueryData(["hosts"], hostData)
+  const cacheBeforeRender = client.getQueryCache().getAll().map(({ queryKey, state }) => [queryKey, state.data])
+  observedRequests = []
+  fetchSpyCalls = []
+  adminHookCalls = []
+  queryClientForPage = true
+  let markup
+  try {
+    markup = renderWithQueryClient(client).markup
+  } finally {
+    queryClientForPage = false
+  }
+  assert.deepEqual(adminHookCalls, [])
+  assert.deepEqual(observedRequests, [])
+  assert.deepEqual(fetchSpyCalls, [])
   assert.ok(markup.includes("reporting-host"))
   for (const secret of secrets) assert.ok(!markup.includes(secret))
+  assert.deepEqual(
+    client.getQueryCache().getAll().map(({ queryKey, state }) => [queryKey, state.data]),
+    cacheBeforeRender,
+  )
   assert.deepEqual(keys.map((key) => client.getQueryData([key])), secrets.map((marker) => ({ marker })))
   assert.ok(markup.includes("Admin signals are not loaded on this page; host reporter signals remain available."))
   assert.doesNotMatch(pageSource, /\/api\/admin\/(?:ingest-diagnostics|webhook-coverage|webhooks)/)
@@ -143,6 +197,7 @@ test("hostAlertStatesNeverHideFailure", () => {
     [{ items: [{}] }, {}, "invalid host response", "Missing hosts", null],
     [{ items: [{ hostname: "", last_seen: null }] }, {}, "invalid host response", "Missing hosts", null],
     [{ items: [{ hostname: "bad-date", last_seen: "yesterday-ish" }] }, {}, "invalid host response", "Missing hosts", null],
+    [{ items: [{ hostname: "missing-last-seen" }] }, {}, "invalid host response", "Missing hosts", null],
   ]
   for (const [data, options, text, countLabel, count] of states) {
     configure(data, options)
