@@ -83,6 +83,14 @@ Each rule comes from a story that stopped for a person because it was missing (D
   `https://` address in the story and refuses it when one does not resolve (fluxion #84: `https://evil.example` in an
   injection test). Write the address as parts (the URL formed by `https:` followed by `//evil.example`) or without the scheme,
   and let the test build the string.
+- **A fact outside the repository is verified by CI or by evidence recorded in the repository, never "by review".** Reviewers read the
+  diff; they cannot query a package registry, a deployed service or another repository (fluxion #104 and #105 stopped three times
+  on "the pinned release is not published"). A criterion that depends on such a fact names the CI job that fails when it is wrong
+  (`npm ci` for a pinned version), or the table the change records it in, and says reviewers check the table for completeness.
+- **A change to a token, selector, style or behaviour lists the existing tests that assert the old one.** Search the repository's
+  tests for the old value and name them in the story with "updated in this story" (butlercompass #931 stopped because five existing
+  tests asserted the glass and gold look the story removed, and a fix round may not edit tests). A criterion that contradicts an
+  existing test says which of the two wins.
 
 ### Before you finish (the implementing and fixing agent)
 
@@ -137,6 +145,10 @@ A feature too large for one story starts as a PRD. The merge of the PRD is the h
 
 Changing an approved PRD later: edit it in a PR (an addendum is fine). A changed PRD file is planned again when
 planning is on, so say in the PR whether the change needs new stories.
+
+### A change that must be large
+
+The pipeline keeps a story under 300 lines (500 once the repository has earned it): reviewers read the whole diff, and the pipeline merges small changes on its own. When a change cannot be split (a rename across the codebase, a framework upgrade, a codemod), a person may add the label `ai-sdlc:large-change` to the issue. The implementer and the fixer may then change up to 1500 lines, the reviewers are told to read it file by file, and the pull request always waits for a person to merge it. Only a person sets the label; do not add it yourself and do not copy it to a story you split.
 
 ### After you label it
 
