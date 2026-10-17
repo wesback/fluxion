@@ -6,7 +6,7 @@ import { StatsCard } from "@/components/stats-card"
 import { UpdatesTable } from "@/components/updates-table"
 import { Activity, Server, Clock, Calendar, RefreshCw, AlertTriangle } from "lucide-react"
 import { useStats, useRecentUpdates, useHosts } from "@/lib/hooks/use-api"
-import { StatsCardSkeleton, TableSkeleton, ChartSkeleton } from "@/components/ui/skeleton"
+import { TableSkeleton, ChartSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -17,6 +17,8 @@ const BarChart = dynamic(
   () => import("@/components/charts/bar-chart").then(mod => ({ default: mod.BarChart })),
   { ssr: false, loading: () => <ChartSkeleton /> }
 )
+
+const formatNumber = (value?: number) => value?.toLocaleString("en-US") ?? "—"
 
 function DashboardContent() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useStats()
@@ -82,55 +84,58 @@ function DashboardContent() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        {statsLoading ? (
-          <>
-            <StatsCardSkeleton />
-            <StatsCardSkeleton />
-            <StatsCardSkeleton />
-            <StatsCardSkeleton />
-          </>
-        ) : statsError ? (
-          <div className="col-span-full p-4 rounded-lg border glass-surface border-status-error text-status-error">
-            Failed to load statistics
-          </div>
-        ) : stats ? (
-          <>
-            <StatsCard
-              title="Total Hosts"
-              value={stats.total_hosts}
-              icon={Server}
-              description="Registered hosts"
-            />
-            <StatsCard
-              title="Total Updates"
-              value={stats.total_updates.toLocaleString()}
-              icon={Activity}
-              description="All time"
-            />
-            <StatsCard
-              title="Last 24 Hours"
-              value={stats.updates_last_24h}
-              icon={Clock}
-              description="Recent updates"
-            />
-            <StatsCard
-              title="Last 7 Days"
-              value={stats.updates_last_7d}
-              icon={Calendar}
-              description="This week"
-            />
-            <StatsCard
-              title="Host Health"
-              value={hostsLoading ? "…" : `${hostHealth.stale} stale · ${hostHealth.missing} missing`}
-              icon={AlertTriangle}
-              description="Based on package-report activity"
-              className={hostHealth.stale + hostHealth.missing > 0 ? "border-amber-300 dark:border-amber-700" : undefined}
-            />
-          </>
-        ) : null}
-      </div>
+      <section aria-label="Hero metrics" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatsCard
+          title="Total Hosts"
+          value={formatNumber(stats?.total_hosts)}
+          icon={Server}
+          description="Registered hosts"
+        />
+        <StatsCard
+          title="Total Updates"
+          value={formatNumber(stats?.total_updates)}
+          icon={Activity}
+          description="All time"
+        />
+        <StatsCard
+          title="Updates in Last 24 Hours"
+          value={formatNumber(stats?.updates_last_24h)}
+          icon={Clock}
+          description="Recent updates"
+        />
+        <StatsCard
+          title="Updates in Last 7 Days"
+          value={formatNumber(stats?.updates_last_7d)}
+          icon={Calendar}
+          description="This week"
+        />
+      </section>
+
+      <section aria-label="Numeric KPIs" className="grid gap-4 md:grid-cols-3">
+        <StatsCard title="Total Hosts" value={formatNumber(stats?.total_hosts)} icon={Server} />
+        <StatsCard title="Recent Updates" value={formatNumber(stats?.updates_last_24h)} icon={Clock} />
+        <StatsCard title="Weekly Updates" value={formatNumber(stats?.updates_last_7d)} icon={Calendar} />
+      </section>
+
+      {statsError && (
+        <div role="alert" className="p-4 rounded-lg border glass-surface border-status-error text-status-error">
+          {stats
+            ? "Failed to refresh statistics; showing cached values"
+            : "Failed to load statistics"}
+        </div>
+      )}
+
+      {stats && (
+        <section aria-label="Host health" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatsCard
+            title="Host Health"
+            value={hostsLoading ? "…" : `${hostHealth.stale} stale · ${hostHealth.missing} missing`}
+            icon={AlertTriangle}
+            description="Based on package-report activity"
+            className={hostHealth.stale + hostHealth.missing > 0 ? "border-amber-300 dark:border-amber-700" : undefined}
+          />
+        </section>
+      )}
 
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">
