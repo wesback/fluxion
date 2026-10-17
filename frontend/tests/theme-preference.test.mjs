@@ -1,10 +1,15 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
+import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
 
+const require = createRequire(import.meta.url)
+const React = require("react")
+const { ThemeProvider: NextThemesProvider } = require("next-themes")
+const reactInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const provider = readFileSync(join(root, "components/theme-provider.tsx"), "utf8")
 const toggle = readFileSync(join(root, "components/theme-toggle.tsx"), "utf8")
@@ -44,6 +49,49 @@ function getEffectiveTheme(storage, systemTheme, storageKey = "theme") {
   return preference === "system" ? systemTheme : preference
 }
 
+function withProductionThemeProvider(storage, run) {
+  const originalDispatcher = reactInternals.H
+  const originalCreateElement = React.createElement
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+  const stateUpdates = []
+
+  reactInternals.H = {
+    useContext: () => null,
+    useState: (initialValue) => [
+      typeof initialValue === "function" ? initialValue() : initialValue,
+      (value) => stateUpdates.push(value),
+    ],
+    useCallback: (callback) => callback,
+    useEffect: () => {},
+    useMemo: (factory) => factory(),
+  }
+  React.createElement = (type, props, ...children) => ({ type, props, children })
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  })
+
+  try {
+    const providerWrapperElement = NextThemesProvider({
+      storageKey: "theme",
+      defaultTheme: "system",
+      enableSystem: true,
+      themes: ["system", "light", "dark"],
+      children: null,
+    })
+    const providerElement = providerWrapperElement.type(providerWrapperElement.props)
+    run(providerElement.props.value, stateUpdates)
+  } finally {
+    reactInternals.H = originalDispatcher
+    React.createElement = originalCreateElement
+    if (originalStorage) {
+      Object.defineProperty(globalThis, "localStorage", originalStorage)
+    } else {
+      delete globalThis.localStorage
+    }
+  }
+}
+
 const themeSelectionHandlerMatch = toggle.match(
   /onChange=\{\(event\) => \{([\s\S]*?)\n\s{8}\}\}/
 )
@@ -75,17 +123,17 @@ test("themePreferencePersistsAcrossReloadAndNavigation", () => {
 
   for (const { preference, systemTheme, effectiveTheme } of cases) {
     const storage = new FakeStorage()
-    const selectedPreferences = []
-    runThemeSelection(
-      { currentTarget: { value: preference } },
-      (value) => {
-        selectedPreferences.push(value)
-        storage.setItem("theme", value)
-      },
-      () => {},
-      "system",
-      (value) => value === "system" || value === "light" || value === "dark"
-    )
+    let selectedPreferences
+    withProductionThemeProvider(storage, ({ setTheme }, stateUpdates) => {
+      runThemeSelection(
+        { currentTarget: { value: preference } },
+        setTheme,
+        () => {},
+        "system",
+        (value) => value === "system" || value === "light" || value === "dark"
+      )
+      selectedPreferences = stateUpdates
+    })
 
     assert.deepEqual(selectedPreferences, [preference])
     assert.equal(storage.getItem("theme"), preference)
