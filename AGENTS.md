@@ -23,8 +23,9 @@ label `ai-eligible`, passes AI-SDLC's Definition-of-Ready gate, and every issue 
 - **`Depends on #N`**, one line per prerequisite issue. The story waits until those are closed.
 - **`PRD: docs/prd/<file>.md`** when the story comes from a PRD; cite the PRD's requirement IDs (FR-, NFR-, AC-).
 - **No wishlist words**: "nice to have", "maybe", "TBD", "etc.".
-- **Never** ask for changes to `.github/`, `.ai-sdlc/`, `AGENTS.md`, CI or dependency files: the implementer cannot
-  write them and the pipeline never merges them.
+- **Never** ask for changes to `.github/`, `.ai-sdlc/`, `AGENTS.md` or other CI files: the implementer cannot
+  write them and the pipeline never merges them. A story may add a package to a backend `.csproj` or to
+  `frontend/package.json` (with its lockfile) when it needs one; name the package and why.
 
 ### Rules that keep a story from getting stuck
 
@@ -78,6 +79,10 @@ Each rule comes from a story that stopped for a person because it was missing (D
 - **No automated pixel or contrast measurement in a browser.** A criterion never asks for a Chromium test that samples rendered
   pixels or measures contrast ratios (butlercompass removed that suite on 2026-10-16: slow, fragile, a personal application).
   State the requirement as a CSS or markup contract a unit test can read (a token, a rule, an attribute), or as `Verified by review`.
+- **A test input that looks like a link is not written as a link.** The Definition-of-Ready gate fetches every `http://` or
+  `https://` address in the story and refuses it when one does not resolve (fluxion #84: `https://evil.example` in an
+  injection test). Write the address as parts (the URL formed by `https:` followed by `//evil.example`) or without the scheme,
+  and let the test build the string.
 
 ### Before you finish (the implementing and fixing agent)
 
@@ -124,7 +129,7 @@ A feature too large for one story starts as a PRD. The merge of the PRD is the h
    requirement and acceptance criterion a stable ID: `FR-1`, `NFR-1`, `AC-1`. Say what is out of scope and what the
    security notes are (data handled, trust boundaries).
 2. **Merge it through a PR.** A named person approves it in the PR.
-3. **Planning** (off for this repository: write the stories yourself using the rules above, with the same PRD: and Depends on lines): HVE's PRD quality review, the Security Planner (a threat model in
+3. **Planning** (on for this repository: the pipeline runs it by itself after the merge): HVE's PRD quality review, the Security Planner (a threat model in
    `docs/security/`), and the Functional Planner (the stories). The stories become issues with `ai-eligible`, a
    `PRD:` line, `Depends on #N` lines, and the threat model's mitigations as acceptance criteria. Review the created
    issues; each still has to pass the readiness gate before it is built.
