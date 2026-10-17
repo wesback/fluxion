@@ -7,8 +7,42 @@ import { dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
 
 const require = createRequire(import.meta.url)
+class FakeStorage {
+  values = new Map()
+
+  getItem(key) {
+    return this.values.get(key) ?? null
+  }
+
+  setItem(key, value) {
+    this.values.set(key, value)
+  }
+}
+
+const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
+const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+Object.defineProperty(globalThis, "window", {
+  configurable: true,
+  value: { matchMedia: () => ({ matches: false }) },
+})
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: new FakeStorage(),
+})
+
 const React = require("react")
 const { ThemeProvider: NextThemesProvider } = require("next-themes")
+if (originalWindow) {
+  Object.defineProperty(globalThis, "window", originalWindow)
+} else {
+  delete globalThis.window
+}
+if (originalStorage) {
+  Object.defineProperty(globalThis, "localStorage", originalStorage)
+} else {
+  delete globalThis.localStorage
+}
+
 const reactInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const provider = readFileSync(join(root, "components/theme-provider.tsx"), "utf8")
@@ -24,17 +58,21 @@ const themeBootstrap = themeBootstrapMatch[1].replace(
   '["system", "light", "dark"]'
 )
 
-class FakeStorage {
-  values = new Map()
-
-  getItem(key) {
-    return this.values.get(key) ?? null
-  }
-
-  setItem(key, value) {
-    this.values.set(key, value)
-  }
-}
+const transpiledProvider = require("typescript").transpileModule(provider, {
+  compilerOptions: {
+    jsx: require("typescript").JsxEmit.React,
+    module: require("typescript").ModuleKind.CommonJS,
+  },
+}).outputText
+const productionProviderModule = { exports: {} }
+runInNewContext(transpiledProvider, {
+  exports: productionProviderModule.exports,
+  require: (name) => {
+    if (name === "react") return React
+    if (name === "next-themes") return { ThemeProvider: NextThemesProvider }
+    throw new Error(`Unexpected provider dependency: ${name}`)
+  },
+})
 
 function runThemeBootstrap(storage, storageKey = "theme") {
   runInNewContext(themeBootstrap, {
@@ -44,15 +82,11 @@ function runThemeBootstrap(storage, storageKey = "theme") {
   })
 }
 
-function getEffectiveTheme(storage, systemTheme, storageKey = "theme") {
-  const preference = storage.getItem(storageKey) ?? "system"
-  return preference === "system" ? systemTheme : preference
-}
-
-function withProductionThemeProvider(storage, run) {
+function withProductionThemeProvider(storage, systemTheme, run) {
   const originalDispatcher = reactInternals.H
   const originalCreateElement = React.createElement
-  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
   const stateUpdates = []
 
   reactInternals.H = {
@@ -66,26 +100,39 @@ function withProductionThemeProvider(storage, run) {
     useMemo: (factory) => factory(),
   }
   React.createElement = (type, props, ...children) => ({ type, props, children })
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      matchMedia: () => ({
+        matches: systemTheme === "dark",
+        addListener: () => {},
+        removeListener: () => {},
+      }),
+    },
+  })
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     value: storage,
   })
 
   try {
-    const providerWrapperElement = NextThemesProvider({
-      storageKey: "theme",
-      defaultTheme: "system",
-      enableSystem: true,
-      themes: ["system", "light", "dark"],
+    const applicationProviderElement = productionProviderModule.exports.ThemeProvider({
       children: null,
     })
-    const providerElement = providerWrapperElement.type(providerWrapperElement.props)
-    run(providerElement.props.value, stateUpdates)
+    const providerWrapperElement = applicationProviderElement.children[1]
+    const nextThemesElement = providerWrapperElement.type(providerWrapperElement.props)
+    const providerElement = nextThemesElement.type(nextThemesElement.props)
+    return run(providerElement.props.value, stateUpdates)
   } finally {
     reactInternals.H = originalDispatcher
     React.createElement = originalCreateElement
-    if (originalStorage) {
-      Object.defineProperty(globalThis, "localStorage", originalStorage)
+    if (previousWindow) {
+      Object.defineProperty(globalThis, "window", previousWindow)
+    } else {
+      delete globalThis.window
+    }
+    if (previousStorage) {
+      Object.defineProperty(globalThis, "localStorage", previousStorage)
     } else {
       delete globalThis.localStorage
     }
@@ -124,7 +171,7 @@ test("themePreferencePersistsAcrossReloadAndNavigation", () => {
   for (const { preference, systemTheme, effectiveTheme } of cases) {
     const storage = new FakeStorage()
     let selectedPreferences
-    withProductionThemeProvider(storage, ({ setTheme }, stateUpdates) => {
+    withProductionThemeProvider(storage, systemTheme, ({ setTheme }, stateUpdates) => {
       runThemeSelection(
         { currentTarget: { value: preference } },
         setTheme,
@@ -139,11 +186,19 @@ test("themePreferencePersistsAcrossReloadAndNavigation", () => {
     assert.equal(storage.getItem("theme"), preference)
     runThemeBootstrap(storage)
     assert.equal(storage.getItem("theme"), preference)
-    assert.equal(getEffectiveTheme(storage, systemTheme), effectiveTheme)
 
-    const routeTheme = getEffectiveTheme(storage, systemTheme)
+    const reloadedTheme = withProductionThemeProvider(storage, systemTheme, ({ theme, resolvedTheme }) => ({
+      theme,
+      resolvedTheme,
+    }))
+    assert.deepEqual(reloadedTheme, { theme: preference, resolvedTheme: effectiveTheme })
     assert.equal(storage.getItem("theme"), preference)
-    assert.equal(routeTheme, effectiveTheme)
+
+    const routeTheme = withProductionThemeProvider(storage, systemTheme, ({ theme, resolvedTheme }) => ({
+      theme,
+      resolvedTheme,
+    }))
+    assert.deepEqual(routeTheme, { theme: preference, resolvedTheme: effectiveTheme })
   }
 
   const storage = new FakeStorage()
@@ -151,8 +206,12 @@ test("themePreferencePersistsAcrossReloadAndNavigation", () => {
   runThemeBootstrap(storage)
 
   assert.equal(storage.getItem("theme"), "system")
-  assert.equal(getEffectiveTheme(storage, "light"), "light")
-  assert.equal(getEffectiveTheme(storage, "dark"), "dark")
+  const invalidStorageTheme = withProductionThemeProvider(storage, "light", ({ theme, resolvedTheme }) => ({
+    theme,
+    resolvedTheme,
+  }))
+  assert.deepEqual(invalidStorageTheme, { theme: "system", resolvedTheme: "light" })
+  assert.equal(storage.getItem("theme"), "system")
 })
 
 test("themeControlHasThreeNamedKeyboardChoices", () => {
