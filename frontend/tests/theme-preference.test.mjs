@@ -44,6 +44,21 @@ function getEffectiveTheme(storage, systemTheme, storageKey = "theme") {
   return preference === "system" ? systemTheme : preference
 }
 
+const themeSelectionHandlerMatch = toggle.match(
+  /onChange=\{\(event\) => \{([\s\S]*?)\n\s{8}\}\}/
+)
+
+assert.ok(themeSelectionHandlerMatch, "theme control must define a selection handler")
+
+const runThemeSelection = new Function(
+  "event",
+  "setTheme",
+  "trackThemeChange",
+  "selectedTheme",
+  "isThemePreference",
+  themeSelectionHandlerMatch[1]
+)
+
 test("themePreferencePersistsAcrossReloadAndNavigation", () => {
   assert.match(provider, /const THEME_PREFERENCES = \["system", "light", "dark"\] as const/)
   assert.match(provider, /defaultTheme="system"/)
@@ -60,15 +75,27 @@ test("themePreferencePersistsAcrossReloadAndNavigation", () => {
 
   for (const { preference, systemTheme, effectiveTheme } of cases) {
     const storage = new FakeStorage()
-    storage.setItem("theme", preference)
+    const selectedPreferences = []
+    runThemeSelection(
+      { currentTarget: { value: preference } },
+      (value) => {
+        selectedPreferences.push(value)
+        storage.setItem("theme", value)
+      },
+      () => {},
+      "system",
+      (value) => value === "system" || value === "light" || value === "dark"
+    )
 
+    assert.deepEqual(selectedPreferences, [preference])
+    assert.equal(storage.getItem("theme"), preference)
     runThemeBootstrap(storage)
     assert.equal(storage.getItem("theme"), preference)
     assert.equal(getEffectiveTheme(storage, systemTheme), effectiveTheme)
 
-    runThemeBootstrap(storage)
+    const routeTheme = getEffectiveTheme(storage, systemTheme)
     assert.equal(storage.getItem("theme"), preference)
-    assert.equal(getEffectiveTheme(storage, systemTheme), effectiveTheme)
+    assert.equal(routeTheme, effectiveTheme)
   }
 
   const storage = new FakeStorage()
