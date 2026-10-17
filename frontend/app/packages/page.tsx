@@ -1,6 +1,7 @@
 "use client"
 
-import type { FormEvent } from "react"
+import { Suspense, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,19 +11,19 @@ import { formatDistanceToNow } from "date-fns"
 import { usePackageSearch } from "@/lib/hooks/use-api"
 import { TableSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
-import { useQueryState } from "@/lib/hooks/use-query-state"
 
-function PackagesContent() {
-  const [searchQuery, setSearchQuery] = useQueryState("q")
+function PackagesContent({ initialQuery }: { initialQuery: string }) {
+  const [packageName, setPackageName] = useState(initialQuery)
+  const [searchQuery, setSearchQuery] = useState(initialQuery)
 
   const { data, isLoading, error } = usePackageSearch(searchQuery)
 
   const hosts = data?.items || []
 
-  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    setSearchQuery(String(formData.get("packageName") ?? "").trim())
+  const handleSearch = () => {
+    if (packageName.trim()) {
+      setSearchQuery(packageName.trim())
+    }
   }
 
   return (
@@ -43,20 +44,18 @@ function PackagesContent() {
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSearch} className="flex gap-2">
+          <form onSubmit={(e) => { e.preventDefault(); handleSearch() }} className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
-                key={searchQuery}
-                name="packageName"
-                required
                 placeholder="Enter package name or partial match (e.g., nginx, lib, python)"
-                defaultValue={searchQuery}
+                value={packageName}
+                onChange={(e) => setPackageName(e.target.value)}
                 className="pl-10"
                 aria-label="Search packages"
               />
             </div>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !packageName.trim()}>
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
@@ -127,10 +126,15 @@ function PackagesContent() {
   )
 }
 
+function PackagesRoute() {
+  const initialQuery = useSearchParams().get("q") ?? ""
+  return <PackagesContent key={initialQuery} initialQuery={initialQuery} />
+}
+
 export default function PackagesPage() {
   return (
     <ErrorBoundary>
-      <PackagesContent />
+      <Suspense fallback={<p role="status">Loading package search...</p>}><PackagesRoute /></Suspense>
     </ErrorBoundary>
   )
 }

@@ -31,8 +31,8 @@ runInNewContext(transpiledNavbar, {
     }
     if (name === "next/navigation") return { usePathname: () => pathname }
     if (name === "@/components/theme-toggle") return { ThemeToggle: () => null }
-    if (name === "@/components/global-search") {
-      return { GlobalSearch: () => React.createElement("form", { role: "search", "aria-label": "Global search" }) }
+    if (name === "@/components/global-search") return {
+      GlobalSearch: () => React.createElement("button", { "aria-label": "Search" }),
     }
     if (name === "lucide-react") {
       return {
@@ -117,7 +117,7 @@ test("primaryNavigationKeepsEveryExistingDestinationAndMarksOneCurrentRoute", ()
 test("shellIncludesBrandSearchThemeAndTruthfulHostReportingStatus", () => {
   const html = renderNavbar("/")
   assert.match(html, /Fluxion/)
-  assert.match(html, /role="search" aria-label="Global search"/)
+  assert.match(html, /aria-label="Search"/)
   assert.match(navbar, /<ThemeToggle \/>/)
   assert.match(html, /aria-label="Host reporting status: No hosts reporting"/)
   assert.doesNotMatch(navbar, /avatar|account|notification|inbox/i)
@@ -134,7 +134,7 @@ test("responsiveRailAndMainOffsetAlignAtTabletAndDesktopWidths", () => {
 
 test("mobileNavigationRemainsKeyboardOperableAndHiddenWhenClosed", () => {
   const html = renderNavbar("/")
-  const button = html.match(/<button\b([^>]*)>/)
+  const button = html.match(/<button\b([^>]*aria-controls="mobile-menu"[^>]*)>/)
   assert.ok(button, "mobile menu trigger must exist")
   const attribute = (name) => button[1].match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1]
   assert.equal(attribute("aria-label"), "Open menu")
@@ -173,4 +173,44 @@ test("allRoutesShareOneMainLandmarkAndRetainTheirFiles", () => {
     assert.equal(existsSync(join(root, file)), true, `${route} route must still exist`)
     assert.doesNotMatch(readFileSync(join(root, file), "utf8"), /<main(?:\s|>)/, `${route} uses shared main landmark`)
   }
+})
+
+test("supportedHeaderControls", () => {
+  assert.match(navbar, /<span>Fluxion<\/span>/)
+  assert.match(navbar, /<GlobalSearch \/>/)
+  assert.match(navbar, /<ThemeToggle \/>/)
+  assert.doesNotMatch(navbar, /avatar|account|notification|inbox|badge/i)
+
+  const buttons = [...navbar.matchAll(/<button\b[\s\S]*?<\/button>/g)].map(([button]) => button)
+  assert.equal(buttons.length, 1, "mobile navigation control remains in the header")
+  const mobileMenuButton = buttons.find((button) => button.includes("menuButtonRef"))
+  assert.ok(mobileMenuButton, "mobile navigation button remains available")
+  assert.match(mobileMenuButton, /onClick=\{\(\) => setMobileMenuOpen\(!mobileMenuOpen\)\}/)
+  assert.match(mobileMenuButton, /aria-label=\{mobileMenuOpen \? "Close menu" : "Open menu"\}/)
+  assert.match(mobileMenuButton, /aria-expanded=\{mobileMenuOpen\}/)
+})
+
+test("responsiveShellBreakpoints", () => {
+  assert.match(css, /\.primary-navigation\s*\{[^}]*display:\s*none/)
+  assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.primary-navigation\s*\{[^}]*display:\s*flex/)
+  assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.mobile-menu-panel\s*\{[^}]*display:\s*none/)
+  assert.match(navbar, /className="mobile-menu-trigger"/)
+  assert.match(navbar, /className="mobile-menu-panel"/)
+})
+
+test("responsiveDrawerMarkup", () => {
+  const html = renderToStaticMarkup(React.createElement(navbarModule.exports.Navbar))
+  const button = html.match(/<button\b([^>]*aria-controls="mobile-menu"[^>]*)>/)
+  assert.ok(button, "closed shell must render a mobile menu trigger")
+  const attribute = (name) => button[1].match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1]
+  assert.equal(attribute("aria-label"), "Open menu")
+  assert.equal(attribute("aria-expanded"), "false")
+  assert.equal(attribute("aria-controls"), "mobile-menu")
+
+  const target = html.match(/<nav\b([^>]*)id="mobile-menu"([^>]*)>/)
+  assert.ok(target, "mobile-menu navigation target must remain rendered while closed")
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(([, id]) => id)
+  assert.deepEqual(ids, ["mobile-menu"], "drawer target ID must occur exactly once")
+  assert.match(`${target[1]}${target[2]}`, /\shidden(?:="")?(?:\s|$)/, "closed drawer must be hidden")
+  assert.match(`${target[1]}${target[2]}`, /\baria-hidden="true"/, "closed drawer must be hidden from assistive technology")
 })
