@@ -91,11 +91,9 @@ export function Navbar() {
           <Activity className="h-6 w-6 shrink-0" aria-hidden="true" />
           <span>Fluxion</span>
         </Link>
-        <div className="shell-search">
-          <GlobalSearch />
-        </div>
-        <div className="shell-controls">
+        <div className="shell-controls col-start-[-2]">
           <ThemeToggle />
+          <GlobalSearch />
           <button
             ref={menuButtonRef}
             className="mobile-menu-trigger"

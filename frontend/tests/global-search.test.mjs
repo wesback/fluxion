@@ -101,6 +101,15 @@ test("searchDialogKeyboardAndResultStates", () => {
   assert.equal(find((node) => node.props.role === "alert").props.children, "Package search failed. Please try again.")
   assert.equal(find((node) => node.props.role === "status"), undefined)
 })
+test("searchTriggerKeepsAnAccessibleIconWhenMobileLabelsAreHidden", () => {
+  reset(); render()
+  const trigger = find((node) => node.type === "button" && node.props["aria-label"] === "Search")
+  assert.equal(trigger.props["aria-label"], "Search")
+  assert.equal(find((node) => node.type === "span" && node.props.children === "Search").props.className, "hidden sm:inline")
+  assert.equal(find((node) => node.type === "kbd").props.className, "hidden text-xs text-muted-foreground sm:inline")
+  open()
+  assert.equal(find((node) => node.props.role === "dialog").props["aria-modal"], "true")
+})
 test("packageLookupIsExplicitAndBounded", () => {
   reset({ items: [{ hostname: "node-01" }] }); render(); open(); type("pkg & #?")
   assert.equal(packageRequests.length, 0); assert.deepEqual(requests.map(({ url }) => url), ["/api/hosts"])

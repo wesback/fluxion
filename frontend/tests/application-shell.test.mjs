@@ -123,6 +123,11 @@ test("shellIncludesBrandSearchThemeAndTruthfulHostReportingStatus", () => {
   assert.doesNotMatch(navbar, /avatar|account|notification|inbox/i)
 })
 
+test("globalSearchRemainsInVisibleHeaderControlsOnMobile", () => {
+  assert.match(navbar, /<div className="shell-controls col-start-\[-2\]">\s*<ThemeToggle \/>\s*<GlobalSearch \/>/)
+  assert.doesNotMatch(navbar, /className="shell-search"/)
+})
+
 test("responsiveRailAndMainOffsetAlignAtTabletAndDesktopWidths", () => {
   assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.primary-navigation\s*\{[^}]*width:\s*72px/)
   assert.match(css, /@media \(min-width: 1280px\)[\s\S]*?\.primary-navigation\s*\{[^}]*width:\s*240px/)

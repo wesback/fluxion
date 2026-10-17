@@ -43,7 +43,7 @@ export function GlobalSearch() {
         className="inline-flex min-h-11 items-center gap-2 rounded-md border border-input-border px-3 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Search className="h-4 w-4" aria-hidden="true" />
-        <span>Search</span><kbd className="text-xs text-muted-foreground">Ctrl / Cmd K</kbd>
+        <span className="hidden sm:inline">Search</span><kbd className="hidden text-xs text-muted-foreground sm:inline">Ctrl / Cmd K</kbd>
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-[10vh]">
