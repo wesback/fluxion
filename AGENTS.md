@@ -146,6 +146,10 @@ A feature too large for one story starts as a PRD. The merge of the PRD is the h
 Changing an approved PRD later: edit it in a PR (an addendum is fine). A changed PRD file is planned again when
 planning is on, so say in the PR whether the change needs new stories.
 
+### A change that must be large
+
+The pipeline keeps a story under 300 lines (500 once the repository has earned it): reviewers read the whole diff, and the pipeline merges small changes on its own. When a change cannot be split (a rename across the codebase, a framework upgrade, a codemod), a person may add the label `ai-sdlc:large-change` to the issue. The implementer and the fixer may then change up to 1500 lines, the reviewers are told to read it file by file, and the pull request always waits for a person to merge it. Only a person sets the label; do not add it yourself and do not copy it to a story you split.
+
 ### After you label it
 
 The pipeline opens a PR from `ai-sdlc/issue-<n>`. Do not push to that branch. If the pipeline needs a person it labels
