@@ -80,12 +80,15 @@ test("reportFilterContract", () => {
   for (const [key, option] of [["security", "is_security"], ["install", "is_install"], ["kernel", "is_kernel"]])
     for (const value of ["true", "false"])
       assert.equal(plain(activityOptionsForReport(parseReportFilters(`?${key}=${value}`, now)))[option], value === "true", `${key}=${value}`)
-  requests.length = 0
-  for (const invalid of ["?tenant=outside", "?role=admin", "?bucket=month", "?security=yes", "?from=2026-10-18&to=2026-10-17"]) {
+  for (const invalid of [
+    "?tenant=outside", "?role=admin", "?debug=true", "?host=node-1&host=node-2",
+    "?host=", "?bucket=month", "?security=yes", "?from=2026-10-18&to=2026-10-17",
+  ]) {
+    requests.length = 0
     assert.equal(parseReportFilters(invalid, now), null, invalid)
     renderReport(invalid)
+    assert.equal(requests.length, 0, `${invalid} must not request activity`)
   }
-  assert.equal(requests.length, 0, "invalid URLs must not request activity")
 })
 
 test("reportTotalsUseReturnedBuckets", () => {
