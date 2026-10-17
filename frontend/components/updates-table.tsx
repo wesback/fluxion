@@ -64,7 +64,7 @@ export function UpdatesTable({ updates, showHostname = true }: UpdatesTableProps
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {timestamp
-                    ? <time dateTime={new Date(timestamp).toISOString()}>{formatDistanceToNow(new Date(timestamp), { addSuffix: true })}</time>
+                    ? <time dateTime={timestamp}>{formatDistanceToNow(new Date(timestamp), { addSuffix: true })}</time>
                     : "N/A"}
                 </TableCell>
               </TableRow>

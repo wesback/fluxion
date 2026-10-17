@@ -161,10 +161,12 @@ function DashboardContent() {
           <>
             <BarChart
               title="Top 5 Most Updated Packages"
+              valueUnit="update"
               data={topPackagesData.slice(0, 5)}
             />
             <BarChart
               title="Most Active Hosts"
+              valueUnit="update"
               data={topHostsData.slice(0, 5)}
             />
           </>

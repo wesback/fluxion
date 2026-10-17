@@ -7,6 +7,7 @@ import { GlassTooltip } from '@/components/charts/glass-tooltip'
 interface BarChartProps {
   title: string
   data: Array<{ name: string; value: number }>
+  valueUnit?: string
   dataKey?: string
   nameKey?: string
 }
@@ -19,7 +20,7 @@ const CHART_SERIES = [
   "hsl(var(--chart-series-5))",
 ]
 
-export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: BarChartProps) {
+export function BarChart({ title, data, valueUnit = 'update', dataKey = 'value', nameKey = 'name' }: BarChartProps) {
   return (
     <Card>
       <CardHeader>
@@ -38,8 +39,9 @@ export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: B
               className="text-xs"
               tick={{ fill: 'hsl(var(--chart-axis))' }}
             />
-            <Tooltip content={<GlassTooltip />} />
+            <Tooltip content={<GlassTooltip valueUnit={valueUnit} />} />
             <Bar
+              name="Count"
               dataKey={dataKey}
               radius={[4, 4, 0, 0]}
             >
@@ -49,8 +51,18 @@ export function BarChart({ title, data, dataKey = 'value', nameKey = 'name' }: B
             </Bar>
           </RechartsBarChart>
         </ResponsiveContainer>
+        <ol aria-label={`${title} ranked values`} className="mt-4 space-y-2 text-sm">
+          {data.map((item, index) => (
+            <li key={`${item.name}-${index}`} className="flex items-baseline gap-3">
+              <span className="shrink-0 text-muted-foreground">Rank {index + 1}</span>
+              <span className="min-w-0 flex-1 break-words">{item.name}</span>
+              <span className="shrink-0 font-medium">
+                {item.value} {valueUnit}{item.value === 1 ? "" : "s"}
+              </span>
+            </li>
+          ))}
+        </ol>
       </CardContent>
     </Card>
   )
 }
-
