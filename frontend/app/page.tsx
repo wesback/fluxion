@@ -6,12 +6,13 @@ import { StatsCard } from "@/components/stats-card"
 import { UpdatesTable } from "@/components/updates-table"
 import { Activity, Server, Clock, Calendar, RefreshCw, AlertTriangle } from "lucide-react"
 import { useStats, useRecentUpdates, useHosts } from "@/lib/hooks/use-api"
-import { StatsCardSkeleton, TableSkeleton, ChartSkeleton } from "@/components/ui/skeleton"
+import { TableSkeleton, ChartSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Button } from "@/components/ui/button"
+import { ReportingHealthBadge } from "@/components/host-health-badge"
 import { toast } from "sonner"
 import { useRefreshTracking } from "@/lib/telemetry"
-import { getHostHealthStatus } from "@/lib/host-health"
+import { formatMetricValue, getReportingHealthState } from "@/lib/host-health"
 
 const BarChart = dynamic(
   () => import("@/components/charts/bar-chart").then(mod => ({ default: mod.BarChart })),
@@ -21,7 +22,13 @@ const BarChart = dynamic(
 function DashboardContent() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useStats()
   const { data: recentUpdatesData, isLoading: updatesLoading, error: updatesError, refetch: refetchUpdates } = useRecentUpdates(24, 20)
-  const { data: hostsData, isLoading: hostsLoading, refetch: refetchHosts } = useHosts()
+  const {
+    data: hostsData,
+    isLoading: hostsLoading,
+    error: hostsError,
+    dataUpdatedAt: hostsUpdatedAt,
+    refetch: refetchHosts,
+  } = useHosts()
   const [now, setNow] = useState(0)
   useEffect(() => {
     const timer = window.setTimeout(() => setNow(Date.now()), 0)
@@ -30,23 +37,24 @@ function DashboardContent() {
   const trackRefresh = useRefreshTracking()
 
   const recentUpdates = recentUpdatesData?.items || []
-  const hostHealth = (hostsData?.items || []).reduce(
-    (counts, host) => {
-      const status = getHostHealthStatus(host.last_seen, now ? new Date(now) : undefined)
-      if (status === "missing") counts.missing += 1
-      else if (status === "stale") counts.stale += 1
-      return counts
-    },
-    { stale: 0, missing: 0 }
-  )
+  const reportingHealth = getReportingHealthState({
+    data: hostsData,
+    isLoading: hostsLoading,
+    hasError: Boolean(hostsError),
+    dataUpdatedAt: hostsUpdatedAt,
+    now: now ? new Date(now) : undefined,
+  })
+  const hostHealthValue = reportingHealth.staleCount === null || reportingHealth.missingCount === null
+    ? "—"
+    : `${formatMetricValue(reportingHealth.staleCount)} stale · ${formatMetricValue(reportingHealth.missingCount)} missing`
 
   // Prepare chart data
-  const topPackagesData = stats?.most_updated_packages.map(pkg => ({
+  const topPackagesData = stats?.most_updated_packages?.map(pkg => ({
     name: pkg.package,
     value: pkg.count
   })) || []
 
-  const topHostsData = stats?.most_active_hosts.map(host => ({
+  const topHostsData = stats?.most_active_hosts?.map(host => ({
     name: host.hostname,
     value: host.count
   })) || []
@@ -82,55 +90,49 @@ function DashboardContent() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        {statsLoading ? (
-          <>
-            <StatsCardSkeleton />
-            <StatsCardSkeleton />
-            <StatsCardSkeleton />
-            <StatsCardSkeleton />
-          </>
-        ) : statsError ? (
-          <div className="col-span-full p-4 rounded-lg border glass-surface border-status-error text-status-error">
-            Failed to load statistics
-          </div>
-        ) : stats ? (
-          <>
-            <StatsCard
-              title="Total Hosts"
-              value={stats.total_hosts}
-              icon={Server}
-              description="Registered hosts"
-            />
-            <StatsCard
-              title="Total Updates"
-              value={stats.total_updates.toLocaleString()}
-              icon={Activity}
-              description="All time"
-            />
-            <StatsCard
-              title="Last 24 Hours"
-              value={stats.updates_last_24h}
-              icon={Clock}
-              description="Recent updates"
-            />
-            <StatsCard
-              title="Last 7 Days"
-              value={stats.updates_last_7d}
-              icon={Calendar}
-              description="This week"
-            />
-            <StatsCard
-              title="Host Health"
-              value={hostsLoading ? "…" : `${hostHealth.stale} stale · ${hostHealth.missing} missing`}
-              icon={AlertTriangle}
-              description="Based on package-report activity"
-              className={hostHealth.stale + hostHealth.missing > 0 ? "border-amber-300 dark:border-amber-700" : undefined}
-            />
-          </>
-        ) : null}
-      </div>
+      <section aria-label="Overview metrics" className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatsCard title="Total Hosts" value={formatMetricValue(stats?.total_hosts)} icon={Server} />
+        <StatsCard title="Total Updates" value={formatMetricValue(stats?.total_updates)} icon={Activity} />
+        <StatsCard title="Updates in Last 24 Hours" value={formatMetricValue(stats?.updates_last_24h)} icon={Clock} />
+        <StatsCard title="Updates in Last 7 Days" value={formatMetricValue(stats?.updates_last_7d)} icon={Calendar} />
+      </section>
+
+      <section aria-label="Key performance indicators" className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatsCard title="Total Hosts" value={formatMetricValue(stats?.total_hosts)} icon={Server} />
+        <StatsCard title="Recent Updates" value={formatMetricValue(stats?.updates_last_24h)} icon={Clock} />
+        <StatsCard title="Weekly Updates" value={formatMetricValue(stats?.updates_last_7d)} icon={Calendar} />
+        <StatsCard
+          title="Host Health"
+          value={hostHealthValue}
+          icon={AlertTriangle}
+          description={reportingHealth.staleCount === null
+            ? "Stale and missing counts unavailable"
+            : "Stale and missing hosts"}
+        />
+      </section>
+
+      <section aria-label="Reporting health" className="glass-surface flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h2 className="font-semibold">Reporting health</h2>
+          <ReportingHealthBadge state={reportingHealth} />
+          <p className="text-sm text-muted-foreground">{reportingHealth.description}</p>
+          {reportingHealth.staleCount !== null && reportingHealth.missingCount !== null && (
+            <p className="text-sm text-muted-foreground">
+              {formatMetricValue(reportingHealth.staleCount)} stale · {formatMetricValue(reportingHealth.missingCount)} missing
+            </p>
+          )}
+          {reportingHealth.lastSuccessAt && (
+            <p className="text-sm text-muted-foreground">
+              Last successful response: {reportingHealth.lastSuccessAt}
+            </p>
+          )}
+        </div>
+        {reportingHealth.retry && (
+          <Button variant="outline" onClick={() => refetchHosts()}>
+            Retry host health
+          </Button>
+        )}
+      </section>
 
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">
