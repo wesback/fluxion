@@ -33,7 +33,7 @@ A modern, responsive Next.js frontend for the Fluxion package update tracking sy
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 24 LTS and npm
 - Backend API running (see `/backend/README.md`)
 - Valid API key from the backend
 

@@ -40,7 +40,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
       
@@ -342,7 +342,7 @@ on:
 
 ### Build Failures
 
-- Check Node.js version matches what's used locally (20.x)
+- Check Node.js version matches what's used locally (24.x)
 - Verify all dependencies are in package-lock.json
 - Check build logs for missing environment variables
 

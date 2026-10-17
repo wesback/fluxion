@@ -1,7 +1,7 @@
 /**
  * Strip background-writing Tailwind utilities from caller-supplied className
  * strings so table primitives always receive opaque fills. Framework-independent
- * and importable by Node 20 without a TypeScript/TSX runtime.
+ * and importable by Node 24 without a TypeScript/TSX runtime.
  *
  * @param {string | undefined} className
  * @returns {string | undefined}

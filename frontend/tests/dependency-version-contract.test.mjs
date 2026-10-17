@@ -260,13 +260,13 @@ const developmentPackageNames = [
 const expectedDevelopmentVersions = {
   "@tailwindcss/postcss": "4.3.3",
   "@tanstack/react-query-devtools": "5.104.3",
-  "@types/node": "26.6.5",
+  "@types/node": "24.19.2",
   "@types/react": "19.3.0",
   "@types/react-dom": "19.3.0",
-  eslint: "10.13.0",
+  eslint: "9.39.5",
   "eslint-config-next": "16.4.2",
   tailwindcss: "4.3.3",
-  typescript: "7.0.2",
+  typescript: "5.9.3",
 }
 
 // Queried from npm with `npm view <package>@<version> --json` and
@@ -274,54 +274,77 @@ const expectedDevelopmentVersions = {
 // metadata has no engines.node field, so it imposes no Node-version restriction.
 const developmentReleaseEvidence = {
   "@tailwindcss/postcss": {
-    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
-    highestPublishedStableVersion: "4.3.3",
+    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    highestCompatibleStableVersion: "4.3.3",
     higherStableReleasesConsidered: [],
   },
   "@tanstack/react-query-devtools": {
-    selected: { version: "5.104.3", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
-    highestPublishedStableVersion: "5.104.3",
+    selected: { version: "5.104.3", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    highestCompatibleStableVersion: "5.104.3",
     higherStableReleasesConsidered: [],
   },
   "@types/node": {
-    selected: { version: "26.6.5", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
-    highestPublishedStableVersion: "26.6.5",
-    higherStableReleasesConsidered: [],
+    selected: { version: "24.19.2", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    highestCompatibleStableVersion: "24.19.2",
+    higherStableReleasesConsidered: [
+      {
+        version: "26.6.5",
+        enginesNode: null,
+        excludedReason: "@types/node major must match the frontend Node 24 runtime.",
+      },
+    ],
   },
   "@types/react": {
-    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
-    highestPublishedStableVersion: "19.3.0",
+    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    highestCompatibleStableVersion: "19.3.0",
     higherStableReleasesConsidered: [],
   },
   "@types/react-dom": {
-    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
-    highestPublishedStableVersion: "19.3.0",
+    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    highestCompatibleStableVersion: "19.3.0",
     higherStableReleasesConsidered: [],
   },
   eslint: {
     selected: {
-      version: "10.13.0",
-      enginesNode: "^20.19.0 || ^22.13.0 || >=24",
+      version: "9.39.5",
+      enginesNode: "^18.18.0 || ^20.9.0 || >=21.1.0",
       enginesNodePublished: true,
-      supportsNode20: true,
+      supportsNode24: true,
     },
-    highestPublishedStableVersion: "10.13.0",
-    higherStableReleasesConsidered: [],
+    highestCompatibleStableVersion: "9.39.5",
+    higherStableReleasesConsidered: [
+      {
+        version: "10.13.0",
+        enginesNode: "^20.19.0 || ^22.13.0 || >=24",
+        excludedReason: "eslint-config-next's nested plugins declare peer support only through ESLint 9.",
+      },
+    ],
   },
   "eslint-config-next": {
-    selected: { version: "16.4.2", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
-    highestPublishedStableVersion: "16.4.2",
+    selected: { version: "16.4.2", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    highestCompatibleStableVersion: "16.4.2",
     higherStableReleasesConsidered: [],
   },
   tailwindcss: {
-    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
-    highestPublishedStableVersion: "4.3.3",
+    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode24: true },
+    highestCompatibleStableVersion: "4.3.3",
     higherStableReleasesConsidered: [],
   },
   typescript: {
-    selected: { version: "7.0.2", enginesNode: ">=16.20.0", enginesNodePublished: true, supportsNode20: true },
-    highestPublishedStableVersion: "7.0.2",
-    higherStableReleasesConsidered: [],
+    selected: { version: "5.9.3", enginesNode: ">=14.17", enginesNodePublished: true, supportsNode24: true },
+    highestCompatibleStableVersion: "5.9.3",
+    higherStableReleasesConsidered: [
+      {
+        version: "6.0.3",
+        enginesNode: ">=14.17",
+        excludedReason: "TypeScript 6 changes module interop behavior used by the existing test harness.",
+      },
+      {
+        version: "7.0.2",
+        enginesNode: ">=16.20.0",
+        excludedReason: "typescript-eslint 8.71.2 requires TypeScript <6.1.0; TypeScript 7 removes test tooling APIs.",
+      },
+    ],
   },
 }
 
@@ -374,12 +397,43 @@ test("test_development_targets_match_expected_stable_versions", () => {
   assert.deepEqual(Object.keys(developmentReleaseEvidence).sort(), [...developmentPackageNames].sort())
   for (const [name, evidence] of Object.entries(developmentReleaseEvidence)) {
     assert.equal(evidence.selected.version, expectedDevelopmentVersions[name])
-    assert.equal(evidence.highestPublishedStableVersion, expectedDevelopmentVersions[name])
+    assert.equal(evidence.highestCompatibleStableVersion, expectedDevelopmentVersions[name])
     assert.ok(evidence.selected.enginesNode === null || typeof evidence.selected.enginesNode === "string")
-    // A package with no published engines.node field imposes no Node restriction; one with a range must include Node 20.
+    // A package with no published engines.node field imposes no Node restriction; one with a range must include Node 24.
     assert.equal(evidence.selected.enginesNodePublished, evidence.selected.enginesNode !== null)
-    assert.equal(evidence.selected.supportsNode20, true)
-    assert.deepEqual(evidence.higherStableReleasesConsidered, [])
+    assert.equal(evidence.selected.supportsNode24, true)
+    if (name === "@types/node") {
+      assert.deepEqual(evidence.higherStableReleasesConsidered, [
+        {
+          version: "26.6.5",
+          enginesNode: null,
+          excludedReason: "@types/node major must match the frontend Node 24 runtime.",
+        },
+      ])
+    } else if (name === "eslint") {
+      assert.deepEqual(evidence.higherStableReleasesConsidered, [
+        {
+          version: "10.13.0",
+          enginesNode: "^20.19.0 || ^22.13.0 || >=24",
+          excludedReason: "eslint-config-next's nested plugins declare peer support only through ESLint 9.",
+        },
+      ])
+    } else if (name === "typescript") {
+      assert.deepEqual(evidence.higherStableReleasesConsidered, [
+        {
+          version: "6.0.3",
+          enginesNode: ">=14.17",
+          excludedReason: "TypeScript 6 changes module interop behavior used by the existing test harness.",
+        },
+        {
+          version: "7.0.2",
+          enginesNode: ">=16.20.0",
+          excludedReason: "typescript-eslint 8.71.2 requires TypeScript <6.1.0; TypeScript 7 removes test tooling APIs.",
+        },
+      ])
+    } else {
+      assert.deepEqual(evidence.higherStableReleasesConsidered, [])
+    }
   }
   assert.doesNotThrow(() =>
     assertDevelopmentTargetsMatchExpectedVersions(manifest, expectedDevelopmentVersions),
@@ -456,4 +510,23 @@ test("test_development_manifest_versions_match_lockfile", () => {
     () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
     /resolved package version differs: @tailwindcss\/postcss/,
   )
+})
+
+test("test_frontend_runtime_and_node_types_target_node24", () => {
+  assert.equal(manifest.engines?.node, ">=24 <25")
+  assert.equal(lockfile.packages?.[""]?.engines?.node, manifest.engines.node)
+  assert.match(manifest.devDependencies?.["@types/node"] ?? "", /^24\./)
+  const dockerStages = [
+    ...readFileSync(join(root, "Dockerfile"), "utf8").matchAll(/^FROM node:24-alpine AS (builder|runner)$/gm),
+  ].map(([, stage]) => stage)
+  assert.deepEqual(dockerStages, ["builder", "runner"])
+  assert.match(
+    readFileSync(join(root, "..", "docs", "frontend-github-actions.md"), "utf8"),
+    /node-version: ['"]24['"]/,
+  )
+  assert.match(
+    readFileSync(join(root, "..", "docs", "frontend-github-actions.md"), "utf8"),
+    /matches what's used locally \(24\.x\)/,
+  )
+  assert.match(readFileSync(join(root, "README.md"), "utf8"), /Node\.js 24 LTS/)
 })
