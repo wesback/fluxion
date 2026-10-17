@@ -23,6 +23,7 @@ import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xm
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { trace, Span, SpanStatusCode } from '@opentelemetry/api';
 import { getTelemetryConfig } from './config';
+import { createPrivacyFilteredExporter } from './privacy.mjs';
 
 let isInitialized = false;
 let sessionId: string;
@@ -89,10 +90,10 @@ export function initializeTelemetry(): void {
     });
 
     // Create and configure OTLP exporter
-    const exporter = new OTLPTraceExporter({
+    const exporter = createPrivacyFilteredExporter(new OTLPTraceExporter({
       url: config.otlpEndpoint,
       headers: {},
-    });
+    }));
 
     // Create trace provider with batch processor for better performance
     const provider = new WebTracerProvider({
