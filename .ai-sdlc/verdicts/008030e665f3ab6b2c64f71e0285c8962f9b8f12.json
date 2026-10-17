@@ -1,0 +1,280 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 105,
+  "branch": "ai-sdlc/issue-105",
+  "commitSha": "008030e665f3ab6b2c64f71e0285c8962f9b8f12",
+  "round": 0,
+  "pipelineVersion": "76fa65c",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 4,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The devtools lock entry is incompatible with the existing React Query runtime version. The release evidence tests also omit the required range evaluation, zero-request assertion, and peer contract test.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/package-lock.json",
+          "line": 2402,
+          "message": "The devtools pin requires a newer React Query runtime than the existing 5.90.2 dependency. Choose a compatible devtools release or update the runtime dependency and its lockfile entry.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "The locked @tanstack/react-query-devtools 5.104.3 entry requires @tanstack/react-query ^5.104.3, while the existing runtime dependency is 5.90.2.",
+            "failureScenario": "With the committed versions, the existing runtime version does not satisfy the devtools peer range. A clean install can fail peer dependency resolution, and the peer contract in the acceptance criteria is not met."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 350,
+          "message": "The Node engine evidence test does not verify that a recorded range includes Node 24 or reject invalid and excluding ranges. Implement the specified range evaluator and cases in this test.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_development_targets_match_expected_stable_versions checks that enginesNode is a string or null and that supportsNode24 is true, but does not evaluate the engine range.",
+            "failureScenario": "If an evidence entry records enginesNode as <24 and supportsNode24 as true, the test still passes. The required Node 24 range check and rejection cases are missing."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 350,
+          "message": "The required zero-request check is missing. Add the named test with a counting fake metadata provider and assert its call count is exactly zero.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The release evidence test reads the checked-in evidence directly; the diff adds no evidence-check helper that accepts a metadata provider and no test named test_development_release_evidence_uses_only_local_metadata.",
+            "failureScenario": "If evidence validation starts querying a registry or making HTTP requests, the current tests would not detect those calls because no counting fake is injected or asserted."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 350,
+          "message": "The peer contract acceptance criterion has no test that checks the recorded peer ranges against the runtime and Next.js toolchain versions. Add the named test and assert incompatible ranges fail.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The diff adds no test named test_development_peer_contracts_match_runtime_and_next_toolchain, and the current evidence assertions do not compare the devtools peer range with the runtime version.",
+            "failureScenario": "If the recorded devtools peer range excludes the existing runtime version, as the committed 5.104.3 lock entry does, the tests still pass without detecting the incompatibility."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The new tests cover exact dependency pins, lockfile consistency, and Node 24 configuration. They do not verify the required release range semantics, zero metadata-provider calls, or peer compatibility contracts.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 376,
+          "message": "The release evidence test does not evaluate engines.node ranges as required by the second acceptance criterion.",
+          "confidence": 0.96,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_development_targets_match_expected_stable_versions checks that enginesNode is a string or null and that supportsNode24 is true, but it does not evaluate the range.",
+            "failureScenario": "If a selected release records enginesNode as \"<24\" and supportsNode24 as true, the test still passes. It does not cover the required Node 24 range cases or reject invalid ranges."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 245,
+          "message": "The third acceptance criterion is missing its named test, test_development_release_evidence_uses_only_local_metadata.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The added tests validate release evidence and manifest or lockfile contents, but no test injects a counting metadata provider or asserts its call count.",
+            "failureScenario": "If the evidence check starts requesting registry metadata, the current tests still pass; they cannot verify the required zero provider calls."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 245,
+          "message": "The fifth acceptance criterion is missing its named test, test_development_peer_contracts_match_runtime_and_next_toolchain.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The added tests assert exact dependency versions and check Node configuration, but none checks the devtools peer range against the runtime version or ESLint and TypeScript against the Next.js toolchain peer ranges.",
+            "failureScenario": "If the devtools peer range excludes the existing React Query version, or a selected ESLint or TypeScript version falls outside the Next.js lint toolchain peer range, the current tests still pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "I found no concrete security vulnerability in the changed code. The dependency updates and Node.js 24 configuration expose no reachable injection, authorization, credential, or path traversal issue in this diff.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "team-lead",
+    "complexityScore": 2,
+    "needsHuman": true,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": true,
+    "infraPaths": [
+      "frontend/Dockerfile"
+    ]
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/alerts-host-signals.test.mjs",
+      "frontend/tests/dependency-version-contract.test.mjs",
+      "frontend/tests/reports-overview.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
