@@ -274,27 +274,27 @@ const expectedDevelopmentVersions = {
 // metadata has no engines.node field, so it imposes no Node-version restriction.
 const developmentReleaseEvidence = {
   "@tailwindcss/postcss": {
-    selected: { version: "4.3.3", enginesNode: null, supportsNode20: true },
+    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
     highestPublishedStableVersion: "4.3.3",
     higherStableReleasesConsidered: [],
   },
   "@tanstack/react-query-devtools": {
-    selected: { version: "5.104.3", enginesNode: null, supportsNode20: true },
+    selected: { version: "5.104.3", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
     highestPublishedStableVersion: "5.104.3",
     higherStableReleasesConsidered: [],
   },
   "@types/node": {
-    selected: { version: "26.6.5", enginesNode: null, supportsNode20: true },
+    selected: { version: "26.6.5", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
     highestPublishedStableVersion: "26.6.5",
     higherStableReleasesConsidered: [],
   },
   "@types/react": {
-    selected: { version: "19.3.0", enginesNode: null, supportsNode20: true },
+    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
     highestPublishedStableVersion: "19.3.0",
     higherStableReleasesConsidered: [],
   },
   "@types/react-dom": {
-    selected: { version: "19.3.0", enginesNode: null, supportsNode20: true },
+    selected: { version: "19.3.0", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
     highestPublishedStableVersion: "19.3.0",
     higherStableReleasesConsidered: [],
   },
@@ -302,23 +302,24 @@ const developmentReleaseEvidence = {
     selected: {
       version: "10.13.0",
       enginesNode: "^20.19.0 || ^22.13.0 || >=24",
+      enginesNodePublished: true,
       supportsNode20: true,
     },
     highestPublishedStableVersion: "10.13.0",
     higherStableReleasesConsidered: [],
   },
   "eslint-config-next": {
-    selected: { version: "16.4.2", enginesNode: null, supportsNode20: true },
+    selected: { version: "16.4.2", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
     highestPublishedStableVersion: "16.4.2",
     higherStableReleasesConsidered: [],
   },
   tailwindcss: {
-    selected: { version: "4.3.3", enginesNode: null, supportsNode20: true },
+    selected: { version: "4.3.3", enginesNode: null, enginesNodePublished: false, supportsNode20: true },
     highestPublishedStableVersion: "4.3.3",
     higherStableReleasesConsidered: [],
   },
   typescript: {
-    selected: { version: "7.0.2", enginesNode: ">=16.20.0", supportsNode20: true },
+    selected: { version: "7.0.2", enginesNode: ">=16.20.0", enginesNodePublished: true, supportsNode20: true },
     highestPublishedStableVersion: "7.0.2",
     higherStableReleasesConsidered: [],
   },
@@ -375,6 +376,8 @@ test("test_development_targets_match_expected_stable_versions", () => {
     assert.equal(evidence.selected.version, expectedDevelopmentVersions[name])
     assert.equal(evidence.highestPublishedStableVersion, expectedDevelopmentVersions[name])
     assert.ok(evidence.selected.enginesNode === null || typeof evidence.selected.enginesNode === "string")
+    // A package with no published engines.node field imposes no Node restriction; one with a range must include Node 20.
+    assert.equal(evidence.selected.enginesNodePublished, evidence.selected.enginesNode !== null)
     assert.equal(evidence.selected.supportsNode20, true)
     assert.deepEqual(evidence.higherStableReleasesConsidered, [])
   }
