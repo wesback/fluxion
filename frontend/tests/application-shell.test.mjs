@@ -37,6 +37,9 @@ runInNewContext(transpiledNavbar, {
     }
     if (name === "next/navigation") return { usePathname: () => pathname }
     if (name === "@/components/theme-toggle") return { ThemeToggle: () => null }
+    if (name === "@/components/global-search") return {
+      GlobalSearch: () => React.createElement("button", { "aria-label": "Search" }),
+    }
     if (name === "lucide-react") {
       return {
         Activity: icon,
@@ -214,14 +217,17 @@ test("sharedLandmarksAndRoutes", () => {
 
 test("supportedHeaderControls", () => {
   assert.match(navbar, /<span>Fluxion<\/span>/)
+  assert.match(navbar, /<GlobalSearch \/>/)
   assert.match(navbar, /<ThemeToggle \/>/)
   assert.doesNotMatch(navbar, /avatar|account|notification|inbox|badge/i)
 
   const buttons = [...navbar.matchAll(/<button\b[\s\S]*?<\/button>/g)].map(([button]) => button)
-  assert.equal(buttons.length, 1, "header may expose only its functional mobile navigation button")
-  assert.match(buttons[0], /onClick=\{\(\) => setMobileMenuOpen\(!mobileMenuOpen\)\}/)
-  assert.match(buttons[0], /aria-label=\{mobileMenuOpen \? "Close menu" : "Open menu"\}/)
-  assert.match(buttons[0], /aria-expanded=\{mobileMenuOpen\}/)
+  assert.equal(buttons.length, 1, "mobile navigation control remains in the header")
+  const mobileMenuButton = buttons.find((button) => button.includes("menuButtonRef"))
+  assert.ok(mobileMenuButton, "mobile navigation button remains available")
+  assert.match(mobileMenuButton, /onClick=\{\(\) => setMobileMenuOpen\(!mobileMenuOpen\)\}/)
+  assert.match(mobileMenuButton, /aria-label=\{mobileMenuOpen \? "Close menu" : "Open menu"\}/)
+  assert.match(mobileMenuButton, /aria-expanded=\{mobileMenuOpen\}/)
 })
 
 test("responsiveShellBreakpoints", () => {

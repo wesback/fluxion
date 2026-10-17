@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -11,9 +12,9 @@ import { usePackageSearch } from "@/lib/hooks/use-api"
 import { TableSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
 
-function PackagesContent() {
-  const [packageName, setPackageName] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
+function PackagesContent({ initialQuery }: { initialQuery: string }) {
+  const [packageName, setPackageName] = useState(initialQuery)
+  const [searchQuery, setSearchQuery] = useState(initialQuery)
 
   const { data, isLoading, error } = usePackageSearch(searchQuery)
 
@@ -125,10 +126,15 @@ function PackagesContent() {
   )
 }
 
+function PackagesRoute() {
+  const initialQuery = useSearchParams().get("q") ?? ""
+  return <PackagesContent key={initialQuery} initialQuery={initialQuery} />
+}
+
 export default function PackagesPage() {
   return (
     <ErrorBoundary>
-      <PackagesContent />
+      <Suspense fallback={<p role="status">Loading package search...</p>}><PackagesRoute /></Suspense>
     </ErrorBoundary>
   )
 }

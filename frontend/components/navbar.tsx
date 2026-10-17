@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { GlobalSearch } from "@/components/global-search"
 import { Activity, AlertTriangle, BarChart3, Cpu, Menu, Package, RefreshCw, Server, Settings, ShieldCheck, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useClickTracking } from "@/lib/telemetry"
@@ -104,6 +105,7 @@ export function Navbar() {
                 <Menu className="h-6 w-6" aria-hidden="true" />
               )}
             </button>
+            <GlobalSearch />
           </div>
         </div>
       </div>
