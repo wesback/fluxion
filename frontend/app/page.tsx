@@ -11,7 +11,7 @@ import { ErrorBoundary } from "@/components/error-boundary"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { useRefreshTracking } from "@/lib/telemetry"
-import { getHostHealthStatus } from "@/lib/host-health"
+import { formatHostHealthCounts, getReportingHealthState } from "@/lib/host-health"
 
 const BarChart = dynamic(
   () => import("@/components/charts/bar-chart").then(mod => ({ default: mod.BarChart })),
@@ -23,7 +23,13 @@ const formatNumber = (value?: number) => value?.toLocaleString("en-US") ?? "—"
 function DashboardContent() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useStats()
   const { data: recentUpdatesData, isLoading: updatesLoading, error: updatesError, refetch: refetchUpdates } = useRecentUpdates(24, 20)
-  const { data: hostsData, isLoading: hostsLoading, refetch: refetchHosts } = useHosts()
+  const {
+    data: hostsData,
+    isLoading: hostsLoading,
+    error: hostsError,
+    dataUpdatedAt: hostsDataUpdatedAt,
+    refetch: refetchHosts,
+  } = useHosts()
   const [now, setNow] = useState(0)
   useEffect(() => {
     const timer = window.setTimeout(() => setNow(Date.now()), 0)
@@ -32,14 +38,9 @@ function DashboardContent() {
   const trackRefresh = useRefreshTracking()
 
   const recentUpdates = recentUpdatesData?.items || []
-  const hostHealth = (hostsData?.items || []).reduce(
-    (counts, host) => {
-      const status = getHostHealthStatus(host.last_seen, now ? new Date(now) : undefined)
-      if (status === "missing") counts.missing += 1
-      else if (status === "stale") counts.stale += 1
-      return counts
-    },
-    { stale: 0, missing: 0 }
+  const reportingHealth = getReportingHealthState(
+    { data: hostsData, isLoading: hostsLoading, error: hostsError, dataUpdatedAt: hostsDataUpdatedAt },
+    now ? new Date(now) : undefined,
   )
 
   // Prepare chart data
@@ -125,17 +126,25 @@ function DashboardContent() {
         </div>
       )}
 
-      {stats && (
-        <section aria-label="Host health" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Host health" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-2" aria-live="polite">
           <StatsCard
             title="Host Health"
-            value={hostsLoading ? "…" : `${hostHealth.stale} stale · ${hostHealth.missing} missing`}
+            value={reportingHealth.counts ? formatHostHealthCounts(reportingHealth.counts) : "—"}
             icon={AlertTriangle}
-            description="Based on package-report activity"
-            className={hostHealth.stale + hostHealth.missing > 0 ? "border-amber-300 dark:border-amber-700" : undefined}
+            description={reportingHealth.status}
+            className={reportingHealth.counts && reportingHealth.counts.stale + reportingHealth.counts.missing > 0
+              ? "border-amber-300 dark:border-amber-700"
+              : undefined}
           />
-        </section>
-      )}
+          {reportingHealth.message && (
+            <p className="px-1 text-xs text-muted-foreground">{reportingHealth.message}</p>
+          )}
+          {reportingHealth.canRetry && (
+            <Button variant="outline" onClick={() => refetchHosts()}>Retry</Button>
+          )}
+        </div>
+      </section>
 
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">

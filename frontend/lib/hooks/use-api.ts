@@ -60,12 +60,24 @@ export function useStats(options?: Omit<UseQueryOptions<Stats, Error>, 'queryKey
  * Hook to fetch list of all hosts
  * Auto-updates with stale-while-revalidate strategy
  */
+export function parseHostsResponse(value: unknown): { items: Host[] } {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    !('items' in value) ||
+    !Array.isArray(value.items)
+  ) {
+    throw new TypeError('Invalid hosts response: expected an items array');
+  }
+  return { items: value.items as Host[] };
+}
+
 export function useHosts(options?: Omit<UseQueryOptions<{ items: Host[] }, Error>, 'queryKey' | 'queryFn'>) {
   return useQuery<{ items: Host[] }, Error>({
     queryKey: queryKeys.hosts,
     queryFn: async () => {
       try {
-        return await apiClient.getHosts();
+        return parseHostsResponse(await apiClient.getHosts());
       } catch (error) {
         handleQueryError(error, 'Failed to fetch hosts');
         throw error;
