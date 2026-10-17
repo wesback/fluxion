@@ -470,6 +470,17 @@ function assertDevelopmentManifestLockfileMatches(manifestFixture, lockfileFixtu
     assert.ok(resolvedPackage, `resolved lockfile package is missing: ${name}`)
     assert.equal(resolvedPackage.version, manifestDependencies[name], `resolved package version differs: ${name}`)
   }
+
+  assert.deepEqual(
+    Object.keys(manifestDependencies ?? {}).sort(),
+    [...developmentPackageNames].sort(),
+    "manifest must contain exactly the expected development dependencies",
+  )
+  assert.deepEqual(
+    Object.keys(rootDependencies ?? {}).sort(),
+    [...developmentPackageNames].sort(),
+    "lockfile root must contain exactly the expected development dependencies",
+  )
 }
 
 function createDevelopmentFixtures() {
@@ -691,6 +702,20 @@ test("test_development_manifest_versions_match_lockfile", () => {
   assert.throws(
     () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
     /resolved package version differs: @tailwindcss\/postcss/,
+  )
+
+  fixtures = createDevelopmentFixtures()
+  fixtures.manifest.devDependencies.extra = "1.0.0"
+  assert.throws(
+    () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /manifest must contain exactly the expected development dependencies/,
+  )
+
+  fixtures = createDevelopmentFixtures()
+  fixtures.lockfile.packages[""].devDependencies.extra = "1.0.0"
+  assert.throws(
+    () => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /lockfile root must contain exactly the expected development dependencies/,
   )
 })
 
