@@ -1,0 +1,203 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 104,
+  "branch": "ai-sdlc/issue-104",
+  "commitSha": "9be3fb5e80d70e059c031d245890703c8f9d23e5",
+  "round": 0,
+  "pipelineVersion": "d1fd485",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The added contract tests cover their specified manifest and lockfile cases. The lucide-react pin is unavailable in the registry metadata checked for this review, which also makes a clean install fail.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/package.json",
+          "line": 27,
+          "message": "The lucide-react pin is not an available registry release; use the highest published stable Node 20 compatible version.",
+          "confidence": 0.91,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The manifest pins lucide-react to 1.59.0, and the lockfile resolves that same version.",
+            "failureScenario": "The npm registry lists 1.57.0 as the latest stable lucide-react release and does not list 1.59.0. A clean npm ci therefore cannot fetch the pinned tarball, and the change does not meet the highest-compatible-release criterion. [npm version history](https://www.npmjs.com/package/lucide-react?activeTab=versions)"
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The added tests cover the expected-version contract and fixture rejection cases, but the lockfile test never checks the repository's actual manifest and lockfile. That leaves a required acceptance criterion unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 202,
+          "message": "The lockfile contract test checks only synthetic fixtures, so it does not verify that the actual manifest and lockfile agree as the acceptance criterion requires.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_runtime_manifest_versions_match_lockfile calls assertRuntimeManifestLockfileMatches only with createRuntimeFixtures() results; it never passes the loaded manifest and lockfile.",
+            "failureScenario": "If the actual package.json and package-lock.json disagree for a named dependency, the test still passes as long as its synthetic fixtures agree."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The dependency changes show no concrete security vulnerability in the provided diff. The lockfile consistency test does not verify the repository artifacts it is meant to cover.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 205,
+          "message": "The lockfile contract test checks synthetic fixtures only and never checks the actual manifest and lockfile, so a stale or mismatched repository lockfile can go undetected.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The lockfile consistency test passes only createRuntimeFixtures() output to assertRuntimeManifestLockfileMatches(); it never passes the repository manifest or lockfile.",
+            "failureScenario": "If a resolved lockfile package version is changed while the in-memory fixtures remain matching, this test still passes. The test therefore does not verify the stated manifest-to-lockfile contract for the repository files."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/dependency-version-contract.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
