@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 
@@ -53,6 +53,24 @@ function assertDeclarations(actual, expected, label) {
     assert.equal(actual[name], value, `${label} ${name}`)
   }
 }
+
+test("localInterFontHasSystemFallback", () => {
+  const fontFace = declarationsIn("@font-face")
+  assert.equal(fontFace["font-family"], '"Inter Variable"')
+  assert.equal(fontFace.src, 'url("./fonts/InterVariable.woff2") format("woff2")')
+  assert.equal(
+    existsSync(join(root, "app/fonts/InterVariable.woff2")),
+    true,
+    "the local font source must resolve to an app asset"
+  )
+  assert.doesNotMatch(fontFace.src, /https?:\/\//i, "font source must not be remote")
+
+  assert.equal(
+    declarationsIn("@theme inline")["--font-family-sans"],
+    '"Inter Variable", system-ui, sans-serif'
+  )
+  assert.equal(declarationsIn("body")["font-family"], "var(--font-family-sans)")
+})
 
 test("glassGeometryAndOpaqueFallbacks", () => {
   assertDeclarations(declarationsIn(":root"), {
