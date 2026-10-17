@@ -107,6 +107,7 @@ remain functional for checking status and following up on a specific host.
 | DD-008 | Health refers explicitly to package-report freshness | Existing domain rule; zero hosts, request failures and unknown data are not healthy |
 | DD-009 | All cards share the requested geometry; interactive affordances remain semantic | Static cards get no fake button role, click behavior or additional tab stop |
 | DD-010 | This PRD does not silently rewrite historical design specifications | The new release intentionally replaces the old palette/blur contract only when implemented |
+| DD-011 | R1 permits a narrowly scoped change to backend/fluxion/services/export.py and its tests: CSV cells beginning with =, +, -, @, tab, or carriage return are prefixed with an apostrophe, while JSON values remain unchanged. |
 
 ## Product Goals
 
