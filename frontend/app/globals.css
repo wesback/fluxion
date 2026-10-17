@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Inter Variable";
+  src: url("./fonts/InterVariable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 @layer base {
   :root {
     /* Shared semantic theme tokens */
@@ -418,7 +426,7 @@
   --color-accent-operational-fg: hsl(var(--accent-operational-fg));
   --color-frost-line-start: hsl(var(--frost-line-start));
   --color-frost-line-end: hsl(var(--frost-line-end));
-  --font-family-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-family-sans: "Inter Variable", system-ui, sans-serif;
   --font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   /* Frosted shell — color tokens */
   --color-glass-surface: hsl(var(--glass-surface));
