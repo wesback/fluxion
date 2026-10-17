@@ -50,9 +50,11 @@ export default function RootLayout({
           >
             <QueryProvider>
               <Navbar />
-              <main id="main-content" className="container mx-auto px-4 pt-20 pb-4 md:pb-8">
-                {children}
-              </main>
+              <div className="min-[1280px]:ml-[240px]">
+                <main id="main-content" className="container mx-auto px-4 pt-20 pb-4 md:pb-8">
+                  {children}
+                </main>
+              </div>
               <Toaster richColors position="top-right" />
             </QueryProvider>
           </ThemeProvider>
