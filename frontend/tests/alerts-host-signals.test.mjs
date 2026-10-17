@@ -62,6 +62,8 @@ runInNewContext(ts.transpileModule(pageSource, {
       useHosts: (options) => {
         if (!queryClientForPage) return query
         pageHostQueryOptions = makeHostQueryOptions(options)
+        // The static resolver calls this mock without React; the hook path has a query provider.
+        // eslint-disable-next-line react-hooks/rules-of-hooks
         return useQuery(pageHostQueryOptions)
       },
       useIngestDiagnostics: () => useAdminQuery("/api/admin/ingest-diagnostics"),
@@ -107,10 +109,11 @@ function render() {
   return { tree, markup: renderToStaticMarkup(tree) }
 }
 function renderWithQueryClient(client) {
-  const tree = React.createElement(QueryClientProvider, {
-    client,
-    children: React.createElement(page.exports.default),
-  })
+  const tree = React.createElement(
+    QueryClientProvider,
+    { client },
+    React.createElement(page.exports.default),
+  )
   return { tree, markup: renderToStaticMarkup(tree) }
 }
 function elements(node, predicate, found = []) {

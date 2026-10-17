@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for Next.js frontend with Nginx
 
 # Stage 1: Build Next.js application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Copy package files
@@ -20,7 +20,7 @@ ENV NODE_ENV=production
 RUN npm run build
 
 # Stage 2: Production image with Nginx and Node.js
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 

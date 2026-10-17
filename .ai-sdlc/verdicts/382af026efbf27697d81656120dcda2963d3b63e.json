@@ -1,0 +1,226 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 105,
+  "branch": "ai-sdlc/issue-105",
+  "commitSha": "382af026efbf27697d81656120dcda2963d3b63e",
+  "round": 1,
+  "pipelineVersion": "979a7c4",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 1,
+        "suggestion": 0
+      },
+      "summary": "The devtools pin appears incompatible with the existing React Query runtime version and can prevent a clean install. The issue also leaves the required install and build checks without a named CI job or recorded evidence.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/package-lock.json",
+          "line": 2410,
+          "message": "The devtools upgrade leaves its React Query peer incompatible with the existing runtime dependency; align the runtime version or select a compatible devtools release.",
+          "confidence": 0.88,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "The updated @tanstack/react-query-devtools lock entry requires @tanstack/react-query ^5.104.3, while the existing runtime dependency remains at 5.90.2.",
+            "failureScenario": "On a clean npm install, the root React Query version does not satisfy the updated devtools peer range, so npm can fail peer dependency resolution and block the required install and build."
+          }
+        },
+        {
+          "severity": "minor",
+          "file": "issue #105",
+          "line": 1,
+          "message": "NEEDS-PERSON: Decide which CI job verifies the required install, npm ls, lint, UI contract tests, and production build, or record the results in the repository.",
+          "confidence": 0.86,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The final acceptance criterion requires a clean install, npm ls, lint, UI contract tests, and a production build, but names no CI job or recorded repository evidence for those results.",
+            "failureScenario": "A dependency or build incompatibility could remain undiscovered without those checks being tied to CI or recorded evidence."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The manifest and lockfile contract tests cover exact versions and mismatch cases. The Node 24 compatibility check can accept evidence whose engine range contradicts its compatibility claim.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/dependency-version-contract.test.mjs",
+          "line": 420,
+          "message": "The dependency contract test does not validate that recorded engines.node ranges include Node 24.",
+          "confidence": 0.94,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The Node 24 evidence test checks that enginesNode is a string or null and that supportsNode24 is true, but never checks whether a recorded engine range actually includes Node 24.",
+            "failureScenario": "If a selected package's evidence records enginesNode as \">=99\" while supportsNode24 remains true, the test passes even though that release excludes Node 24. This leaves the compatibility evidence criterion unverified."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "No concrete security vulnerability is reachable in the changed code. The dependency and Node.js version updates do not expose an injection, authorization, credential, or path traversal issue in this diff.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "team-lead",
+    "complexityScore": 2,
+    "needsHuman": true,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": true,
+    "infraPaths": [
+      "frontend/Dockerfile"
+    ]
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/alerts-host-signals.test.mjs",
+      "frontend/tests/dependency-version-contract.test.mjs",
+      "frontend/tests/reports-overview.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
