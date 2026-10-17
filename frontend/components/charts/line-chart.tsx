@@ -24,11 +24,11 @@ export function LineChart({ title, data, dataKey = 'value', nameKey = 'name' }: 
             <XAxis
               dataKey={nameKey}
               className="text-xs"
-              tick={{ fill: 'hsl(var(--chart-axis))' }}
+              tick={{ fill: 'var(--chart-axis)' }}
             />
             <YAxis
               className="text-xs"
-              tick={{ fill: 'hsl(var(--chart-axis))' }}
+              tick={{ fill: 'var(--chart-axis)' }}
             />
             <Tooltip content={<GlassTooltip />} />
             <Line
@@ -44,4 +44,3 @@ export function LineChart({ title, data, dataKey = 'value', nameKey = 'name' }: 
     </Card>
   )
 }
-

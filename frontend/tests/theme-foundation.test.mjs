@@ -54,6 +54,19 @@ function assertDeclarations(actual, expected, label) {
   }
 }
 
+function hexToRgb(value, label) {
+  assert.match(value, /^#[\da-f]{6}$/i, `${label} must be a six-digit hex color`)
+  return [1, 3, 5].map((index) => Number.parseInt(value.slice(index, index + 2), 16))
+}
+
+function relativeLuminance(hex, label) {
+  const [red, green, blue] = hexToRgb(hex, label).map((channel) => {
+    const srgb = channel / 255
+    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+}
+
 test("localInterFontHasSystemFallback", () => {
   const fontFace = declarationsIn("@font-face")
   assert.equal(fontFace["font-family"], '"Inter Variable"')
@@ -303,6 +316,21 @@ test("statusTrendControlAndChartTokensUseExactValues", () => {
     for (const [name, value] of Object.entries(tokens)) {
       assert.equal(declarations[name], value, `${selector} ${name}`)
     }
+  }
+})
+
+test("chartAxisContrastMeetsAaInBothThemes", () => {
+  for (const selector of [":root", ".dark"]) {
+    const tokens = declarationsIn(selector)
+    const axisLuminance = relativeLuminance(tokens["--chart-axis"], `${selector} --chart-axis`)
+    const cardLuminance = relativeLuminance(tokens["--surface-opaque"], `${selector} --surface-opaque`)
+    const contrast = (Math.max(axisLuminance, cardLuminance) + 0.05) /
+      (Math.min(axisLuminance, cardLuminance) + 0.05)
+
+    assert.ok(
+      contrast >= 4.5,
+      `${selector} --chart-axis contrast against the opaque card surface must be at least 4.5:1 (was ${contrast.toFixed(2)}:1)`
+    )
   }
 })
 
