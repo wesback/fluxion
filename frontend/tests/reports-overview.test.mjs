@@ -106,3 +106,22 @@ test("reportTotalsUseReturnedBuckets", () => {
   assert.doesNotMatch(markup, /package_name|raw-update/)
   assert.match(markup, /Reports/)
 })
+
+test("hourlyReportChartLabelsIncludeTimes", () => {
+  search = "?from=2026-10-17&to=2026-10-17&bucket=hour"
+  activity = { items: [
+    { bucket: "2026-10-17T10:00:00", updates: 4, installs: 0, upgrades: 4, security_updates: 0, kernel_updates: 0 },
+    { bucket: "2026-10-17T11:00:00", updates: 6, installs: 0, upgrades: 6, security_updates: 0, kernel_updates: 0 },
+  ] }
+  const markup = renderReport(search)
+  const chartMarkup = markup.match(/<div role="img" aria-label="Updates over time">([\s\S]*?)<\/div>/)?.[1]
+  assert.notEqual(chartMarkup, undefined)
+  const labels = [...chartMarkup.matchAll(/<span[^>]*>([^<]+)<\/span>/g)].map(([, label]) => label)
+  const formatHourlyLabel = (bucket, updates) =>
+    `${new Date(bucket).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}: ${updates}`
+  assert.deepEqual(labels, [
+    formatHourlyLabel("2026-10-17T10:00:00", 4),
+    formatHourlyLabel("2026-10-17T11:00:00", 6),
+  ])
+  assert.notEqual(labels[0], labels[1])
+})

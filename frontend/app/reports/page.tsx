@@ -88,7 +88,9 @@ function ReportsContent() {
   const series = data?.items ?? []
   const totals = sumActivityBuckets(series)
   const chartData = series.map((point) => ({
-    name: new Date(point.bucket).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    name: new Date(point.bucket).toLocaleString(undefined, filters?.bucket === "hour"
+      ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+      : { month: "short", day: "numeric" }),
     value: point.updates,
   }))
 
