@@ -57,9 +57,10 @@ runInNewContext(transpiledPage, {
     if (name === "react/jsx-runtime") return require("react/jsx-runtime")
     if (name === "next/dynamic") return { default: () => () => null }
     if (name === "@/components/stats-card") return { StatsCard }
+    if (name === "next/link") return { default: ({ children, ...props }) => React.createElement("a", props, children) }
     if (name === "@/components/updates-table") return { UpdatesTable: () => null }
     if (name === "lucide-react") {
-      return { Activity: icon, AlertTriangle: icon, Calendar: icon, Clock: icon, RefreshCw: icon, Server: icon }
+      return { AlertTriangle: icon, CheckCircle2: icon, Clock: icon, RefreshCw: icon, ShieldAlert: icon }
     }
     if (name === "@/lib/hooks/use-api") {
       return {
@@ -106,49 +107,56 @@ function cardsInSection(markup, label) {
     .map(([, title, value]) => [title, value])
 }
 
-test("heroAndNumericKpisUseSupportedStats", () => {
+function overviewMetrics(markup) {
+  const section = markup.match(/<dl aria-label="Update activity metrics"[^>]*>([\s\S]*?)<\/dl>/)
+  assert.ok(section, "missing update activity metrics")
+  return [...section[1].matchAll(/<dt>([\s\S]*?)<\/dt><dd>([\s\S]*?)<\/dd>/g)]
+    .map(([, title, value]) => [title, value])
+}
+
+test("dashboardSeparatesApiMetricsFromHostHealthKpis", () => {
   const fixture = {
     total_hosts: 0,
     total_updates: 1234,
     updates_last_24h: 56,
     updates_last_7d: 7890,
+    security_updates_last_24h: 3,
     most_updated_packages: [],
     most_active_hosts: [],
   }
   const successful = renderDashboard({ data: fixture, isLoading: false, error: null })
 
-  assert.deepEqual(cardsInSection(successful, "Hero metrics"), [
-    ["Total Hosts", "0"],
-    ["Total Updates", "1,234"],
-    ["Updates in Last 24 Hours", "56"],
-    ["Updates in Last 7 Days", "7,890"],
+  assert.deepEqual(overviewMetrics(successful), [
+    ["Total hosts", "0"],
+    ["Total updates", "1,234"],
+    ["Last 24 hours", "56"],
+    ["Last 7 days", "7,890"],
   ])
-  assert.deepEqual(cardsInSection(successful, "Numeric KPIs"), [
-    ["Total Hosts", "0"],
-    ["Recent Updates", "56"],
-    ["Weekly Updates", "7,890"],
+  assert.deepEqual(cardsInSection(successful, "Operational KPIs"), [
+    ["Current hosts", "0"],
+    ["Stale hosts", "0"],
+    ["Missing hosts", "0"],
+    ["Security updates", "3"],
   ])
+  assert.equal(new Set(overviewMetrics(successful).map(([title]) => title)).size, 4)
   assert.doesNotMatch(successful, /uptime|latency|trend(?: percentage)?|sample/i)
 
   const unavailable = renderDashboard({ data: undefined, isLoading: true, error: null })
-  assert.deepEqual(cardsInSection(unavailable, "Hero metrics"), [
-    ["Total Hosts", "—"],
-    ["Total Updates", "—"],
-    ["Updates in Last 24 Hours", "—"],
-    ["Updates in Last 7 Days", "—"],
+  assert.deepEqual(overviewMetrics(unavailable), [
+    ["Total hosts", "—"],
+    ["Total updates", "—"],
+    ["Last 24 hours", "—"],
+    ["Last 7 days", "—"],
   ])
-  assert.deepEqual(cardsInSection(unavailable, "Numeric KPIs"), [
-    ["Total Hosts", "—"],
-    ["Recent Updates", "—"],
-    ["Weekly Updates", "—"],
+  assert.deepEqual(cardsInSection(unavailable, "Operational KPIs"), [
+    ["Current hosts", "0"],
+    ["Stale hosts", "0"],
+    ["Missing hosts", "0"],
+    ["Security updates", "—"],
   ])
 
   const failed = renderDashboard({ data: undefined, isLoading: false, error: new Error("request failed") })
-  assert.deepEqual(cardsInSection(failed, "Numeric KPIs"), [
-    ["Total Hosts", "—"],
-    ["Recent Updates", "—"],
-    ["Weekly Updates", "—"],
-  ])
+  assert.deepEqual(overviewMetrics(failed), overviewMetrics(unavailable))
   assert.match(failed, /Failed to load statistics/)
 
   const cachedAfterFailure = renderDashboard({
@@ -156,16 +164,12 @@ test("heroAndNumericKpisUseSupportedStats", () => {
     isLoading: false,
     error: new Error("refresh failed"),
   })
-  assert.deepEqual(cardsInSection(cachedAfterFailure, "Hero metrics"), [
-    ["Total Hosts", "0"],
-    ["Total Updates", "1,234"],
-    ["Updates in Last 24 Hours", "56"],
-    ["Updates in Last 7 Days", "7,890"],
-  ])
-  assert.deepEqual(cardsInSection(cachedAfterFailure, "Numeric KPIs"), [
-    ["Total Hosts", "0"],
-    ["Recent Updates", "56"],
-    ["Weekly Updates", "7,890"],
+  assert.deepEqual(overviewMetrics(cachedAfterFailure), overviewMetrics(successful))
+  assert.deepEqual(cardsInSection(cachedAfterFailure, "Operational KPIs"), [
+    ["Current hosts", "0"],
+    ["Stale hosts", "0"],
+    ["Missing hosts", "0"],
+    ["Security updates", "3"],
   ])
   assert.match(cachedAfterFailure, /Failed to refresh statistics; showing cached values/)
   assert.doesNotMatch(cachedAfterFailure, /uptime|latency|trend(?: percentage)?|sample/i)
@@ -216,21 +220,25 @@ test("hostResponseParserRejectsMalformedItems", async () => {
 
 test("hostHealthKpiUsesOnlySuccessfulHostData", () => {
   const cases = [
-    [{ items: [{ hostname: "current", last_seen: daysAgo(1) }] }, {}, "0 stale · 0 missing", "Healthy"],
-    [{ items: [{ hostname: "old", last_seen: daysAgo(31) }] }, {}, "1 stale · 0 missing", "Reports stale"],
-    [{ items: [{ hostname: "unknown", last_seen: null }] }, {}, "0 stale · 1 missing", "Attention needed"],
-    [undefined, { isLoading: true }, "—", "Loading"],
-    [undefined, { error: new Error("failed") }, "—", "Reporting health unavailable"],
-    [{ items: [] }, {}, "0 stale · 0 missing", "No hosts reporting"],
+    [{ items: [{ hostname: "current", last_seen: daysAgo(1) }] }, {}, "1", "0", "0", "Healthy"],
+    [{ items: [{ hostname: "old", last_seen: daysAgo(31) }] }, {}, "0", "1", "0", "Reports stale"],
+    [{ items: [{ hostname: "unknown", last_seen: null }] }, {}, "0", "0", "1", "Attention needed"],
+    [undefined, { isLoading: true }, "—", "—", "—", "Loading"],
+    [undefined, { error: new Error("failed") }, "—", "—", "—", "Reporting health unavailable"],
+    [{ items: [] }, {}, "0", "0", "0", "No hosts reporting"],
   ]
   let retryCount = 0
-  for (const [data, options, count, status] of cases) {
+  for (const [data, options, current, stale, missing, status] of cases) {
     const hostQuery = {
       data, isLoading: false, error: null, dataUpdatedAt: data ? fixedTime : 0,
       refetch: () => { retryCount += 1 }, ...options,
     }
     const markup = renderDashboard(undefined, hostQuery)
-    assert.deepEqual(cardsInSection(markup, "Host health"), [["Host Health", count]])
+    assert.deepEqual(cardsInSection(markup, "Operational KPIs").slice(0, 3), [
+      ["Current hosts", current],
+      ["Stale hosts", stale],
+      ["Missing hosts", missing],
+    ])
     assert.ok(markup.includes(status))
     assert.equal(retryActions.length, status === "Reporting health unavailable" ? 1 : 0)
     if (retryActions.length) retryActions[0].onClick()
@@ -271,7 +279,14 @@ test("reportingHealthStateMatchesTruthTable", () => {
       data: query.data, isLoading: false, error: null, dataUpdatedAt: 0, refetch: noop, ...query,
     }
     const markup = renderDashboard(undefined, hostQuery)
-    assert.deepEqual(cardsInSection(markup, "Host health"), [["Host Health", counts || "—"]])
+    const currentCount = state.counts && Array.isArray(query.data?.items)
+      ? String(query.data.items.length - state.counts.stale - state.counts.missing)
+      : "—"
+    assert.deepEqual(cardsInSection(markup, "Operational KPIs").slice(0, 3), [
+      ["Current hosts", currentCount],
+      ["Stale hosts", state.counts ? String(state.counts.stale) : "—"],
+      ["Missing hosts", state.counts ? String(state.counts.missing) : "—"],
+    ])
     assert.ok(markup.includes(status))
     if (message) assert.ok(markup.includes(message))
     if (!state.counts) assert.doesNotMatch(markup, /Healthy|[0-9]+ stale · [0-9]+ missing/)

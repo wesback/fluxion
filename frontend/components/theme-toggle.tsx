@@ -1,7 +1,7 @@
 "use client"
 
 import { useSyncExternalStore } from "react"
-import { ChevronDown } from "lucide-react"
+import { ChevronDown, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useThemeTracking } from "@/lib/telemetry"
 
@@ -29,9 +29,10 @@ export function ThemeToggle() {
   return (
     <label className="relative inline-flex items-center">
       <span className="sr-only">Theme preference</span>
+      <Sun className="theme-toggle-icon" aria-hidden="true" />
       <select
         aria-label={`Theme: ${THEME_LABELS[selectedTheme]}`}
-        className="h-11 w-[7.5rem] appearance-none rounded-md border border-transparent bg-transparent px-3 pr-8 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="theme-toggle-select"
         value={selectedTheme}
         disabled={!mounted}
         onChange={(event) => {
@@ -46,7 +47,7 @@ export function ThemeToggle() {
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
-      <ChevronDown className="pointer-events-none absolute right-2.5 h-4 w-4 opacity-50" aria-hidden="true" />
+      <ChevronDown className="theme-toggle-chevron" aria-hidden="true" />
     </label>
   )
 }

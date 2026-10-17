@@ -60,19 +60,23 @@ describe("ambient background", () => {
   it("uses repeating-linear-gradient for grid impression", () => {
     assert.match(css, /repeating-linear-gradient/)
   })
-  it("grid cell is 32px (lines at 31–32px)", () => {
-    assert.match(css, /31px/)
+  it("grid cell stays restrained at 40px (lines at 39–40px)", () => {
+    assert.match(css, /39px/)
   })
-  it("no transition or animation on body background", () => {
-    // body rules should not contain transition/animation
-    const bodySection = css.match(/body\s*\{[^}]+\}/g) || []
-    for (const block of bodySection) {
-      assert.ok(!block.includes("transition:"), "body block must not contain transition")
-      assert.ok(!block.includes("animation:"), "body block must not contain animation")
-    }
+  it("background grid opacity stays below 10 percent in both themes", () => {
+    const opacities = [...css.matchAll(/--background-grid:\s*rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/g)]
+      .map(([, value]) => Number(value))
+    assert.equal(opacities.length, 2)
+    assert.ok(opacities.every((value) => value < 0.1))
   })
-  it("accent-operational used at reduced opacity in radial wash", () => {
-    assert.match(css, /var\(--accent-operational\)\s*\/\s*0\.0[456]/)
+  it("uses restrained semantic radial accents in both corners", () => {
+    assert.match(css, /radial-gradient\([^;]*var\(--background-accent-primary\)/)
+    assert.match(css, /radial-gradient\([^;]*var\(--background-accent-secondary\)/)
+  })
+  it("drifts the overview glow only when motion is allowed", () => {
+    assert.match(css, /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.overview-panel\s*\{[^}]*animation:\s*overview-gradient-drift 18s ease-in-out infinite alternate/)
+    assert.match(css, /@keyframes overview-gradient-drift[\s\S]*background-position:\s*80% 100%/)
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.overview-panel\s*\{[^}]*animation:\s*none/)
   })
 })
 
@@ -98,8 +102,8 @@ describe("glass-surface class", () => {
   it("has @supports not (backdrop-filter) fallback", () => {
     assert.match(css, /@supports not \(backdrop-filter/)
   })
-  it("interactive glass-surface has box-shadow transition", () => {
-    assert.match(css, /\.glass-surface\[data-interactive\][\s\S]*transition:\s*box-shadow 150ms ease/)
+  it("interactive glass-surface animates elevation within the motion budget", () => {
+    assert.match(css, /\.glass-surface\[data-interactive\][\s\S]*transition:\s*box-shadow 200ms ease, transform 200ms ease/)
   })
   it("prefers-reduced-motion removes glass-surface transition", () => {
     assert.match(css, /prefers-reduced-motion:\s*reduce[\s\S]*\.glass-surface\[data-interactive\][\s\S]*transition:\s*none/)
@@ -145,19 +149,14 @@ describe("navbar frosted rail", () => {
     assert.match(css, /@supports not \(backdrop-filter[\s\S]*\.navbar-frosted/)
   })
 
-  // Regression guard: the full horizontal nav must switch on at `lg:` (1024px),
-  // not `md:` (768px). 768px and 820px are real iPad portrait widths (mini,
-  // Air/Pro 11") that cannot fit 7 nav items + icons horizontally — at `md:`
-  // the nav wrapped and overlapped the theme toggle/hamburger button. `lg:`
-  // is the narrowest breakpoint that measured clean (no wrap/overflow) across
-  // the full iPad portrait+landscape matrix.
-  it("desktop nav switches on at lg: (not md:) to clear the iPad portrait range", () => {
-    assert.match(navbar, /hidden lg:flex gap-6/)
-    assert.ok(!/hidden md:flex/.test(navbar), "navbar must not reintroduce the md: (768px) horizontal-nav switch")
+  it("compact vertical rail appears at 768px while the mobile drawer hides", () => {
+    assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.primary-navigation\s*\{[^}]*display:\s*flex/)
+    assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.mobile-menu-trigger\s*\{[^}]*display:\s*none/)
+    assert.match(css, /@media \(min-width: 768px\)[\s\S]*?\.mobile-menu-panel\s*\{[^}]*display:\s*none/)
   })
-  it("mobile menu toggle and panel hide at lg: (matching the nav switch)", () => {
-    assert.match(navbar, /p-2 lg:hidden/)
-    assert.match(navbar, /border-t lg:hidden/)
+  it("desktop rail expands to 240px at 1280px", () => {
+    assert.match(css, /@media \(min-width: 1280px\)[\s\S]*?\.primary-navigation\s*\{[^}]*width:\s*240px/)
+    assert.match(navbar, /className="primary-navigation"/)
   })
   it("navbar-frosted pads for safe-area insets (landscape iPad rounded corners)", () => {
     assert.match(css, /\.navbar-frosted[\s\S]*env\(safe-area-inset-left\)/)

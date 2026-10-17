@@ -35,7 +35,7 @@ export function UpdatesTable({ updates, showHostname = true }: UpdatesTableProps
           <TableRow>
             {showHostname && <TableHead>Hostname</TableHead>}
             <TableHead>Package</TableHead>
-            <TableHead className="hidden md:table-cell">Old Version</TableHead>
+            <TableHead className="hidden xl:table-cell">Old Version</TableHead>
             <TableHead>New Version</TableHead>
             <TableHead>Time</TableHead>
           </TableRow>
@@ -56,7 +56,7 @@ export function UpdatesTable({ updates, showHostname = true }: UpdatesTableProps
                     {update.is_security && <SecurityBadge />}
                   </div>
                 </TableCell>
-                <TableCell className="hidden md:table-cell font-mono text-sm text-muted-foreground">
+                <TableCell className="hidden xl:table-cell font-mono text-sm text-muted-foreground">
                   {update.old_version || "N/A"}
                 </TableCell>
                 <TableCell className="font-mono text-sm">

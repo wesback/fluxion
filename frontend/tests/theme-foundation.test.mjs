@@ -90,14 +90,14 @@ test("glassGeometryAndOpaqueFallbacks", () => {
   }, ".glass-surface")
 
   const hoverMedia = atRuleBlock("@media (hover: hover) and (pointer: fine)")
-  const hoverRule = parseDeclarations(ruleBodyIn(hoverMedia.body, ".glass-surface:hover"))
+  const hoverRule = parseDeclarations(ruleBodyIn(hoverMedia.body, ".glass-surface[data-interactive]:hover"))
   assertDeclarations(hoverRule, {
     transform: "translateY(var(--card-hover-offset))",
-  }, ".glass-surface:hover")
+  }, ".glass-surface[data-interactive]:hover")
   assert.doesNotMatch(
     css.replace(hoverMedia.full, ""),
-    /\.glass-surface:hover/,
-    ".glass-surface:hover must appear only inside the fine-pointer hover media query"
+    /\.glass-surface\[data-interactive\]:hover/,
+    ".glass-surface[data-interactive]:hover must appear only inside the fine-pointer hover media query"
   )
 
   const reducedMedia = atRuleBlock(
@@ -242,6 +242,11 @@ test("statusTrendControlAndChartTokensUseExactValues", () => {
       "--chart-violet": "#7C3AED",
       "--chart-magenta": "#A21CAF",
       "--chart-blue-soft": "#0369A1",
+      "--chart-series-1": "196 91% 42%",
+      "--chart-series-2": "217 91% 50%",
+      "--chart-series-3": "262 83% 58%",
+      "--chart-series-4": "292 84% 61%",
+      "--chart-series-5": "198 85% 45%",
       "--chart-grid": "rgba(71,85,105,0.10)",
       "--chart-axis": "#475569",
       "--chart-tooltip": "#FFFFFF",
@@ -252,7 +257,7 @@ test("statusTrendControlAndChartTokensUseExactValues", () => {
       "--overlay-scrim": "rgba(15,23,42,0.32)",
       "--background-accent-primary": "rgba(2,132,199,0.05)",
       "--background-accent-secondary": "rgba(124,58,237,0.05)",
-      "--background-grid": "rgba(71,85,105,0.04)",
+      "--background-grid": "rgba(71,85,105,0.025)",
       "--glow-primary": "rgba(2,132,199,0.08)",
       "--shadow-soft": "0 8px 24px rgba(15,23,42,0.06)",
     },
@@ -272,7 +277,12 @@ test("statusTrendControlAndChartTokensUseExactValues", () => {
       "--chart-violet": "#A78BFA",
       "--chart-magenta": "#E879F9",
       "--chart-blue-soft": "#7DD3FC",
-      "--chart-grid": "rgba(148,163,184,0.12)",
+      "--chart-series-1": "188 100% 50%",
+      "--chart-series-2": "213 94% 68%",
+      "--chart-series-3": "255 90% 76%",
+      "--chart-series-4": "295 91% 70%",
+      "--chart-series-5": "199 95% 65%",
+      "--chart-grid": "rgba(148,163,184,0.09)",
       "--chart-axis": "#94A3B8",
       "--chart-tooltip": "#111928",
       "--chart-tooltip-foreground": "#E6EDF7",
@@ -282,7 +292,7 @@ test("statusTrendControlAndChartTokensUseExactValues", () => {
       "--overlay-scrim": "rgba(7,11,20,0.72)",
       "--background-accent-primary": "rgba(0,229,255,0.08)",
       "--background-accent-secondary": "rgba(124,58,237,0.09)",
-      "--background-grid": "rgba(148,163,184,0.04)",
+      "--background-grid": "rgba(148,163,184,0.025)",
       "--glow-primary": "rgba(0,229,255,0.12)",
       "--shadow-soft": "0 8px 24px rgba(2,6,23,0.16)",
     },

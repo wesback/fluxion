@@ -10,6 +10,17 @@ import { approvedSearchPages, createPackageSearchHref, isSafeSearchDestination }
 const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server"), ts = require("typescript")
 const root = join(dirname(fileURLToPath(import.meta.url)), ".."), source = readFileSync(join(root, "components/global-search.tsx"), "utf8")
 const packagePage = readFileSync(join(root, "app/packages/page.tsx"), "utf8")
+const searchRouting = { exports: {} }
+runInNewContext(ts.transpileModule(readFileSync(join(root, "lib/search-routing.ts"), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText, { exports: searchRouting.exports })
+test("globalSearchTargetsExistingHostAndPackageSearchRoutes", () => {
+  const { getGlobalSearchHref } = searchRouting.exports
+  assert.equal(getGlobalSearchHref("packages", " openssl "), "/packages?q=openssl")
+  assert.equal(getGlobalSearchHref("hosts", "node 01"), "/hosts?q=node%2001")
+  assert.equal(getGlobalSearchHref("packages", "lib&ssl"), "/packages?q=lib%26ssl")
+  assert.equal(getGlobalSearchHref("hosts", "   "), null)
+})
 let slots = [], index = 0, refIndex = 0, effectDeps = [], effects = [], tree
 let hostsQuery, packageQuery, requests, packageRequests, hostsRequested, lastPackage, activeElement
 const listeners = []
@@ -89,6 +100,15 @@ test("searchDialogKeyboardAndResultStates", () => {
   packageQuery = { data: undefined, isLoading: false, error: new Error("failed") }; render()
   assert.equal(find((node) => node.props.role === "alert").props.children, "Package search failed. Please try again.")
   assert.equal(find((node) => node.props.role === "status"), undefined)
+})
+test("searchTriggerKeepsAnAccessibleIconWhenMobileLabelsAreHidden", () => {
+  reset(); render()
+  const trigger = find((node) => node.type === "button" && node.props["aria-label"] === "Search")
+  assert.equal(trigger.props["aria-label"], "Search")
+  assert.equal(find((node) => node.type === "span" && node.props.children === "Search").props.className, "hidden sm:inline")
+  assert.equal(find((node) => node.type === "kbd").props.className, "hidden text-xs text-muted-foreground sm:inline")
+  open()
+  assert.equal(find((node) => node.props.role === "dialog").props["aria-modal"], "true")
 })
 test("packageLookupIsExplicitAndBounded", () => {
   reset({ items: [{ hostname: "node-01" }] }); render(); open(); type("pkg & #?")

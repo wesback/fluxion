@@ -46,11 +46,10 @@ export default function RootLayout({
             attribute="class"
             defaultTheme="system"
             enableSystem
-            disableTransitionOnChange
           >
             <QueryProvider>
               <Navbar />
-              <div className="min-[1024px]:ml-[72px] min-[1280px]:ml-[240px]">
+              <div className="min-[768px]:ml-[72px] min-[1280px]:ml-[240px]">
                 <main id="main-content" className="container mx-auto px-4 pt-20 pb-4 md:pb-8">
                   {children}
                 </main>

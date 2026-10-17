@@ -20,9 +20,9 @@ function loadTsModule(path, dependencies) {
       module: typescript.ModuleKind.CommonJS,
     },
   }).outputText
-  const module = { exports: {} }
+  const evaluatedModule = { exports: {} }
   runInNewContext(compiled, {
-    exports: module.exports,
+    exports: evaluatedModule.exports,
     require: (name) => {
       if (name === "react") return React
       if (name === "react/jsx-runtime") return require("react/jsx-runtime")
@@ -30,10 +30,14 @@ function loadTsModule(path, dependencies) {
       throw new Error(`Unexpected dependency ${name} in ${path}`)
     },
   })
-  return module.exports
+  return evaluatedModule.exports
 }
 
-const element = (tag) => ({ children, ...props }) => React.createElement(tag, props, children)
+const element = (tag) => {
+  const Element = ({ children, ...props }) => React.createElement(tag, props, children)
+  Element.displayName = `TestElement(${tag})`
+  return Element
+}
 const [Card, CardHeader, CardTitle, CardContent, Table, TableCaption, TableHeader, TableBody, TableHead, TableRow, TableCell] =
   ["article", "header", "h2", "div", "table", "caption", "thead", "tbody", "th", "tr", "td"].map(element)
 const Badge = ({ children, ...props }) => React.createElement("span", { ...props, "data-security-badge": "" }, children)
@@ -79,22 +83,22 @@ const statsData = (packages = [], hosts = []) => ({
 
 const dashboardModule = loadTsModule("app/page.tsx", {
   "next/dynamic": { default: () => barChartModule.BarChart },
+  "next/link": { default: element("a") },
   "@/components/stats-card": {
     StatsCard: ({ title, value }) => React.createElement("article", { "data-stats-card": title }, title, value),
   },
   "@/components/updates-table": updatesTableModule,
   "lucide-react": {
-    Activity: Icon,
     AlertTriangle: Icon,
-    Calendar: Icon,
+    CheckCircle2: Icon,
     Clock: Icon,
     RefreshCw: Icon,
-    Server: Icon,
+    ShieldAlert: Icon,
   },
   "@/lib/hooks/use-api": {
     useStats: () => statsResult,
     useRecentUpdates: (...args) => {
-      assert.deepEqual(args, [24, 20])
+      assert.deepEqual(args, [24, 5])
       return updatesResult
     },
     useHosts: () => hostsResult,
