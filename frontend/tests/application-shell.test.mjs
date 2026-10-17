@@ -1,14 +1,73 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { existsSync, readFileSync } from "node:fs"
+import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { runInNewContext } from "node:vm"
 
+const require = createRequire(import.meta.url)
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const navbar = readFileSync(join(root, "components/navbar.tsx"), "utf8")
 const layout = readFileSync(join(root, "app/layout.tsx"), "utf8")
 const destinations = [...navbar.matchAll(/\{\s*name:\s*"([^"]+)",\s*href:\s*"([^"]+)"/g)]
   .map(([, name, href]) => [name, href])
+const React = require("react")
+const { renderToStaticMarkup } = require("react-dom/server")
+const typescript = require("typescript")
+let pathname = "/"
+
+const transpiledNavbar = typescript.transpileModule(navbar, {
+  compilerOptions: {
+    jsx: typescript.JsxEmit.ReactJSX,
+    module: typescript.ModuleKind.CommonJS,
+  },
+}).outputText
+const navbarModule = { exports: {} }
+const icon = () => React.createElement("svg", { "aria-hidden": "true" })
+runInNewContext(transpiledNavbar, {
+  exports: navbarModule.exports,
+  require: (name) => {
+    if (name === "react") return React
+    if (name === "react/jsx-runtime") return require("react/jsx-runtime")
+    if (name === "next/link") {
+      return {
+        default: ({ children, ...props }) => React.createElement("a", props, children),
+      }
+    }
+    if (name === "next/navigation") return { usePathname: () => pathname }
+    if (name === "@/components/theme-toggle") return { ThemeToggle: () => null }
+    if (name === "lucide-react") {
+      return {
+        Activity: icon,
+        AlertTriangle: icon,
+        BarChart3: icon,
+        Cpu: icon,
+        Menu: icon,
+        Package: icon,
+        RefreshCw: icon,
+        Server: icon,
+        Settings: icon,
+        ShieldCheck: icon,
+        X: icon,
+      }
+    }
+    if (name === "@/lib/utils") return { cn: (...classes) => classes.filter(Boolean).join(" ") }
+    if (name === "@/lib/telemetry") return { useClickTracking: () => () => {} }
+    throw new Error(`Unexpected navbar dependency: ${name}`)
+  },
+})
+
+function renderPrimaryNavigation(currentPathname) {
+  pathname = currentPathname
+  const html = renderToStaticMarkup(React.createElement(navbarModule.exports.Navbar))
+  const primaryNav = html.match(/<nav aria-label="Primary navigation"[^>]*>([\s\S]*?)<\/nav>/)
+  assert.ok(primaryNav, "Navbar must render its primary navigation")
+  return [...primaryNav[1].matchAll(/<a\b([^>]*)>/g)].map(([, attributes]) => ({
+    href: attributes.match(/\bhref="([^"]*)"/)?.[1],
+    current: attributes.match(/\baria-current="([^"]*)"/)?.[1],
+  }))
+}
 
 test("desktopShellDimensions", () => {
   assert.match(navbar, /flex h-\[64px\] items-center/, "header must be exactly 64px high")
@@ -53,11 +112,29 @@ test("navigationActiveState", () => {
     ["/admin/api-keys", "/admin"],
     ["/admin/webhooks", "/admin"],
     ["/admin/diagnostics", "/admin"],
+    ["/reports", undefined],
+    ["/hosts-malicious", undefined],
+    ["/admin/unknown", undefined],
   ]
 
   for (const [pathname, expectedHref] of cases) {
     const current = destinations.filter(([, href]) => href === activeNavigationHref(pathname))
-    assert.deepEqual(current.map(([, href]) => href), [expectedHref], pathname)
+    assert.deepEqual(current.map(([, href]) => href), expectedHref ? [expectedHref] : [], pathname)
+
+    const renderedLinks = renderPrimaryNavigation(pathname)
+    assert.deepEqual(
+      renderedLinks.map(({ href }) => href),
+      destinations.map(([, href]) => href),
+      `${pathname} rendered destinations`
+    )
+    assert.deepEqual(
+      renderedLinks,
+      destinations.map(([, href]) => ({
+        href,
+        current: href === expectedHref ? "page" : undefined,
+      })),
+      `${pathname} rendered aria-current values`
+    )
   }
 })
 
