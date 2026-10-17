@@ -28,6 +28,77 @@ const expectedVersions = {
   "@opentelemetry/sdk-trace-web": "2.12.0",
   "@opentelemetry/semantic-conventions": "1.43.0",
 }
+const runtimePackageNames = [
+  "@tanstack/react-query",
+  "axios",
+  "clsx",
+  "date-fns",
+  "lucide-react",
+  "next",
+  "next-themes",
+  "react",
+  "react-dom",
+  "recharts",
+  "sonner",
+  "tailwind-merge",
+  "web-vitals",
+]
+const expectedRuntimeVersions = {
+  "@tanstack/react-query": "5.104.3",
+  axios: "1.20.0",
+  clsx: "2.1.1",
+  "date-fns": "4.4.0",
+  "lucide-react": "1.59.0",
+  next: "16.4.2",
+  "next-themes": "0.4.6",
+  react: "19.3.1",
+  "react-dom": "19.3.1",
+  recharts: "3.10.1",
+  sonner: "2.0.8",
+  "tailwind-merge": "3.7.0",
+  "web-vitals": "6.2.3",
+}
+
+function assertRuntimeTargetsMatchExpectedVersions(manifestFixture) {
+  assert.deepEqual(Object.keys(expectedRuntimeVersions).sort(), [...runtimePackageNames].sort())
+
+  for (const name of runtimePackageNames) {
+    const version = manifestFixture.dependencies?.[name]
+    assert.match(version, /^\d+\.\d+\.\d+$/, `${name} must not use a range or prerelease`)
+    assert.equal(version, expectedRuntimeVersions[name], `${name} must use its expected exact version`)
+  }
+}
+
+function assertRuntimeManifestLockfileMatches(manifestFixture, lockfileFixture) {
+  const manifestDependencies = manifestFixture.dependencies
+  const rootDependencies = lockfileFixture.packages?.[""]?.dependencies
+
+  for (const name of runtimePackageNames) {
+    assert.ok(Object.hasOwn(manifestDependencies ?? {}, name), `manifest dependency is missing: ${name}`)
+    assert.ok(Object.hasOwn(rootDependencies ?? {}, name), `lockfile root dependency is missing: ${name}`)
+    assert.equal(rootDependencies[name], manifestDependencies[name], `lockfile root declaration differs: ${name}`)
+
+    const resolvedPackage = lockfileFixture.packages?.[`node_modules/${name}`]
+    assert.ok(resolvedPackage, `resolved lockfile package is missing: ${name}`)
+    assert.equal(resolvedPackage.version, manifestDependencies[name], `resolved package version differs: ${name}`)
+  }
+}
+
+function createRuntimeFixtures() {
+  return {
+    manifest: {
+      dependencies: { ...expectedRuntimeVersions },
+    },
+    lockfile: {
+      packages: {
+        "": { dependencies: { ...expectedRuntimeVersions } },
+        ...Object.fromEntries(
+          runtimePackageNames.map((name) => [`node_modules/${name}`, { version: expectedRuntimeVersions[name] }]),
+        ),
+      },
+    },
+  }
+}
 
 function assertOpenTelemetryManifestLockfileMatches(manifestFixture, lockfileFixture) {
   const manifestDependencies = manifestFixture.dependencies
@@ -107,5 +178,67 @@ test("test_opentelemetry_manifest_versions_match_lockfile", () => {
   assert.throws(
     () => assertOpenTelemetryManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
     /resolved package version differs: @opentelemetry\/api/,
+  )
+})
+
+test("test_runtime_targets_match_expected_stable_versions", () => {
+  assert.doesNotThrow(() => assertRuntimeTargetsMatchExpectedVersions(manifest))
+
+  const mismatchedVersion = {
+    dependencies: { ...expectedRuntimeVersions, "@tanstack/react-query": "5.104.2" },
+  }
+  assert.throws(
+    () => assertRuntimeTargetsMatchExpectedVersions(mismatchedVersion),
+    /@tanstack\/react-query must use its expected exact version/,
+  )
+
+  for (const version of ["^5.104.3", "5.104.3-beta.1"]) {
+    const manifestFixture = {
+      dependencies: { ...expectedRuntimeVersions, "@tanstack/react-query": version },
+    }
+    assert.throws(
+      () => assertRuntimeTargetsMatchExpectedVersions(manifestFixture),
+      /@tanstack\/react-query must not use a range or prerelease/,
+    )
+  }
+})
+
+test("test_runtime_manifest_versions_match_lockfile", () => {
+  let fixtures = createRuntimeFixtures()
+  assert.doesNotThrow(() => assertRuntimeManifestLockfileMatches(fixtures.manifest, fixtures.lockfile))
+
+  fixtures = createRuntimeFixtures()
+  delete fixtures.manifest.dependencies["@tanstack/react-query"]
+  assert.throws(
+    () => assertRuntimeManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /manifest dependency is missing: @tanstack\/react-query/,
+  )
+
+  fixtures = createRuntimeFixtures()
+  delete fixtures.lockfile.packages[""].dependencies["@tanstack/react-query"]
+  assert.throws(
+    () => assertRuntimeManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /lockfile root dependency is missing: @tanstack\/react-query/,
+  )
+
+  fixtures = createRuntimeFixtures()
+  delete fixtures.lockfile.packages["node_modules/@tanstack/react-query"]
+  assert.throws(
+    () => assertRuntimeManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /resolved lockfile package is missing: @tanstack\/react-query/,
+  )
+
+  fixtures = createRuntimeFixtures()
+  fixtures.lockfile.packages[""].dependencies["@tanstack/react-query"] = "5.104.2"
+  assert.throws(
+    () => assertRuntimeManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /lockfile root declaration differs: @tanstack\/react-query/,
+  )
+
+  fixtures = createRuntimeFixtures()
+  fixtures.lockfile.packages["node_modules/@tanstack/react-query"].version = "5.104.2"
+  assert.throws(
+    () => assertRuntimeManifestLockfileMatches(fixtures.manifest, fixtures.lockfile),
+    /resolved package version differs: @tanstack\/react-query/,
   )
 })
