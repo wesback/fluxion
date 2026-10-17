@@ -1,0 +1,215 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 82,
+  "branch": "ai-sdlc/issue-82",
+  "commitSha": "88a3a909adbf74fcf4bfd7291a21a2fc5ecc1210",
+  "round": 2,
+  "pipelineVersion": "9c35a1a",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "gpt-6-luna"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The implementation exposes the requested theme choices. The persistence test exercises selection but simulates restoration with a test-local helper, so it can pass if the production provider's restoration path is broken.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/theme-preference.test.mjs",
+          "line": 106,
+          "message": "The persistence test does not verify that the production provider restores the selected preference after reload and route change.",
+          "confidence": 0.87,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test invokes the extracted selection handler, then simulates reload and route change with runThemeBootstrap and the test-local getEffectiveTheme helper. It does not restore the preference through the production ThemeProvider.",
+            "failureScenario": "If ThemeProvider stops restoring the stored preference after reload or navigation, these checks still pass because getEffectiveTheme reads storage and computes the expected mode itself. The persistence acceptance criterion is not fully proved."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The selection handler is connected to next-themes persistence, and the control exposes the requested native select choices. AC-1’s reload and route restoration checks use a local helper instead of the production provider, leaving that behavior unproved.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/theme-preference.test.mjs",
+          "line": 145,
+          "message": "The persistence test exercises selection-to-storage, but it does not verify restoration through the production provider after a simulated reload or route change, as AC-1 requires. Remount the provider or otherwise exercise its restoration path.",
+          "confidence": 0.84,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "After selection, the test calls the local getEffectiveTheme helper for both the reload and route checks. It never remounts ThemeProvider or exercises a route transition to verify production restoration.",
+            "failureScenario": "If a provider remount after reload or navigation loses the selected preference, the test still passes because getEffectiveTheme reads the unchanged FakeStorage value directly."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "I found no concrete security vulnerability in the changed production code. The persistence test does not prove the production provider restores the stored preference after reload and route change.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/theme-preference.test.mjs",
+          "line": 129,
+          "message": "The persistence test does not verify that the production provider restores the selected preference after reload and route change; it checks a test-local helper instead.",
+          "confidence": 0.86,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "After selecting a preference, the test runs the bootstrap and checks restoration using the test-local getEffectiveTheme helper. It does not remount the production ThemeProvider with the stored value.",
+            "failureScenario": "If the production provider stops restoring a stored Light or Dark preference after reload or route change, the test still passes because its helper reads storage and computes the expected mode itself. The first acceptance criterion is not fully proved."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/theme-preference.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
