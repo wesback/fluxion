@@ -119,8 +119,13 @@ test("navigationDestinations", () => {
     ["Kernels", "/kernels"],
     ["Security", "/security"],
   ])
+<<<<<<< HEAD
   assert.equal(existsSync(join(root, "app/reports/page.tsx")), true)
   assert.equal(existsSync(join(root, "app/alerts/page.tsx")), false)
+=======
+  assert.equal(existsSync(join(root, "app/reports/page.tsx")), false)
+  assert.equal(existsSync(join(root, "app/alerts/page.tsx")), true)
+>>>>>>> origin/main
 })
 
 test("navigationActiveState", () => {
@@ -135,6 +140,7 @@ test("navigationActiveState", () => {
     ["/hosts/node-01", "/hosts"],
     ["/packages", "/packages"],
     ["/activity", "/activity"],
+    ["/alerts", "/alerts"],
     ["/security", "/security"],
     ["/kernels", "/kernels"],
     ["/admin", "/admin"],
@@ -165,6 +171,12 @@ test("navigationActiveState", () => {
       `${pathname} rendered aria-current values`
     )
   }
+
+  assert.deepEqual(
+    renderPrimaryNavigation("/alerts").filter(({ current }) => current === "page"),
+    [{ href: "/alerts", current: "page" }],
+    "/alerts must render Alerts as the only current primary navigation item"
+  )
 })
 
 test("sharedLandmarksAndRoutes", () => {
@@ -174,6 +186,7 @@ test("sharedLandmarksAndRoutes", () => {
     ["app/hosts/[hostname]/page.tsx", "/hosts/{hostname}"],
     ["app/packages/page.tsx", "/packages"],
     ["app/activity/page.tsx", "/activity"],
+    ["app/alerts/page.tsx", "/alerts"],
     ["app/security/page.tsx", "/security"],
     ["app/kernels/page.tsx", "/kernels"],
     ["app/admin/page.tsx", "/admin"],
