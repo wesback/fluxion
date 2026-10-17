@@ -69,6 +69,35 @@ function renderPrimaryNavigation(currentPathname) {
   }))
 }
 
+const transpiledLayout = typescript.transpileModule(layout, {
+  compilerOptions: {
+    jsx: typescript.JsxEmit.ReactJSX,
+    module: typescript.ModuleKind.CommonJS,
+  },
+}).outputText
+const layoutModule = { exports: {} }
+const passthrough = ({ children }) => React.createElement(React.Fragment, null, children)
+runInNewContext(transpiledLayout, {
+  exports: layoutModule.exports,
+  require: (name) => {
+    if (name === "react/jsx-runtime") return require("react/jsx-runtime")
+    if (name === "./globals.css") return {}
+    if (name === "@/components/theme-provider") return { ThemeProvider: passthrough }
+    if (name === "@/components/query-provider") return { QueryProvider: passthrough }
+    if (name === "@/components/navbar") return { Navbar: () => null }
+    if (name === "@/components/device-memory-guard") return { DeviceMemoryGuard: () => null }
+    if (name === "sonner") return { Toaster: () => null }
+    if (name === "@/components/telemetry-provider") return { TelemetryProvider: passthrough }
+    throw new Error(`Unexpected layout dependency: ${name}`)
+  },
+})
+
+function renderRootLayoutWithRouteContent() {
+  return renderToStaticMarkup(React.createElement(layoutModule.exports.default, {
+    children: React.createElement("section", { id: "existing-route-content" }, "Existing route content"),
+  }))
+}
+
 test("desktopShellDimensions", () => {
   assert.match(navbar, /flex h-\[64px\] items-center/, "header must be exactly 64px high")
   assert.match(navbar, /min-\[1280px\]:w-\[240px\]/, "desktop navigation rail must be exactly 240px wide")
@@ -160,6 +189,12 @@ test("sharedLandmarksAndRoutes", () => {
   assert.match(navbar, /<span>Fluxion<\/span>/)
   assert.match(navbar, /<nav[\s\S]*?aria-label="Primary navigation"/)
   assert.match(navbar, /<Link[\s\S]*?href=\{item\.href\}/)
+  const renderedLayout = renderRootLayoutWithRouteContent()
+  assert.match(
+    renderedLayout,
+    /<main id="main-content"[^>]*><section id="existing-route-content">Existing route content<\/section><\/main>/,
+    "shared layout must render route content inside its main landmark"
+  )
 
   for (const [file, route] of routes) {
     assert.equal(existsSync(join(root, file)), true, `${route} route must exist`)
