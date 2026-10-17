@@ -210,6 +210,18 @@ test("shared chart and navigation", () => {
   assert.ok(lineChart.includes("chart-grid"), "LineChart must use chart-grid token")
   assert.ok(lineChart.includes("chart-axis"), "LineChart must use chart-axis token")
 
+  const xAxis = lineChart.match(/<XAxis\b[^>]*>/)
+  const yAxis = lineChart.match(/<YAxis\b[^>]*>/)
+  assert.ok(xAxis, "LineChart must retain XAxis")
+  assert.ok(yAxis, "LineChart must retain YAxis")
+  assert.match(xAxis[0], /tick=\{\{\s*fill:\s*'var\(--chart-axis\)'\s*\}\}/, "XAxis tick fill must use var(--chart-axis)")
+  assert.match(yAxis[0], /tick=\{\{\s*fill:\s*'var\(--chart-axis\)'\s*\}\}/, "YAxis tick fill must use var(--chart-axis)")
+  assert.doesNotMatch(lineChart, /hsl\(var\(--chart-axis\)\)/, "LineChart must not wrap --chart-axis in hsl()")
+  assert.doesNotMatch(lineChart, /fill:\s*['"](?:#000(?:000)?|black)['"]/i, "LineChart must not use a black literal for tick fills")
+  for (const visualization of ["RechartsLineChart", "CartesianGrid", "Tooltip", "Line"]) {
+    assert.ok(lineChart.includes(visualization), `LineChart must retain ${visualization}`)
+  }
+
   // Navbar
   const navbar = read("components/navbar.tsx")
   assert.ok(!navbar.includes("bg-background"), "Navbar nav element must not use competing bg-background")
