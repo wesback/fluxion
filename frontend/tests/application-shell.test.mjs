@@ -222,3 +222,96 @@ test("supportedHeaderControls", () => {
   assert.match(buttons[0], /aria-label=\{mobileMenuOpen \? "Close menu" : "Open menu"\}/)
   assert.match(buttons[0], /aria-expanded=\{mobileMenuOpen\}/)
 })
+
+test("responsiveShellBreakpoints", () => {
+  const primaryNav = navbar.match(/<nav aria-label="Primary navigation" className="([^"]*)"/)
+  const menuButton = navbar.match(/<button\b[^>]*className="([^"]*)"/)
+  const mobileNav = navbar.match(/<nav\s+id="mobile-menu"[\s\S]*?className="([^"]*)"/)
+  const contentOffset = layout.match(/<div className="([^"]*)">/)
+  assert.ok(primaryNav, "primary navigation rail must define responsive classes")
+  assert.ok(menuButton, "mobile menu button must define responsive classes")
+  assert.ok(mobileNav, "mobile navigation drawer must define responsive classes")
+  assert.ok(contentOffset, "route content wrapper must define responsive offsets")
+
+  const railClasses = primaryNav[1].split(/\s+/)
+  const buttonClasses = menuButton[1].split(/\s+/)
+  const drawerClasses = mobileNav[1].split(/\s+/)
+  const offsetClasses = contentOffset[1].split(/\s+/)
+  const namedBreakpoints = { sm: 640, md: 768, lg: 1024, xl: 1280, "2xl": 1536 }
+  const visibilityClasses = (classes) => classes.filter((token) =>
+    /^(?:(?:min-\[\d+px\]|sm|md|lg|xl|2xl):)?(?:hidden|flex|inline-flex)$/.test(token)
+  )
+  const dimensionClasses = (classes, dimension) => classes.filter((token) =>
+    new RegExp(`^(?:(?:min-\\[\\d+px\\]|sm|md|lg|xl|2xl):)?${dimension}-\\[\\d+px\\]$`).test(token)
+  )
+  const dimensionAt = (classes, dimension, width) => {
+    const declarations = classes.flatMap((token) => {
+      const match = token.match(new RegExp(`^(?:(min-\\[(\\d+)px\\]|sm|md|lg|xl|2xl):)?${dimension}-\\[(\\d+)px\\]$`))
+      const breakpoint = match?.[2]
+        ? Number(match[2])
+        : match?.[1]
+          ? namedBreakpoints[match[1]]
+          : 0
+      return match ? [{ breakpoint, value: Number(match[3]) }] : []
+    })
+    return declarations
+      .filter(({ breakpoint }) => breakpoint <= width)
+      .sort((left, right) => left.breakpoint - right.breakpoint)
+      .at(-1)?.value ?? null
+  }
+  const displayAt = (classes, width) => {
+    let display = visibilityClasses(classes).some((token) => token === "hidden") ? "hidden" : "visible"
+    for (const token of visibilityClasses(classes)) {
+      const match = token.match(/^(?:(min-\[(\d+)px\]|sm|md|lg|xl|2xl):)?(hidden|flex|inline-flex)$/)
+      const breakpoint = match?.[2]
+        ? Number(match[2])
+        : match?.[1]
+          ? namedBreakpoints[match[1]]
+          : 0
+      if (match && width >= breakpoint) display = match[3] === "hidden" ? "hidden" : "visible"
+    }
+    return display
+  }
+
+  assert.deepEqual(visibilityClasses(railClasses), ["hidden", "lg:flex", "min-[1024px]:flex"])
+  assert.deepEqual(dimensionClasses(railClasses, "w"), [
+    "min-[1024px]:w-[72px]",
+    "min-[1280px]:w-[240px]",
+  ])
+  assert.deepEqual(visibilityClasses(buttonClasses), ["inline-flex", "lg:hidden", "min-[1024px]:hidden"])
+  assert.deepEqual(visibilityClasses(drawerClasses), ["lg:hidden", "min-[1024px]:hidden"])
+  assert.deepEqual(dimensionClasses(offsetClasses, "ml"), [
+    "min-[1024px]:ml-[72px]",
+    "min-[1280px]:ml-[240px]",
+  ])
+
+  for (const [width, railWidth, contentMargin, mobileVisible] of [
+    [1023, null, null, true],
+    [1024, 72, 72, false],
+    [1279, 72, 72, false],
+    [1280, 240, 240, false],
+  ]) {
+    assert.equal(dimensionAt(railClasses, "w", width), railWidth, `${width}px rail width`)
+    assert.equal(dimensionAt(offsetClasses, "ml", width), contentMargin, `${width}px content offset`)
+    assert.equal(displayAt(railClasses, width) === "visible", !mobileVisible, `${width}px rail visibility`)
+    assert.equal(displayAt(buttonClasses, width) === "visible", mobileVisible, `${width}px menu trigger visibility`)
+    assert.equal(displayAt(drawerClasses, width) === "visible", mobileVisible, `${width}px drawer visibility when open`)
+  }
+})
+
+test("responsiveDrawerMarkup", () => {
+  const html = renderToStaticMarkup(React.createElement(navbarModule.exports.Navbar))
+  const button = html.match(/<button\b([^>]*)>/)
+  assert.ok(button, "closed shell must render a mobile menu trigger")
+  const attribute = (name) => button[1].match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1]
+  assert.equal(attribute("aria-label"), "Open menu")
+  assert.equal(attribute("aria-expanded"), "false")
+  assert.equal(attribute("aria-controls"), "mobile-menu")
+
+  const target = html.match(/<nav\b([^>]*)id="mobile-menu"([^>]*)>/)
+  assert.ok(target, "mobile-menu navigation target must remain rendered while closed")
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(([, id]) => id)
+  assert.deepEqual(ids, ["mobile-menu"], "drawer target ID must occur exactly once")
+  assert.match(`${target[1]}${target[2]}`, /\shidden(?:="")?(?:\s|$)/, "closed drawer must be hidden")
+  assert.match(`${target[1]}${target[2]}`, /\baria-hidden="true"/, "closed drawer must be hidden from assistive technology")
+})
