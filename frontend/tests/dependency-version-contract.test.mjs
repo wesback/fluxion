@@ -417,6 +417,8 @@ test("test_development_targets_match_expected_stable_versions", () => {
 })
 
 test("test_development_manifest_versions_match_lockfile", () => {
+  assert.doesNotThrow(() => assertDevelopmentManifestLockfileMatches(manifest, lockfile))
+
   let fixtures = createDevelopmentFixtures()
   assert.doesNotThrow(() => assertDevelopmentManifestLockfileMatches(fixtures.manifest, fixtures.lockfile))
 
