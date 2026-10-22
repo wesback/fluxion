@@ -177,6 +177,7 @@ async def test_exact_hostname_authorization_contract(ingest_authorization) -> No
         (user_key, "evil-node1.example.test", 403),
         (empty_key, "node1.example.test", 403),
         (admin_key, "node1.example.test", 201),
+        (None, "node1.example.test", 401),
     )
 
     for path, payload_template in routes:
@@ -191,21 +192,18 @@ async def test_exact_hostname_authorization_contract(ingest_authorization) -> No
             payload = dict(payload_template)
             payload["hostname"] = hostname
             before = await ingest_authorization["count_many"](*rows)
-            headers = {"X-API-Key": key}
+            headers = {} if key is None else {"X-API-Key": key}
             response = await client.post(path, json=payload, headers=headers)
             after = await ingest_authorization["count_many"](*rows)
             assert response.status_code == expected
             if expected == 403:
                 assert response.json() == {"detail": "Hostname not authorized for this API key"}
                 assert after == before
+            elif expected == 401:
+                assert after == before
             else:
                 assert after[0] == 1
                 assert after[1] >= 1
-
-    before = await ingest_authorization["count_many"](*rows)
-    response = await client.post("/api/v1/updates/batch", json=BATCH)
-    assert response.status_code == 401
-    assert await ingest_authorization["count_many"](*rows) == before
 
 
 @pytest.mark.asyncio
