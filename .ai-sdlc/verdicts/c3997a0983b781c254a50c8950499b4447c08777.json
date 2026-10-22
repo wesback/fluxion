@@ -1,0 +1,386 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 129,
+  "branch": "ai-sdlc/issue-129",
+  "commitSha": "c3997a0983b781c254a50c8950499b4447c08777",
+  "round": 0,
+  "pipelineVersion": "18314a8",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 8,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The batch ingestion path raises a TypeError because its outbox call has the wrong arguments. The replay identity logic also allows a changed payload with the same request delivery ID to create another accepted package record, and several named tests are metadata or existence checks that cannot prove their acceptance criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 522,
+          "message": "The batch outbox call omits the hostname argument and supplies too few arguments. Batch package updates cannot complete.",
+          "confidence": 1,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_create_batch_package_updates_impl calls _enqueue_package_outbox, whose signature requires session, delivery_base, hostname, package_name, old_version, new_version, is_security, and package_manager.",
+            "failureScenario": "A batch containing a package update reaches this call with only seven positional arguments. Python raises TypeError for the missing package_manager argument, so the batch request fails instead of enqueueing its webhook intents."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 267,
+          "message": "The supplied delivery identity does not prevent replayed ingest records: payload changes produce a new derived outbox identity, and package rows are inserted without checking whether that request identity was already accepted.",
+          "confidence": 0.98,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "The request's X-Delivery-ID is used as delivery_base, then identity_key appends webhook, event, hostname, package, and version values before deriving the unique outbox delivery_id. The package update is inserted before this enqueue path, with no check that the request delivery ID was already accepted.",
+            "failureScenario": "Submitting the same X-Delivery-ID twice with a changed package or version creates a second package row and a different outbox identity, so the replay is accepted instead of being rejected or deduplicated."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 43,
+          "message": "AC-2 has no behavior test: the named test does not verify exact enabled webhook/event pairs or atomic package and outbox commits.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_package_commit_creates_exact_outbox_pairs only asserts the model table name and presence of a delivery_id column; it does not call package ingestion or inspect committed package and outbox rows.",
+            "failureScenario": "If ingestion creates no outbox rows, creates rows for disabled or mismatched configurations, or commits package and outbox rows separately, this test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 47,
+          "message": "AC-2's insert-failure rollback case is not tested; the named test cannot detect a partial commit or the expected HTTP 500 response.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_insert_failure_rolls_back_transaction only asserts that the migration file exists.",
+            "failureScenario": "If an outbox insert fails after package insertion and the transaction leaves package rows committed, this test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 50,
+          "message": "AC-3 has no test of rollback atomicity for a transaction identity.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_transaction_identity_rolls_back_atomically only asserts that the migration file exists.",
+            "failureScenario": "If a rollback leaves package rows without outbox rows, or outbox rows without package rows, the test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 53,
+          "message": "AC-4's replay behavior is not tested; the named test only checks model metadata.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique only checks that the model has a delivery_id column; it does not submit a replay or inspect ingest records.",
+            "failureScenario": "If replaying one delivery identity creates duplicate accepted package rows or distinct duplicate outbox intents, the test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 58,
+          "message": "AC-5's data-preservation requirement is untested because the round-trip fixture inserts no rows and compares no row counts.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_migration_round_trip creates empty prerequisite tables, runs upgrade and downgrade, and checks only that webhook_outbox is absent afterward.",
+            "failureScenario": "If the migration or downgrade drops existing host, package, webhook, or delivery-history rows, the empty fixture and assertions do not detect the data loss."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 71,
+          "message": "AC-6 is not covered by the named test: it neither verifies delivery-history behavior alongside outbox state nor exercises existing migration and webhook tests.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_existing_webhook_and_migration_tests_pass_with_outbox only asserts the model table name and does not run or extend any existing webhook or migration behavior test.",
+            "failureScenario": "If delivery-history behavior regresses, or existing tests do not include outbox state, this test still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 7,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The batch ingestion path calls the outbox helper with the wrong arguments and fails at runtime. The schema test exercises migration structure, but the named tests for transactional behavior, replay handling, data preservation, and existing webhook behavior are assertions that do not verify their acceptance criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 519,
+          "message": "The batch outbox call omits the hostname argument, shifting the remaining arguments and leaving package_manager missing.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "The batch update implementation calls _enqueue_package_outbox, whose signature requires session plus seven arguments; this call supplies session plus only six.",
+            "failureScenario": "Submitting a batch package update reaches this call and raises TypeError because package_manager is missing, so the batch request fails instead of recording its outbox intents."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 47,
+          "message": "AC-2 lacks a behavior test for atomic package and outbox insertion with exactly one row per enabled configuration/event pair.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_package_commit_creates_exact_outbox_pairs only checks the model table name and presence of a column; it never invokes package transaction code or inspects inserted rows.",
+            "failureScenario": "If package ingestion creates no outbox rows, creates rows for disabled webhooks, or duplicates an enabled webhook/event pair, this test still passes, leaving AC-2 unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 51,
+          "message": "AC-2's forced outbox failure and HTTP 500 rollback behavior are not tested.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_outbox_insert_failure_rolls_back_transaction only asserts that the migration file exists and does not force an insert failure or inspect transaction state.",
+            "failureScenario": "If an outbox insert fails after package rows are added and those package rows remain committed, this test still passes, leaving AC-2's rollback requirement unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 55,
+          "message": "AC-3 has no test that exercises rollback and asserts both package and outbox rows are absent for the transaction identity.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_transaction_identity_rolls_back_atomically only asserts that the migration file exists; it does not insert package/outbox rows or cause a rollback.",
+            "failureScenario": "If a rollback leaves package rows without outbox rows, or outbox rows without package rows, the test still passes, leaving AC-3 unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 59,
+          "message": "AC-4 has no replay test that verifies ingest and outbox uniqueness while preserving package-row behavior.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique only checks that the model has a delivery_id column; it submits no repeated identity and checks no ingest or outbox records.",
+            "failureScenario": "If replaying one delivery identity creates duplicate accepted ingest records or duplicate outbox identities, this test still passes, leaving AC-4 unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 63,
+          "message": "AC-5 does not seed or compare existing table row counts across the migration round trip.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_outbox_migration_round_trip creates prerequisite tables but inserts no fixture rows; after downgrade it checks only that the outbox table is absent.",
+            "failureScenario": "If the migration or downgrade changes existing package, host, webhook, or delivery-history row counts, this test still passes, leaving AC-5's data-preservation requirement unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 76,
+          "message": "AC-6's named test does not run or verify existing migration and webhook behavior alongside outbox state.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_existing_webhook_and_migration_tests_pass_with_outbox only asserts the model table name; it does not run or assert existing migration/webhook tests or delivery-history behavior.",
+            "failureScenario": "If existing webhook tests fail or outbox state is not covered alongside delivery history, this test still passes, leaving AC-6 unverified."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The batch enqueue call has a missing argument and fails at runtime. Caller-supplied delivery IDs can also suppress webhook notifications on replay, while the named transaction and replay tests do not exercise their stated behaviors.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 525,
+          "message": "The batch outbox call omits hostname, so batch package updates fail when enqueueing.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The batch route passes arguments to _enqueue_package_outbox, whose signature also requires hostname.",
+            "failureScenario": "Submitting any nonempty batch reaches this call with one required argument missing, raises TypeError, and fails the request instead of creating package and outbox rows."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 276,
+          "message": "Caller-controlled delivery identity can suppress webhook intents on replay while the package update is still accepted (OWASP A08:2025).",
+          "confidence": 0.97,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The caller-controlled X-Delivery-ID contributes to the derived outbox delivery ID; when that ID already exists, this branch skips creating an outbox row.",
+            "failureScenario": "A caller submits the same X-Delivery-ID and package update twice. The second request can still record an accepted package update, but the existing outbox identity causes its webhook intent to be skipped, suppressing that notification."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 46,
+          "message": "The tests named for the transaction and replay criteria do not test those behaviors, so the acceptance criteria are unverified.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The named tests for outbox insert failure, transaction rollback, and replay only assert that the migration file or model column exists; they do not exercise package inserts, outbox inserts, or replay.",
+            "failureScenario": "If package and outbox writes use separate transactions, rollback leaves partial rows, or replay creates duplicate accepted records, these tests still pass."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
