@@ -1,4 +1,6 @@
+import hashlib
 import importlib.util
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +13,6 @@ from alembic.operations import Operations
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 import fluxion.api.routes.updates as updates_module
 import fluxion.models as models
@@ -72,6 +73,15 @@ PACKAGE = {
     "package_manager": "apt",
 }
 
+BATCH = {
+    "hostname": "host-a",
+    "os_info": "Ubuntu 24.04 LTS",
+    "package_manager": "apt",
+    "updates": [
+        {"package_name": "openssl", "old_version": "1.0", "new_version": "2.0", "is_security": True},
+    ],
+}
+
 
 class AsyncOverSync:
     """Awaitable face of a real SQLAlchemy session on SQLite.
@@ -105,23 +115,30 @@ class AsyncOverSync:
 
 
 @pytest_asyncio.fixture
-async def ingest():
-    """The production updates router on a real SQLite database, without the API-key middleware."""
+async def ingest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The production updates router on a temporary file-backed SQLite database, without the API-key
+    middleware. Webhook configurations 11 and 12 are enabled, 13 is disabled. Webhook delivery after
+    the response (a network call) is the only part replaced."""
     engine = sa.create_engine(
-        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+        f"sqlite:///{tmp_path}/ingest.sqlite", connect_args={"check_same_thread": False}
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(engine, expire_on_commit=False)
     with factory() as seed:
         seed.add_all([
-            models.WebhookConfig(name="both", url="https://a.example/hook", enabled=True,
-                          event_types=["package_update", "security_update"]),
-            models.WebhookConfig(name="install-only", url="https://b.example/hook", enabled=True,
-                          event_types=["package_install"]),
-            models.WebhookConfig(name="disabled", url="https://c.example/hook", enabled=False,
-                          event_types=["package_update", "security_update"]),
+            models.WebhookConfig(id=11, name="both", url="https://a.example/hook", enabled=True,
+                                 event_types=["package_update", "security_update"]),
+            models.WebhookConfig(id=12, name="updates", url="https://b.example/hook", enabled=True,
+                                 event_types=["package_update"]),
+            models.WebhookConfig(id=13, name="disabled", url="https://c.example/hook", enabled=False,
+                                 event_types=["package_update", "security_update"]),
         ])
         seed.commit()
+
+    async def no_delivery(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(updates_module, "_trigger_package_change_webhooks", no_delivery)
 
     app = FastAPI()
     app.include_router(updates_module.router, prefix="/api/v1")
@@ -132,9 +149,19 @@ async def ingest():
 
     app.dependency_overrides[updates_module.get_session] = get_test_session
 
-    async def count(model) -> int:
+    statements: list[tuple[str, object]] = []
+
+    def capture(_conn, _cursor, statement, parameters, _context, _executemany):
+        statements.append((statement, parameters))
+
+    sa.event.listen(engine, "before_cursor_execute", capture)
+
+    async def count(model, *where) -> int:
         with factory() as session:
-            return session.execute(sa.select(sa.func.count()).select_from(model)).scalar_one()
+            query = sa.select(sa.func.count()).select_from(model)
+            for condition in where:
+                query = query.where(condition)
+            return session.execute(query).scalar_one()
 
     async def outbox_pairs() -> set[tuple[int, str]]:
         with factory() as session:
@@ -142,54 +169,59 @@ async def ingest():
             return {(row.webhook_config_id, row.event_type) for row in rows}
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        yield SimpleNamespace(client=client, factory=factory, count=count, outbox_pairs=outbox_pairs)
+        yield SimpleNamespace(client=client, engine=engine, factory=factory, count=count,
+                              outbox_pairs=outbox_pairs, statements=statements)
+    sa.event.remove(engine, "before_cursor_execute", capture)
     engine.dispose()
 
 
 async def _state(ingest) -> dict[str, int]:
     return {
         "packages": await ingest.count(models.PackageUpdate),
-        "hosts": await ingest.count(models.Host),
-        "identities": await ingest.count(models.DeliveryIdentity),
         "outbox": await ingest.count(models.WebhookOutbox),
+        "identities": await ingest.count(models.DeliveryIdentity),
+        "accepted": await ingest.count(models.IngestDiagnostic, models.IngestDiagnostic.outcome == "accepted"),
     }
 
 
 async def test_batch_commit_persists_exact_enabled_webhook_event_pairs(ingest) -> None:
-    response = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "delivery-123"})
+    response = await ingest.client.post(
+        "/api/v1/updates/batch", json=BATCH, headers={"X-Delivery-ID": "delivery-batch-A"}
+    )
 
     assert response.status_code == 201
-    # One row per enabled webhook and event type that webhook subscribes to; the install-only
-    # and the disabled webhook get nothing.
-    webhooks = {name: id_ for id_, name in await _webhook_names(ingest)}
+    # Exactly one row per enabled configuration and subscribed event type; disabled 13 gets none.
     assert await ingest.outbox_pairs() == {
-        (webhooks["both"], "package_update"),
-        (webhooks["both"], "security_update"),
+        (11, "package_update"),
+        (11, "security_update"),
+        (12, "package_update"),
     }
-    # The package rows were committed in the same transaction as the outbox rows.
-    assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
+    # Package row, delivery identity, accepted diagnostic and outbox rows were committed together.
+    assert await _state(ingest) == {"packages": 1, "outbox": 3, "identities": 1, "accepted": 1}
     with ingest.factory() as session:
         payloads = session.execute(sa.select(models.WebhookOutbox.payload)).scalars().all()
-    assert {payload["delivery_identity"] for payload in payloads} == {"delivery-123"}
+        package_id = session.execute(sa.select(models.PackageUpdate.id)).scalar_one()
+    assert {payload["delivery_identity"] for payload in payloads} == {"delivery-batch-A"}
+    assert response.json()["ids"] == [package_id]
 
 
-async def _webhook_names(ingest) -> list[tuple[int, str]]:
-    with ingest.factory() as session:
-        return [(row.id, row.name) for row in session.execute(sa.select(models.WebhookConfig)).scalars().all()]
+async def test_outbox_insert_failure_returns_500_and_rolls_back(ingest) -> None:
+    with ingest.engine.begin() as connection:
+        connection.execute(sa.text(
+            "CREATE TRIGGER fail_outbox_insert BEFORE INSERT ON webhook_outbox "
+            "BEGIN SELECT RAISE(ABORT, 'outbox insert failed'); END"
+        ))
 
-
-async def test_outbox_insert_failure_returns_500_and_rolls_back(ingest, monkeypatch: pytest.MonkeyPatch) -> None:
-    def failing_outbox(**_kwargs):
-        raise RuntimeError("forced outbox insert failure")
-
-    monkeypatch.setattr(updates_module, "WebhookOutbox", failing_outbox)
-
-    response = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "delivery-fail"})
+    response = await ingest.client.post(
+        "/api/v1/updates/batch", json=BATCH, headers={"X-Delivery-ID": "delivery-batch-fail"}
+    )
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "Failed to record package update"}
-    # Package, host, delivery identity and outbox rows were all added before the failure; none survive.
-    assert await _state(ingest) == {"packages": 0, "hosts": 0, "identities": 0, "outbox": 0}
+    assert response.json() == {"detail": "Failed to record batch package updates"}
+    # The package row and the delivery identity were flushed before the outbox insert failed; a new
+    # session sees none of them.
+    assert await _state(ingest) == {"packages": 0, "outbox": 0, "identities": 0, "accepted": 0}
+    assert await ingest.count(models.Host) == 0
 
 
 async def test_transaction_identity_rolls_back_atomically(ingest, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,37 +239,102 @@ async def test_transaction_identity_rolls_back_atomically(ingest, monkeypatch: p
 
     monkeypatch.setattr(AsyncOverSync, "commit", failing_commit)
 
-    first = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "tx-129"})
+    first = await ingest.client.post("/api/v1/updates/batch", json=BATCH, headers={"X-Delivery-ID": "tx-129"})
 
     assert first.status_code == 500
-    assert await _state(ingest) == {"packages": 0, "hosts": 0, "identities": 0, "outbox": 0}
+    assert await _state(ingest) == {"packages": 0, "outbox": 0, "identities": 0, "accepted": 0}
 
     # The same transaction identity is still unused, so the retry commits everything together.
-    retry = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "tx-129"})
+    retry = await ingest.client.post("/api/v1/updates/batch", json=BATCH, headers={"X-Delivery-ID": "tx-129"})
 
     assert retry.status_code == 201
-    assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
+    assert await _state(ingest) == {"packages": 1, "outbox": 3, "identities": 1, "accepted": 1}
+
+
+def _fingerprint(batch: dict) -> str:
+    """The request-content fingerprint the contract binds to a delivery ID: SHA-256 of the canonical
+    JSON of the normalised batch."""
+    payload = {
+        "hostname": batch["hostname"],
+        "os_info": batch.get("os_info"),
+        "package_manager": batch.get("package_manager"),
+        "updates": [
+            {
+                "package_name": update["package_name"],
+                "old_version": update.get("old_version"),
+                "new_version": update["new_version"],
+                "is_security": update.get("is_security", False),
+                "package_manager": update.get("package_manager"),
+            }
+            for update in batch["updates"]
+        ],
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 async def test_delivery_identity_replay_contract(ingest) -> None:
-    headers = {"X-Delivery-ID": "delivery-A"}
-
-    first = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers=headers)
-    replay = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers=headers)
-    conflict = await ingest.client.post(
-        "/api/v1/updates", json={**PACKAGE, "new_version": "3.0"}, headers=headers
-    )
-
+    headers_a = {"X-Delivery-ID": "delivery-A"}
+    first = await ingest.client.post("/api/v1/updates/batch", json=BATCH, headers=headers_a)
     assert first.status_code == 201
+    accepted = await _state(ingest)
+    assert accepted == {"packages": 1, "outbox": 3, "identities": 1, "accepted": 1}
+
+    # Same delivery ID, same content: the original IDs, nothing new stored.
+    replay = await ingest.client.post("/api/v1/updates/batch", json=BATCH, headers=headers_a)
     assert replay.status_code == 201
-    assert replay.json()["id"] == first.json()["id"]
-    assert replay.json()["message"] == "Package update already recorded"
+    assert replay.json()["ids"] == first.json()["ids"]
+    assert await _state(ingest) == accepted
+
+    # Same delivery ID, changed content: 409, nothing stored.
+    changed = {**BATCH, "updates": [{**BATCH["updates"][0], "new_version": "3.0"}]}
+    conflict = await ingest.client.post("/api/v1/updates/batch", json=changed, headers=headers_a)
     assert conflict.status_code == 409
-    # One accepted ingest record, one package row and one outbox identity per webhook/event pair.
-    assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
+    assert await _state(ingest) == accepted
+
+    # New delivery ID with no enabled webhook for its event types: the package and its identity are
+    # stored with the request fingerprint, and no outbox row.
+    with ingest.engine.begin() as connection:
+        connection.execute(sa.text("UPDATE webhook_configs SET enabled = 0 WHERE id IN (11, 12)"))
+    batch_b = {**BATCH, "updates": [{**BATCH["updates"][0], "package_name": "libssl3"}]}
+    new_b = await ingest.client.post("/api/v1/updates/batch", json=batch_b, headers={"X-Delivery-ID": "delivery-B"})
+    assert new_b.status_code == 201
+    assert await _state(ingest) == {"packages": 2, "outbox": 3, "identities": 2, "accepted": 2}
     with ingest.factory() as session:
-        delivery_ids = session.execute(sa.select(models.WebhookOutbox.delivery_id)).scalars().all()
-    assert len(delivery_ids) == len(set(delivery_ids)) == 2
+        stored = session.execute(
+            sa.select(models.DeliveryIdentity.fingerprint).where(models.DeliveryIdentity.delivery_id == "delivery-B")
+        ).scalar_one()
+        b_ids = session.execute(
+            sa.select(models.PackageUpdate.id).where(models.PackageUpdate.package_name == "libssl3")
+        ).scalars().all()
+    assert stored == _fingerprint(batch_b)
+    assert new_b.json()["ids"] == b_ids
+
+    # Replay with unrelated identity and outbox rows present: the lookup selects the identity by
+    # delivery ID and never reads outbox rows.
+    with ingest.engine.begin() as connection:
+        connection.execute(sa.text(
+            "INSERT INTO webhook_delivery_identities (delivery_id, fingerprint, created_at) "
+            "VALUES ('delivery-Z', 'unrelated', CURRENT_TIMESTAMP)"
+        ))
+        connection.execute(sa.text(
+            "INSERT INTO webhook_outbox (delivery_id, webhook_config_id, event_type, payload, status, "
+            "attempt_count, next_attempt_at, created_at, updated_at) VALUES ('unrelated-outbox', 11, "
+            "'package_update', '{}', 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ))
+    before = await _state(ingest)
+    ingest.statements.clear()
+    replay_again = await ingest.client.post("/api/v1/updates/batch", json=BATCH, headers=headers_a)
+    assert replay_again.status_code == 201
+    assert replay_again.json()["ids"] == first.json()["ids"]
+    assert await _state(ingest) == before
+    request_statements = [(sql, params) for sql, params in ingest.statements
+                          if "count(*)" not in sql.lower()]
+    lookups = [(sql, params) for sql, params in request_statements
+               if "FROM webhook_delivery_identities" in sql and "delivery_id" in sql]
+    assert lookups, request_statements
+    assert all("delivery-A" in tuple(params) for _, params in lookups)
+    assert not [sql for sql, _ in request_statements if "webhook_outbox" in sql]
 
 
 def test_outbox_migration_round_trip_preserves_application_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -301,5 +398,5 @@ async def test_existing_webhook_and_migration_tests_pass_with_outbox(ingest) -> 
         ))
         session.commit()
     assert await ingest.count(models.WebhookDeliveryHistory) == 1
-    assert await ingest.count(models.WebhookOutbox) == 2
-    assert (await _state(ingest))["outbox"] == 2
+    assert await ingest.count(models.WebhookOutbox) == 3
+    assert (await _state(ingest))["outbox"] == 3
