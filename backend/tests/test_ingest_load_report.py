@@ -72,6 +72,8 @@ def test_load_report_contract():
         ("https://ingest.example/api/v1/updates?key=secret", False),
         ("https://ingest.example/api/v1/updates?sig=secret", False),
         ("https://ingest.example/api/v1/updates#secret", False),
+        ("https://ingest.example/api/v1/updates" + chr(10) + "request_count: 0", False),
+        ("https://ingest.example/api/v1/updates" + chr(13) + "request_count: 0", False),
     )
     for target_url, accepted in url_cases:
         report = {**valid_report(), "target_url": target_url}

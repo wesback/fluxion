@@ -1,6 +1,7 @@
 """Contracts for machine-readable and human-readable ingestion load reports."""
 
 import json
+import unicodedata
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit
@@ -45,6 +46,8 @@ def _metadata(parameters: Mapping[str, Any]) -> dict[str, Any]:
 
 def _target_url_is_safe(value: str) -> bool:
     try:
+        if any(unicodedata.category(char).startswith("C") for char in value):
+            return False
         parsed = urlsplit(value)
         return (
             parsed.scheme in ("http", "https")
