@@ -2,13 +2,16 @@
 
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+
+PACKAGE_MANAGERS = {"apt", "dnf", "yum", "apk", "zypper", "pacman"}
 
 
 class PackageUpdateItem(BaseModel):
     """Single package update item (without hostname)."""
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "package_name": "nginx",
@@ -19,20 +22,27 @@ class PackageUpdateItem(BaseModel):
         }
     )
 
-    package_name: str = Field(..., min_length=1, max_length=255, description="Name of the package")
+    package_name: StrictStr = Field(..., min_length=1, max_length=255, description="Name of the package")
     old_version: str | None = Field(
         None, max_length=255, description="Previous version (null or '-' for new installs)"
     )
-    new_version: str = Field(..., min_length=1, max_length=255, description="New version installed")
+    new_version: StrictStr = Field(..., min_length=1, max_length=255, description="New version installed")
     is_security: bool = Field(
         default=False,
         description="Whether this package update comes from a security update channel",
     )
-    package_manager: str | None = Field(
+    package_manager: StrictStr | None = Field(
         None,
         max_length=32,
         description="Optional normalized package manager: apt, dnf, yum, apk, zypper, or pacman",
     )
+
+    @field_validator("package_manager")
+    @classmethod
+    def validate_package_manager(cls, v: str | None) -> str | None:
+        if v is not None and v not in PACKAGE_MANAGERS:
+            raise ValueError("Unsupported package manager")
+        return v
 
 
 class PackageUpdateRequest(BaseModel):
@@ -57,16 +67,16 @@ class PackageUpdateRequest(BaseModel):
         max_length=500,
         description="Operating system information (auto-detected if not provided)",
     )
-    package_name: str = Field(..., min_length=1, max_length=255, description="Name of the package")
+    package_name: StrictStr = Field(..., min_length=1, max_length=255, description="Name of the package")
     old_version: str | None = Field(
         None, max_length=255, description="Previous version (null or '-' for new installs)"
     )
-    new_version: str = Field(..., min_length=1, max_length=255, description="New version installed")
+    new_version: StrictStr = Field(..., min_length=1, max_length=255, description="New version installed")
     is_security: bool = Field(
         default=False,
         description="Whether this package update comes from a security update channel",
     )
-    package_manager: str | None = Field(
+    package_manager: StrictStr | None = Field(
         None,
         max_length=32,
         description="Optional normalized package manager: apt, dnf, yum, apk, zypper, or pacman",
@@ -80,6 +90,13 @@ class PackageUpdateRequest(BaseModel):
             raise ValueError(
                 "Hostname must contain only alphanumeric characters, dots, hyphens, and underscores"
             )
+        return v
+
+    @field_validator("package_manager")
+    @classmethod
+    def validate_package_manager(cls, v: str | None) -> str | None:
+        if v is not None and v not in PACKAGE_MANAGERS:
+            raise ValueError("Unsupported package manager")
         return v
 
 
@@ -119,6 +136,7 @@ class BatchPackageUpdateRequest(BaseModel):
     """Request schema for batch package updates."""
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "hostname": "server01",
@@ -148,7 +166,7 @@ class BatchPackageUpdateRequest(BaseModel):
         max_length=500,
         description="Operating system information (auto-detected if not provided)",
     )
-    package_manager: str | None = Field(
+    package_manager: StrictStr | None = Field(
         None,
         max_length=32,
         description="Optional normalized package manager: apt, dnf, yum, apk, zypper, or pacman",
@@ -165,6 +183,13 @@ class BatchPackageUpdateRequest(BaseModel):
             raise ValueError(
                 "Hostname must contain only alphanumeric characters, dots, hyphens, and underscores"
             )
+        return v
+
+    @field_validator("package_manager")
+    @classmethod
+    def validate_batch_package_manager(cls, v: str | None) -> str | None:
+        if v is not None and v not in PACKAGE_MANAGERS:
+            raise ValueError("Unsupported package manager")
         return v
 
     @field_validator("updates")

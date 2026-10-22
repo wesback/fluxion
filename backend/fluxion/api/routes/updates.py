@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -22,7 +23,13 @@ from fluxion.schemas.package_update import (
 )
 from fluxion.services import WebhookService
 from fluxion.services.ingest_adapters import adapter_for
-from fluxion.telemetry import get_tracer, record_package_update
+from fluxion.telemetry import (
+    get_tracer,
+    record_http_request,
+    record_package_batch_rows,
+    record_package_batch_transaction,
+    record_package_update,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -87,27 +94,37 @@ async def ingest_package_manager_updates(
     """Adapt dnf/yum, apk, or zypper payloads into the canonical batch contract."""
     adapter = adapter_for(package_manager)
     if adapter is None:
-        session.add(
-            IngestDiagnostic(
-                package_manager=package_manager.lower(),
-                package_count=0,
-                accepted_count=0,
-                rejected_count=1,
-                outcome="unsupported_package_manager",
-            )
-        )
-        await session.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported package manager; use dnf, yum, apk, or zypper",
         )
     try:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        raw_updates = payload.get("updates") if payload.get("updates") else payload.get("packages")
+        if not isinstance(raw_updates, list):
+            raise ValueError("updates must be a list")
+        payload_manager = payload.get("package_manager")
+        if payload_manager is not None and payload_manager not in {"apt", "dnf", "yum", "apk", "zypper", "pacman"}:
+            raise ValueError("unsupported package_manager")
+        for item in raw_updates:
+            if not isinstance(item, dict):
+                raise ValueError("update item must be an object")
+            allowed = {"package_name", "name", "package", "old_version", "old", "new_version", "new", "version", "is_security", "security", "package_manager"}
+            if set(item) - allowed:
+                raise ValueError("update contains unsupported fields")
+            package_name = item.get("package_name") if "package_name" in item else item.get("name") or item.get("package")
+            new_version = item.get("new_version") if "new_version" in item else item.get("new") or item.get("version")
+            item_manager = item.get("package_manager")
+            if item_manager is not None and item_manager not in {"apt", "dnf", "yum", "apk", "zypper", "pacman"}:
+                raise ValueError("unsupported package_manager")
+            if not isinstance(package_name, str) or not package_name or len(package_name) > 255:
+                raise ValueError("invalid package_name")
+            if not isinstance(new_version, str) or not new_version or len(new_version) > 255:
+                raise ValueError("invalid new_version")
         normalized = adapter.normalize(payload)
         if len(normalized.updates) > MAX_BATCH_PACKAGE_ITEMS:
-            raise HTTPException(
-                status_code=413,
-                detail="Batch package count exceeds 100",
-            )
+            raise HTTPException(status_code=413, detail="Batch package count exceeds 100")
         batch = BatchPackageUpdateRequest(
             hostname=normalized.hostname,
             os_info=normalized.os_info,
@@ -123,18 +140,18 @@ async def ingest_package_manager_updates(
             ],
         )
     except (KeyError, TypeError, ValueError) as exc:
-        session.add(
-            IngestDiagnostic(
-                package_manager=package_manager.lower(),
-                package_count=0,
-                accepted_count=0,
-                rejected_count=1,
-                outcome="rejected",
-            )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Validation error") from exc
+
+    started = time.perf_counter()
+    try:
+        return await _create_batch_package_updates_impl(batch, background_tasks, session, None)
+    finally:
+        record_http_request(
+            "/api/v1/updates/ingest/{package_manager}",
+            "POST",
+            status.HTTP_201_CREATED,
+            time.perf_counter() - started,
         )
-        await session.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return await _create_batch_package_updates_impl(batch, background_tasks, session, None)
 
 
 def _normalize_old_version(old_version: str | None) -> str | None:
@@ -588,18 +605,25 @@ async def create_batch_package_updates(
         HTTPException: 500 if there's a database error
     """
     tracer = get_tracer()
+    started = time.perf_counter()
+    try:
+        # Create parent span for the entire batch process
+        if tracer:
+            with tracer.start_as_current_span("process_update") as span:
+                span.set_attribute("hostname", batch_data.hostname)
+                span.set_attribute("batch_size", len(batch_data.updates))
 
-    # Create parent span for the entire batch process
-    if tracer:
-        with tracer.start_as_current_span("process_update") as span:
-            span.set_attribute("hostname", batch_data.hostname)
-            span.set_attribute("batch_size", len(batch_data.updates))
-
-            return await _create_batch_package_updates_impl(
-                batch_data, background_tasks, session, tracer, request.headers.get("X-Delivery-ID")
-            )
-    else:
+                return await _create_batch_package_updates_impl(
+                    batch_data, background_tasks, session, tracer, request.headers.get("X-Delivery-ID")
+                )
         return await _create_batch_package_updates_impl(batch_data, background_tasks, session, None, request.headers.get("X-Delivery-ID"))
+    finally:
+        record_http_request(
+            "/api/v1/updates/batch",
+            "POST",
+            status.HTTP_201_CREATED,
+            time.perf_counter() - started,
+        )
 
 
 async def _create_batch_package_updates_impl(
@@ -615,6 +639,7 @@ async def _create_batch_package_updates_impl(
             status_code=413,
             detail="Batch package count exceeds 100",
         )
+    transaction_started = time.perf_counter()
     try:
         request_payload = {
             "hostname": batch_data.hostname,
@@ -728,7 +753,9 @@ async def _create_batch_package_updates_impl(
         await session.commit()
 
         # Record metrics
-        record_package_update(batch_data.hostname, len(created_ids))
+        record_package_batch_rows("accepted", len(created_ids))
+        record_package_batch_rows("rejected", 0)
+        record_package_batch_transaction("committed", time.perf_counter() - transaction_started)
 
         logger.info(
             f"Batch package updates recorded: host={batch_data.hostname}, "
@@ -760,9 +787,13 @@ async def _create_batch_package_updates_impl(
 
     except HTTPException:
         await session.rollback()
+        record_package_batch_transaction("rolled_back", time.perf_counter() - transaction_started)
         raise
     except Exception as e:
         await session.rollback()
+        record_package_batch_rows("accepted", 0)
+        record_package_batch_rows("rejected", len(batch_data.updates))
+        record_package_batch_transaction("rolled_back", time.perf_counter() - transaction_started)
         logger.error(f"Error recording batch package updates: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
