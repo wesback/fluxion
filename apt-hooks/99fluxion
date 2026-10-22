@@ -1,283 +1,110 @@
 #!/bin/bash
-#
-# Fluxion APT Hook - Automatic Package Update Reporting
-# 
-# This script is executed by APT after package operations and reports
-# package updates to the Fluxion API for centralized tracking.
-#
-# Installation:
-#   sudo cp 99fluxion /etc/apt/apt.conf.d/99fluxion
-#   sudo chmod +x /etc/apt/apt.conf.d/99fluxion
-#
-# Configuration via environment variables:
-#   FLUXION_API_URL      - API endpoint (required)
-#   FLUXION_API_KEY      - API authentication key (optional)
-#   FLUXION_TIMEOUT      - HTTP request timeout in seconds (default: 5)
-#   FLUXION_LOG_FILE     - Log file path (default: /var/log/fluxion-hook.log)
-#   FLUXION_BATCH_MODE   - Send updates in batch (default: true)
-#
-
+# Fluxion APT operation reporting hook
 set -euo pipefail
 
-# Configuration with defaults
 FLUXION_API_URL="${FLUXION_API_URL:-}"
 FLUXION_API_KEY="${FLUXION_API_KEY:-}"
 FLUXION_TIMEOUT="${FLUXION_TIMEOUT:-5}"
 FLUXION_LOG_FILE="${FLUXION_LOG_FILE:-/var/log/fluxion-hook.log}"
 FLUXION_BATCH_MODE="${FLUXION_BATCH_MODE:-true}"
 FLUXION_DETECT_SECURITY="${FLUXION_DETECT_SECURITY:-true}"
+FLUXION_STATE_DIR="${FLUXION_STATE_DIR:-/var/lib/fluxion}"
+FLUXION_STATE_FILE="${FLUXION_STATE_FILE:-$FLUXION_STATE_DIR/apt-operation.data}"
 
-# Exit early if API URL is not configured
-if [[ -z "$FLUXION_API_URL" ]]; then
-    exit 0
-fi
-
-# Function to log messages
-log_message() {
-    local level="$1"
-    shift
-    local message="$*"
-    echo "[$(date -Iseconds)] [$level] $message" >> "$FLUXION_LOG_FILE" 2>/dev/null || true
+log_message() { local level="$1"; shift; echo "[$(date -Iseconds)] [$level] $*" >> "$FLUXION_LOG_FILE" 2>/dev/null || true; }
+json_string() {
+    local s=${1:-}; s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; printf '"%s"' "$s"
 }
-
-# Function to detect OS information
 detect_os_info() {
-    local os_info="Unknown"
-    
-    # Try /etc/os-release first (standard on modern systems)
-    if [[ -f /etc/os-release ]]; then
-        source /etc/os-release
-        if [[ -n "${PRETTY_NAME:-}" ]]; then
-            os_info="$PRETTY_NAME"
-        elif [[ -n "${NAME:-}" ]] && [[ -n "${VERSION:-}" ]]; then
-            os_info="$NAME $VERSION"
-        elif [[ -n "${NAME:-}" ]]; then
-            os_info="$NAME"
-        fi
-    # Fallback to lsb_release
-    elif command -v lsb_release &> /dev/null; then
-        os_info=$(lsb_release -d 2>/dev/null | cut -f2- || echo "Unknown")
-    # Fallback to /etc/issue
-    elif [[ -f /etc/issue ]]; then
-        os_info=$(head -n1 /etc/issue | sed 's/\\n//g; s/\\l//g' | xargs)
-    fi
-    
-    echo "$os_info"
+    if [[ -r /etc/os-release ]]; then . /etc/os-release; printf '%s' "${PRETTY_NAME:-${NAME:-Unknown}}"; else printf 'Unknown'; fi
 }
 
-# Function to detect if a package update likely came from a security repository
 detect_security_update() {
-    local package_name="$1"
-    local version="$2"
-
-    # Disabled or unavailable apt-cache => cannot determine
-    if [[ "$FLUXION_DETECT_SECURITY" != "true" ]]; then
-        echo "false"
-        return
-    fi
-
-    if ! command -v apt-cache &> /dev/null; then
-        echo "false"
-        return
-    fi
-
-    local policy_output
-    policy_output=$(apt-cache policy "$package_name" 2>/dev/null || true)
-    if [[ -z "$policy_output" ]]; then
-        echo "false"
-        return
-    fi
-
-    # Try to detect security origin specifically for the installed/new version block first
-    if [[ -n "$version" ]] && [[ "$version" != "-" ]]; then
-        if echo "$policy_output" | awk -v target="$version" '
-            BEGIN { in_target=0; found=0 }
-            /^[[:space:]]+[0-9]/ {
-                in_target = ($1 == target)
-            }
-            in_target && /security|[-]security/ {
-                found=1
-            }
-            END { exit found ? 0 : 1 }
-        '; then
-            echo "true"
-            return
-        fi
-    fi
-
-    # Fallback: if policy mentions security at all, consider it a security update candidate
-    if echo "$policy_output" | grep -Eqi '[-]security| security '; then
-        echo "true"
-    else
-        echo "false"
-    fi
+    local package_name="$1" version="$2" policy_output
+    [[ "$FLUXION_DETECT_SECURITY" == "true" ]] || { echo false; return; }
+    command -v apt-cache >/dev/null 2>&1 || { echo false; return; }
+    policy_output=$(apt-cache policy "$package_name" 2>/dev/null) || { echo false; return; }
+    [[ -n "$policy_output" && -n "$version" && "$version" != "-" ]] || { echo false; return; }
+    printf '%s\n' "$policy_output" | awk -v target="$version" '
+      /^[[:space:]]*(\*\*\*[[:space:]]*)?[0-9A-Za-z:+.~_-]+[[:space:]]+[0-9]+[[:space:]]*$/ {
+        line=$0; sub(/^[[:space:]]*/, "", line); sub(/^\*\*\*[[:space:]]*/, "", line)
+        split(line, fields, /[[:space:]]+/); in_target=(fields[1] == target); next
+      }
+      in_target && /^[[:space:]]*release[[:space:]]/ {
+        count=split($0, tokens, /[,[:space:]]+/)
+        publisher=""; archive=""
+        for (i=1; i<=count; i++) {
+          if (tokens[i] ~ /^o=/) publisher=substr(tokens[i],3)
+          if (tokens[i] ~ /^a=/) archive=substr(tokens[i],3)
+        }
+        if ((publisher=="Ubuntu" || publisher=="Debian") && archive ~ /-security$/) found=1
+      }
+      END { print found ? "true" : "false" }
+    '
 }
 
-# Function to send a single update to the API
-send_single_update() {
-    local hostname="$1"
-    local os_info="$2"
-    local package_name="$3"
-    local old_version="$4"
-    local new_version="$5"
-    local is_security="$6"
-    
-    local json_payload
-    json_payload=$(cat <<EOF
-{
-    "hostname": "$hostname",
-    "os_info": "$os_info",
-    "package_name": "$package_name",
-    "old_version": $([[ "$old_version" == "-" ]] && echo "null" || echo "\"$old_version\""),
-    "new_version": "$new_version",
-    "is_security": $is_security
-}
-EOF
-)
-    
-    local curl_args=(
-        -X POST
-        -H "Content-Type: application/json"
-        --max-time "$FLUXION_TIMEOUT"
-        --silent
-        --show-error
-        --fail
-        -d "$json_payload"
-    )
-    
-    if [[ -n "$FLUXION_API_KEY" ]]; then
-        curl_args+=(-H "X-API-Key: $FLUXION_API_KEY")
-    fi
-    
-    if curl "${curl_args[@]}" "${FLUXION_API_URL}/updates" &> /dev/null; then
-        log_message "INFO" "Sent update: $package_name $old_version -> $new_version"
-        return 0
-    else
-        log_message "ERROR" "Failed to send update: $package_name"
-        return 1
-    fi
-}
-
-# Function to send batch updates to the API
 send_batch_updates() {
-    local hostname="$1"
-    local os_info="$2"
-    shift 2
-    local updates=("$@")
-    
-    # Build JSON array of updates
-    local json_updates="["
-    local first=true
-    
+    local hostname="$1" os_info="$2"; shift 2
+    local updates=("$@") json_updates="[" first=true update package_name old_version new_version is_security
     for update in "${updates[@]}"; do
         IFS='|' read -r package_name old_version new_version is_security <<< "$update"
-        
-        if [[ "$first" == true ]]; then
-            first=false
-        else
-            json_updates+=","
-        fi
-        
+        [[ "$first" == true ]] || json_updates+=,
+        first=false
         json_updates+=$(cat <<EOF
-{
-    "package_name": "$package_name",
-    "old_version": $([[ "$old_version" == "-" ]] && echo "null" || echo "\"$old_version\""),
-    "new_version": "$new_version",
-    "is_security": $is_security
-}
+{"package_name":$(json_string "$package_name"),"old_version":$([[ "$old_version" == "-" ]] && printf null || json_string "$old_version"),"new_version":$(json_string "$new_version"),"is_security":$is_security}
 EOF
 )
     done
-    
-    json_updates+="]"
-    
+    json_updates+=]
     local json_payload
     json_payload=$(cat <<EOF
-{
-    "hostname": "$hostname",
-    "os_info": "$os_info",
-    "updates": $json_updates
-}
+{"hostname":$(json_string "$hostname"),"os_info":$(json_string "$os_info"),"updates":$json_updates}
 EOF
 )
-    
-    local curl_args=(
-        -X POST
-        -H "Content-Type: application/json"
-        --max-time "$FLUXION_TIMEOUT"
-        --silent
-        --show-error
-        --fail
-        -d "$json_payload"
-    )
-    
-    if [[ -n "$FLUXION_API_KEY" ]]; then
-        curl_args+=(-H "X-API-Key: $FLUXION_API_KEY")
-    fi
-    
-    if curl "${curl_args[@]}" "${FLUXION_API_URL}/updates/batch" &> /dev/null; then
-        log_message "INFO" "Sent batch update with ${#updates[@]} packages"
-        return 0
-    else
-        log_message "ERROR" "Failed to send batch update"
-        return 1
-    fi
+    local curl_args=(-X POST -H 'Content-Type: application/json' --max-time "$FLUXION_TIMEOUT" --silent --show-error --fail -d "$json_payload")
+    [[ -z "$FLUXION_API_KEY" ]] || curl_args+=(-H "X-API-Key: $FLUXION_API_KEY")
+    curl "${curl_args[@]}" "${FLUXION_API_URL}/updates/batch" >/dev/null 2>&1 || log_message ERROR "Failed to send batch update"
 }
 
-# Main execution
-main() {
-    # Get hostname and OS info
-    local hostname
-    hostname=$(hostname -f 2>/dev/null || hostname)
-    
-    local os_info
-    os_info=$(detect_os_info)
-    
-    # Read package information from stdin (APT provides this)
-    # Format: <package> <old-version> <new-version>
-    local updates=()
-    
-    while IFS=' ' read -r package_name old_version new_version rest; do
-        # Skip empty lines and invalid entries
-        [[ -z "$package_name" ]] && continue
-        [[ -z "$new_version" ]] && continue
-        
-        # Handle new installations (old_version might be "- -")
-        if [[ "$old_version" == "-" ]] || [[ "$old_version" == "**CONFIGURE**" ]]; then
-            old_version="-"
-        fi
-        
-        # Remove architecture suffix if present (e.g., :amd64)
+stage_operation_data() {
+    mkdir -p "$FLUXION_STATE_DIR" 2>/dev/null || return 0
+    : > "$FLUXION_STATE_FILE" 2>/dev/null || return 0
+    while read -r operation package_name old_version new_version architecture rest; do
+        [[ "${operation:-}" == "VERSION" || "${operation:-}" == "version" ]] && continue
+        [[ "${operation:-}" == upgrade || "${operation:-}" == install || "${operation:-}" == remove || "${operation:-}" == purge ]] || continue
+        [[ -n "${package_name:-}" ]] || continue
+        [[ "$operation" == remove || "$operation" == purge ]] && new_version="-"
         package_name="${package_name%:*}"
-
-        # Detect if this package update likely comes from a security repository
-        local is_security="false"
-        is_security=$(detect_security_update "$package_name" "$new_version")
-        
-        if [[ "$FLUXION_BATCH_MODE" == "true" ]]; then
-            # Collect updates for batch sending
-            updates+=("${package_name}|${old_version}|${new_version}|${is_security}")
-        else
-            # Send each update individually
-            send_single_update "$hostname" "$os_info" "$package_name" "$old_version" "$new_version" "$is_security" || true
-        fi
+        if [[ "${old_version:-}" == "<none>" ]]; then old_version="-"; fi
+        if [[ "${new_version:-}" == "<none>" ]]; then new_version="-"; fi
+        [[ -n "${old_version:-}" && -n "${new_version:-}" ]] || continue
+        printf '%s|%s|%s\n' "$package_name" "$old_version" "$new_version" >> "$FLUXION_STATE_FILE"
     done
-    
-    # Send batch if we collected any updates
-    if [[ "$FLUXION_BATCH_MODE" == "true" ]] && [[ ${#updates[@]} -gt 0 ]]; then
-        send_batch_updates "$hostname" "$os_info" "${updates[@]}" || true
-    fi
 }
 
-# APT Configuration
-# This tells APT to pipe package information to this script
-: <<'APT_CONFIG_SNIPPET'
-DPkg::Post-Invoke {
-    "if [ -x /etc/apt/apt.conf.d/99fluxion ]; then apt-cache policy | grep -E '^  Installed: [0-9]' -B 2 | /etc/apt/apt.conf.d/99fluxion || true; fi";
-};
-APT_CONFIG_SNIPPET
+report_staged_operation() {
+    [[ -s "$FLUXION_STATE_FILE" ]] || return 0
+    [[ -n "$FLUXION_API_URL" ]] || { rm -f "$FLUXION_STATE_FILE"; return 0; }
+    local hostname os_info="$(detect_os_info)" package_name old_version new_version is_security updates=()
+    hostname=$(hostname -f 2>/dev/null || hostname)
+    while IFS='|' read -r package_name old_version new_version; do
+        [[ -n "$package_name" ]] || continue
+        is_security=false
+        if [[ "$new_version" != "-" ]]; then
+            is_security=$(detect_security_update "$package_name" "$new_version") || is_security=false
+        fi
+        updates+=("$package_name|$old_version|$new_version|$is_security")
+    done < "$FLUXION_STATE_FILE"
+    rm -f "$FLUXION_STATE_FILE"
+    [[ ${#updates[@]} -eq 0 ]] || send_batch_updates "$hostname" "$os_info" "${updates[@]}" || true
+}
 
-# Only run main if we're not being sourced (i.e., being executed directly)
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
-fi
+main() {
+    case "${1:-}" in
+        --stage|--pre-install) stage_operation_data ;;
+        --report|--post-invoke) report_staged_operation ;;
+        *) report_staged_operation ;;
+    esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
