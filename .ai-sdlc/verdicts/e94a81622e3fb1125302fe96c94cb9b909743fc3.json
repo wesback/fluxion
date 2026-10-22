@@ -1,0 +1,276 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 128,
+  "branch": "ai-sdlc/issue-128",
+  "commitSha": "e94a81622e3fb1125302fe96c94cb9b909743fc3",
+  "round": 0,
+  "pipelineVersion": "18314a8",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The migration code defines the stated indexes and drops them by name, but the tests for AC-1, AC-2, and AC-3 do not exercise the corresponding migration behavior. They can pass when the implementation violates those criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 43,
+          "message": "The test does not prove the AC-1 rejection behavior. Exercise the migration validator with duplicate-index and missing-evidence cases and assert that it rejects them.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_ingest_query_migration_records_and_uses_indexes checks static dictionaries and compares them with a hard-coded list; it never calls _validate_contract.",
+            "failureScenario": "If the migration stops rejecting an existing duplicate index or an index without an evidence row, this test still passes because it only checks the current static values."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 68,
+          "message": "The test does not prove the AC-2 upgrade behavior or exact index set. Run the migration upgrade against the test database and assert exact names and columns.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_ingest_query_migration_upgrade creates indexes directly with SQLite, then checks that the expected set is a subset of the created indexes; it never invokes Alembic upgrade.",
+            "failureScenario": "If upgrade() creates no indexes, creates wrong-column indexes, or creates extra indexes, the test still passes because it manually creates the expected indexes and only checks expected <= package_indexes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 103,
+          "message": "The test does not prove the AC-3 downgrade behavior. Invoke the migration downgrade and assert that only its indexes are removed and the listed rows remain.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_ingest_query_migration_downgrade creates migration indexes and drops them directly with SQL; it never invokes downgrade().",
+            "failureScenario": "If downgrade() becomes a no-op or drops the wrong indexes, this test still passes because its direct DROP INDEX statements perform the asserted removals."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The named tests do not execute the migration’s contract validation, upgrade, or downgrade paths. As written, the upgrade and downgrade tests can pass even when those migration functions are broken.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 43,
+          "message": "The test named for the first acceptance criterion does not exercise its required rejection cases. Add runtime checks that duplicate indexes and missing or extra evidence rows are rejected.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_ingest_query_migration_records_and_uses_indexes checks the index and evidence mappings and reads the evidence document, but never calls migration._validate_contract.",
+            "failureScenario": "If _validate_contract stops rejecting a duplicate index or a missing evidence row, this test still passes because it only checks the static mappings and document contents."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 67,
+          "message": "The upgrade test does not exercise the migration. Run the migration and assert its resulting index set so the test fails when upgrade is broken.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_ingest_query_migration_upgrade manually creates every index in SQLite, then _upgrade_indexes only inspects the database; the test never invokes migration.upgrade or Alembic.",
+            "failureScenario": "If migration.upgrade creates no indexes, creates wrong columns, or fails, this test still passes because the expected indexes were created directly by the test."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 99,
+          "message": "The downgrade test does not exercise the migration and omits the required outbox-row preservation check. Run downgrade and assert that only migration-created indexes are removed while all specified rows remain.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_ingest_query_migration_downgrade manually drops the migration indexes with SQLite DROP INDEX statements and then checks rows; it never invokes migration.downgrade or Alembic.",
+            "failureScenario": "If migration.downgrade does nothing or drops application data, this test still passes because its direct DROP statements remove the indexes and it checks only the rows it inserted. It also does not check the outbox rows named in the criterion."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The migration code presents no concrete security vulnerability in the supplied diff. The tests named by three behavioral acceptance criteria do not exercise the relevant migration behavior, so they can pass when that behavior is broken.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 57,
+          "message": "The test for the evidence and duplicate-index criterion does not exercise the migration's rejection logic, so it passes if that behavior is removed.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test compares migration metadata with a hard-coded list of existing indexes, but never calls the migration's _validate_contract function.",
+            "failureScenario": "If _validate_contract stops rejecting an existing index with the same columns under a different name, this test still passes. It therefore does not verify the AC's duplicate-rejection behavior."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 76,
+          "message": "The named upgrade test cannot verify that the migration creates the required indexes.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The upgrade test creates the expected migration indexes directly with SQLite and then checks that they exist; it never invokes migration.upgrade() or Alembic.",
+            "failureScenario": "If upgrade() creates no indexes or creates indexes with wrong columns, the test still passes because it pre-creates the expected indexes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_migrations.py",
+          "line": 126,
+          "message": "The named downgrade test does not exercise the migration's downgrade behavior or verify preservation of outbox rows.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The downgrade test drops the indexes directly with SQLite instead of invoking migration.downgrade() or Alembic; it also does not create or check an outbox row.",
+            "failureScenario": "If downgrade() leaves migration indexes behind or removes application data, the test still passes because its own SQL performs the drops and the checked rows remain untouched."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_migrations.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
