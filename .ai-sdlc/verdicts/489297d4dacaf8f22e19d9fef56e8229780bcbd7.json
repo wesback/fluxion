@@ -1,0 +1,344 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 129,
+  "branch": "ai-sdlc/issue-129",
+  "commitSha": "489297d4dacaf8f22e19d9fef56e8229780bcbd7",
+  "round": 1,
+  "pipelineVersion": "18314a8",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 6,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The batch call issue and migration data-preservation test are fixed. Replay detection still depends on an outbox row being created, and the transaction, rollback, replay, and existing-behavior tests do not yet exercise their stated criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 302,
+          "message": "Replay detection loses the delivery identity when no outbox intent is created. A repeated ID with changed content can then create another accepted package record.",
+          "confidence": 0.97,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_delivery_replay_status checks delivery identities only in WebhookOutbox.payload. If no enabled webhook matches the package event, _enqueue_package_outbox inserts no row, so later submissions find no record of the accepted identity.",
+            "failureScenario": "With no matching enabled webhook, a request using X-Delivery-ID `delivery-A` is accepted. Repeating that ID with changed package content returns `new` and records another package update instead of rejecting the conflicting replay."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 65,
+          "message": "The package transaction test verifies the exact pairs but does not test that package and outbox rows are committed together.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_package_commit_creates_exact_outbox_pairs calls only _enqueue_package_outbox with a fake session. It checks the selected webhook/event pairs but never invokes package ingestion or commits package and outbox rows together.",
+            "failureScenario": "If package ingestion omits the outbox call or commits package and outbox rows separately, this test still passes, leaving the package transaction criterion unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 79,
+          "message": "The insert-failure test still does not exercise the package transaction, rollback state, or the expected HTTP 500 response.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_insert_failure_rolls_back_transaction manually calls a fake session's add method, catches its forced exception, and calls a no-op rollback. It never invokes ingestion or checks persisted package/outbox rows or an HTTP response.",
+            "failureScenario": "If a real outbox insert fails after package insertion and the package row remains committed, this test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 98,
+          "message": "The rollback test still asserts only the behavior of its fake rollback method, so it does not prove atomic rollback for a transaction identity.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_transaction_identity_rolls_back_atomically appends strings to fake lists and tests that its own rollback method clears them; it does not run the package transaction or database rollback.",
+            "failureScenario": "If the actual transaction leaves package rows without outbox rows after rollback, this test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 119,
+          "message": "The replay test checks the status helper's response but does not test repeated submissions or the resulting package, ingest, and outbox records.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique calls _delivery_replay_status against a fake result containing one preset payload. It does not submit repeated package requests or inspect accepted ingest and outbox records.",
+            "failureScenario": "If repeated requests create duplicate accepted ingest records or outbox identities, this helper-only test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 152,
+          "message": "The named existing-tests criterion remains unverified: the test checks file existence and model metadata without exercising webhook, migration, or delivery-history behavior.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_existing_webhook_and_migration_tests_pass_with_outbox checks that test files exist and that model metadata is present; it does not run or assert their behavior alongside delivery-history behavior.",
+            "failureScenario": "If delivery-history behavior regresses or existing webhook/migration tests fail, this test still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 6,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The batch enqueue argument issue is fixed, and the migration round-trip test now preserves seeded rows. Replay identity can still be bypassed when ingestion creates no outbox row, and the named transaction, replay, and existing-test checks do not exercise the behaviors required by their criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 302,
+          "message": "Replay identity is not recorded independently of webhook intents. A repeated delivery ID can be accepted with changed content when no outbox row is created, leaving AC-4's identity guarantee unenforced.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_delivery_replay_status looks for an accepted identity only in WebhookOutbox.payload. Package ingestion can proceed without creating any outbox row when no enabled webhook matches the event.",
+            "failureScenario": "With no matching enabled webhook, a request using delivery ID X is accepted but leaves no outbox payload recording X. A second request using X with different package content also returns new and is accepted, so the same identity is accepted for different content."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 65,
+          "message": "AC-2's named test checks helper output but does not verify that package and outbox rows are created and committed together.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_package_commit_creates_exact_outbox_pairs calls only _enqueue_package_outbox with a fake session; it never runs package ingestion or commits package and outbox rows together.",
+            "failureScenario": "If ingestion stops calling the helper or commits package rows separately from outbox rows, this test still passes while the exact-pair assertions remain true for the helper in isolation."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 79,
+          "message": "AC-2's forced insert-failure case still does not exercise production transaction rollback or assert zero persisted rows and the expected HTTP 500 response.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_outbox_insert_failure_rolls_back_transaction raises an exception from its fake add method and calls a fake rollback; it never invokes the ingestion implementation or checks database rows or an HTTP response.",
+            "failureScenario": "If production ingestion commits package rows before an outbox insert fails, this test still passes and does not detect the partial commit or missing HTTP 500 response."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 101,
+          "message": "AC-3's test verifies only the fake rollback implementation, not atomic rollback of package and outbox rows for a transaction identity.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_transaction_identity_rolls_back_atomically manually appends strings to fake lists and clears those lists in its own rollback method; it does not invoke package ingestion or a production session.",
+            "failureScenario": "If production rollback leaves either package rows or outbox rows persisted, the fake lists still clear and the test passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 120,
+          "message": "AC-4's named test does not exercise repeated delivery submissions or verify the resulting ingest and outbox records.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique calls _delivery_replay_status against a fake result; it does not submit repeated requests or inspect accepted ingest records and outbox identities.",
+            "failureScenario": "If package ingestion accepts two requests with the same delivery identity when no matching webhook produces an outbox row, this test's fixed fake payload still returns the expected statuses and passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 152,
+          "message": "AC-6's named test still does not verify existing webhook and migration behavior with outbox state.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_existing_webhook_and_migration_tests_pass_with_outbox checks that two test files exist and that a model class is importable; it does not run those tests or verify delivery-history behavior alongside outbox state.",
+            "failureScenario": "If existing webhook tests fail or delivery-history behavior regresses, these existence and import assertions still pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "Replay protection can be bypassed when no matching webhook creates an outbox row. The new replay lookup also loads the full outbox payload set on every ingestion request, creating an avoidable availability risk.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 302,
+          "message": "Replay protection depends on an outbox row existing. When no matching webhook is enabled, a reused delivery identity with changed content is accepted, violating the identity integrity check (OWASP A08:2025).",
+          "confidence": 0.9,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_delivery_replay_status searches only webhook_outbox payloads for a delivery identity; package ingestion records no separate replay identity.",
+            "failureScenario": "With no enabled webhook matching the package event, the first request creates no outbox row. A caller then submits changed package content with the same X-Delivery-ID; the lookup finds no record, returns new, and accepts another package update instead of rejecting the reused identity."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 302,
+          "message": "Replay checks scan and load the entire outbox on every package update, creating an unbounded resource-exhaustion path as outbox history grows (OWASP A06:2025).",
+          "confidence": 0.86,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "Every package update selects every WebhookOutbox.payload and materializes all results with scalars().all() before checking one identity.",
+            "failureScenario": "As the outbox grows, repeated package update requests each load the full payload table into application memory. A caller able to submit enough requests can drive excessive database work and memory use, slowing or exhausting the ingestion service."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
