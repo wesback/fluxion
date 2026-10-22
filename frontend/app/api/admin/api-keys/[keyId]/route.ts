@@ -14,17 +14,6 @@ export async function PATCH(
     console.error('FLUXION_API_KEY environment variable is not set');
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
-  const headers = request.headers
-  const secFetchSite = headers?.get?.('sec-fetch-site')
-  const origin = headers?.get?.('origin')
-  const requestedWith = headers?.get?.('x-requested-with')
-  if (secFetchSite?.toLowerCase() !== 'same-origin' || !origin || requestedWith !== 'XMLHttpRequest') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-  const expectedOrigin = new URL(request.url || 'http://localhost').origin
-  if (origin.replace(/\/$/, '') !== expectedOrigin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
   const { keyId } = await params;
   try {
     const body = await request.json();

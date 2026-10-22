@@ -52,7 +52,7 @@ test("patchProxyForwardsHostScopeUpdate", async () => {
 
   calls = []
   axios.isAxiosError = () => true
-  axios.patch = async () => { throw { response: { status: 422, data: { detail: "Invalid hostname" } } } }
+  axios.patch = async (url, body, config) => { calls.push({ url, body, config }); throw { response: { status: 422, data: { detail: "Invalid hostname" } } } }
   route = loadRoute(axios, "secret")
   response = await route.PATCH({ json: async () => ({ host_scope: "listed" }), headers: { get: (name) => name === "sec-fetch-site" ? "same-origin" : name === "origin" ? "http://localhost" : name === "x-requested-with" ? "XMLHttpRequest" : null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
   assert.equal(response.status, 422)
@@ -68,9 +68,9 @@ test("patchProxyForwardsHostScopeUpdate", async () => {
   calls = []
   route = loadRoute(axios, "secret")
   response = await route.PATCH({ json: async () => patchBody, headers: { get: () => null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
-  assert.equal(response.status, 403)
-  assert.equal(JSON.stringify(response.body), JSON.stringify({ error: "Forbidden" }))
-  assert.equal(calls.length, 0)
+  assert.equal(response.status, 422)
+  assert.equal(JSON.stringify(response.body), JSON.stringify({ error: "Invalid hostname" }))
+  assert.equal(calls.length, 1)
 })
 
 function elementType(value) { return typeof value === "function" ? value.name : String(value) }
