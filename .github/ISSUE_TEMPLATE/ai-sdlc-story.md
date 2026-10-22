@@ -27,6 +27,6 @@ PRD: docs/prd/<file>.md
 
 <!-- Rules: see "Issues for the AI-SDLC pipeline" and "Rules that keep a story from getting stuck" in AGENTS.md:
      name the exact verifier and a negative case in every criterion, write contract inputs and exact expected results, write lists out in full,
-     estimate changed lines including tests and split above 500. Rely only on code that exists or a story you depend on. One change per issue; name the files and tests;
+     estimate changed lines including tests and split above 300. Rely only on code that exists or a story you depend on. One change per issue; name the files and tests;
      no "nice to have", "maybe", "TBD", "etc."; never .github/, .ai-sdlc/, AGENTS.md, CI or dependency files.
      Delete the Depends on / PRD lines when they do not apply. -->
