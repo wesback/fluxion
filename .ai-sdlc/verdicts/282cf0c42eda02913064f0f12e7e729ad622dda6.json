@@ -1,0 +1,232 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 142,
+  "branch": "ai-sdlc/issue-142",
+  "commitSha": "282cf0c42eda02913064f0f12e7e729ad622dda6",
+  "round": 0,
+  "pipelineVersion": "2638170",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The implementation changes the API-key schema, migration, and batch route authorization, but the diff omits the named test file for three behavioral acceptance criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/schemas/api_key.py",
+          "line": 17,
+          "message": "Criterion 1 has no test in this change: backend/tests/test_batch_host_authorization.py / test_api_key_allowed_hosts_create_and_list_round_trip is missing.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "CreateAPIKeyRequest.validate_allowed_hosts accepts the submitted list, and the admin routes store and return it. The named test file backend/tests/test_batch_host_authorization.py is absent from the diff.",
+            "failureScenario": "If allowed_hosts validation accepts a string or fails to lowercase an entry, the create/list behavior can violate the criterion without a test detecting it."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 30,
+          "message": "Criterion 2 has no test in this change: backend/tests/test_batch_host_authorization.py / test_exact_hostname_authorization_contract is missing.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "authorize_batch_hostname is the guard used by both batch routes. The named test file backend/tests/test_batch_host_authorization.py is absent from the diff.",
+            "failureScenario": "If a future change allows a user key to submit a hostname outside its exact allow-list, no test in this change exercises the contract rows or verifies that package, host, and outbox rows remain unchanged."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 82,
+          "message": "Criterion 3 has no test in this change: backend/tests/test_batch_host_authorization.py / test_batch_without_authenticated_key_fails_closed is missing.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The batch route declares authorize_batch_hostname as a dependency. The named test file backend/tests/test_batch_host_authorization.py is absent from the diff.",
+            "failureScenario": "If the dependency stops rejecting requests when APIKeyAuthMiddleware is absent, a bare FastAPI app mounting the router could accept a batch without an authenticated key, and no test in this change would detect it."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The migration receives a focused test, but the named behavior tests for the three batch authorization criteria are absent from the diff. Those criteria therefore lack tests that can catch regressions in the new authorization path.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_batch_host_authorization.py",
+          "line": 1,
+          "message": "The tests required for the API-key create/list behavior, exact hostname authorization on both batch routes, and fail-closed behavior are missing. Add the named tests in backend/tests/test_batch_host_authorization.py.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The issue names test_api_key_allowed_hosts_create_and_list_round_trip, test_exact_hostname_authorization_contract, and test_batch_without_authenticated_key_fails_closed in this test file. The diff does not add the file or those tests.",
+            "failureScenario": "If a user key with allowed_hosts [\"node1.example.test\"] is allowed to submit for node1.example.test.evil.test, or a batch request without authenticated key state is accepted, the shown tests do not exercise those routes and can pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The authorization code shown enforces exact membership for non-admin keys and allows admin keys through. The diff omits the test file required by the acceptance criteria, leaving the central security behavior untested.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 31,
+          "message": "The required behavior tests are missing: test_api_key_allowed_hosts_create_and_list_round_trip, test_exact_hostname_authorization_contract, and test_batch_without_authenticated_key_fails_closed. Add the named tests so the API key management, both batch routes, and fail-closed behavior are exercised.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The new hostname authorization dependency guards both batch routes, but the diff does not include the required backend/tests/test_batch_host_authorization.py.",
+            "failureScenario": "If the authorization dependency is removed or changed to allow a non-listed hostname, no test added by this change exercises the required exact-host contract or fail-closed behavior, so the acceptance criteria can regress without a test failure."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 3,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/fluxion/middleware/auth.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
