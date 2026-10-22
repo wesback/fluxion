@@ -1,13 +1,28 @@
 import importlib.util
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from fluxion.models import DeliveryIdentity, WebhookDeliveryHistory, WebhookOutbox
 import fluxion.api.routes.updates as updates_module
+from fluxion.models import (
+    DeliveryIdentity,
+    Host,
+    PackageUpdate,
+    WebhookConfig,
+    WebhookDeliveryHistory,
+    WebhookOutbox,
+)
+from fluxion.models.base import Base
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = BACKEND_ROOT / "alembic" / "versions" / "b2c3d4e5f6a7_add_webhook_outbox.py"
@@ -43,102 +58,181 @@ def test_outbox_schema_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     engine.dispose()
 
 
-@pytest.mark.asyncio
-async def test_package_commit_creates_exact_outbox_pairs() -> None:
-    class FakeScalars:
-        def __init__(self, values): self.values = values
-        def all(self): return self.values
-    class FakeResult:
-        def __init__(self, values): self.values = values
-        def scalars(self): return FakeScalars(self.values)
-        def scalar_one_or_none(self): return None
-    class FakeSession:
-        def __init__(self): self.added = []
-        async def execute(self, statement):
-            return FakeResult([
-                type("Webhook", (), {"id": 7, "enabled": True, "event_types": ["package_update", "security_update"]})(),
-                type("WebhookDisabled", (), {"id": 8, "enabled": False, "event_types": ["package_update"]})(),
-            ])
-        def add(self, value): self.added.append(value)
+PACKAGE = {
+    "hostname": "host-a",
+    "package_name": "openssl",
+    "old_version": "1.0",
+    "new_version": "2.0",
+    "is_security": True,
+    "package_manager": "apt",
+}
 
-    session = FakeSession()
-    await updates_module._enqueue_package_outbox(
-        session, "delivery-123", "host-a", "openssl", "1.0", "2.0", True, "apt", "fingerprint-1"
+
+class AsyncOverSync:
+    """Awaitable face of a real SQLAlchemy session on SQLite.
+
+    The route code awaits its session calls; the test database is SQLite, whose async driver is not a
+    project dependency, so the same ORM session runs synchronously underneath. Every statement, flush,
+    commit and rollback is real; nothing is simulated.
+    """
+
+    def __init__(self, session) -> None:
+        self._session = session
+
+    @property
+    def new(self):
+        return self._session.new
+
+    def add(self, value) -> None:
+        self._session.add(value)
+
+    async def execute(self, *args, **kwargs):
+        return self._session.execute(*args, **kwargs)
+
+    async def flush(self) -> None:
+        self._session.flush()
+
+    async def commit(self) -> None:
+        self._session.commit()
+
+    async def rollback(self) -> None:
+        self._session.rollback()
+
+
+@pytest_asyncio.fixture
+async def ingest():
+    """The production updates router on a real SQLite database, without the API-key middleware."""
+    engine = sa.create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
     )
-    assert len(session.added) == 2
-    assert {(row.webhook_config_id, row.event_type) for row in session.added} == {
-        (7, "package_update"), (7, "security_update")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine, expire_on_commit=False)
+    with factory() as seed:
+        seed.add_all([
+            WebhookConfig(name="both", url="https://a.example/hook", enabled=True,
+                          event_types=["package_update", "security_update"]),
+            WebhookConfig(name="install-only", url="https://b.example/hook", enabled=True,
+                          event_types=["package_install"]),
+            WebhookConfig(name="disabled", url="https://c.example/hook", enabled=False,
+                          event_types=["package_update", "security_update"]),
+        ])
+        seed.commit()
+
+    app = FastAPI()
+    app.include_router(updates_module.router, prefix="/api/v1")
+
+    async def get_test_session():
+        with factory() as session:
+            yield AsyncOverSync(session)
+
+    app.dependency_overrides[updates_module.get_session] = get_test_session
+
+    async def count(model) -> int:
+        with factory() as session:
+            return session.execute(sa.select(sa.func.count()).select_from(model)).scalar_one()
+
+    async def outbox_pairs() -> set[tuple[int, str]]:
+        with factory() as session:
+            rows = session.execute(sa.select(WebhookOutbox)).scalars().all()
+            return {(row.webhook_config_id, row.event_type) for row in rows}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        yield SimpleNamespace(client=client, factory=factory, count=count, outbox_pairs=outbox_pairs)
+    engine.dispose()
+
+
+async def _state(ingest) -> dict[str, int]:
+    return {
+        "packages": await ingest.count(PackageUpdate),
+        "hosts": await ingest.count(Host),
+        "identities": await ingest.count(DeliveryIdentity),
+        "outbox": await ingest.count(WebhookOutbox),
     }
 
 
-@pytest.mark.asyncio
-async def test_outbox_insert_failure_rolls_back_transaction(tmp_path: Path) -> None:
-    class FailingSession:
-        def __init__(self):
-            self.commits = 0
-            self.package_rows = []
-            self.outbox_rows = []
-            self.identity_rows = []
-        async def rollback(self):
-            self.package_rows.clear()
-            self.outbox_rows.clear()
-            self.identity_rows.clear()
-        async def commit(self):
-            self.commits += 1
-        def add(self, value):
-            if isinstance(value, WebhookOutbox):
-                raise RuntimeError("forced outbox insert failure")
-            self.package_rows.append(value)
+async def test_package_commit_creates_exact_outbox_pairs(ingest) -> None:
+    response = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "delivery-123"})
 
-    session = FailingSession()
-    session.package_rows.append("package")
-    try:
-        session.add(WebhookOutbox(delivery_id="failed", webhook_config_id=1, event_type="package_update", payload={}, next_attempt_at="2026-01-01T00:00:00Z"))
-    except RuntimeError:
-        await session.rollback()
-    assert session.commits == 0
-    assert session.package_rows == []
-    assert session.outbox_rows == []
-    assert session.identity_rows == []
+    assert response.status_code == 201
+    # One row per enabled webhook and event type that webhook subscribes to; the install-only
+    # and the disabled webhook get nothing.
+    webhooks = {name: id_ for id_, name in await _webhook_names(ingest)}
+    assert await ingest.outbox_pairs() == {
+        (webhooks["both"], "package_update"),
+        (webhooks["both"], "security_update"),
+    }
+    # The package rows were committed in the same transaction as the outbox rows.
+    assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
+    with ingest.factory() as session:
+        payloads = session.execute(sa.select(WebhookOutbox.payload)).scalars().all()
+    assert {payload["delivery_identity"] for payload in payloads} == {"delivery-123"}
 
 
-@pytest.mark.asyncio
-async def test_transaction_identity_rolls_back_atomically(tmp_path: Path) -> None:
-    class TransactionSession:
-        def __init__(self):
-            self.package_rows = ["package"]
-            self.outbox_rows = ["outbox"]
-            self.transaction_id = "tx-129"
-            self.rolled_back = False
-        async def rollback(self):
-            self.rolled_back = True
-            self.package_rows.clear()
-            self.outbox_rows.clear()
-
-    session = TransactionSession()
-    await session.rollback()
-    assert session.transaction_id == "tx-129"
-    assert session.package_rows == []
-    assert session.outbox_rows == []
-    assert session.rolled_back is True
+async def _webhook_names(ingest) -> list[tuple[int, str]]:
+    with ingest.factory() as session:
+        return [(row.id, row.name) for row in session.execute(sa.select(WebhookConfig)).scalars().all()]
 
 
-@pytest.mark.asyncio
-async def test_replayed_delivery_identity_is_unique(tmp_path: Path) -> None:
-    class FakeResult:
-        def __init__(self, fingerprint): self.fingerprint = fingerprint
-        def scalar_one_or_none(self): return self.fingerprint
-    class FakeSession:
-        def __init__(self):
-            self.results = ["payload-A", "payload-A", None]
-        async def execute(self, statement):
-            return FakeResult(self.results.pop(0))
+async def test_outbox_insert_failure_rolls_back_transaction(ingest, monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_outbox(**_kwargs):
+        raise RuntimeError("forced outbox insert failure")
 
-    session = FakeSession()
-    assert await updates_module._delivery_replay_status(session, "delivery-A", "payload-A") == "same"
-    assert await updates_module._delivery_replay_status(session, "delivery-A", "changed-payload") == "conflict"
-    assert await updates_module._delivery_replay_status(session, "delivery-B", "payload-B") == "new"
-    assert session.results == []
+    monkeypatch.setattr(updates_module, "WebhookOutbox", failing_outbox)
+
+    response = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "delivery-fail"})
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Failed to record package update"}
+    # Package, host, delivery identity and outbox rows were all added before the failure; none survive.
+    assert await _state(ingest) == {"packages": 0, "hosts": 0, "identities": 0, "outbox": 0}
+
+
+async def test_transaction_identity_rolls_back_atomically(ingest, monkeypatch: pytest.MonkeyPatch) -> None:
+    real_commit = AsyncOverSync.commit
+    calls = {"count": 0}
+
+    async def failing_commit(self):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            # Delivery identity and outbox rows are both pending in this transaction when the commit fails.
+            pending = {type(item) for item in self.new}
+            assert {DeliveryIdentity, WebhookOutbox} <= pending
+            raise RuntimeError("forced commit failure")
+        await real_commit(self)
+
+    monkeypatch.setattr(AsyncOverSync, "commit", failing_commit)
+
+    first = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "tx-129"})
+
+    assert first.status_code == 500
+    assert await _state(ingest) == {"packages": 0, "hosts": 0, "identities": 0, "outbox": 0}
+
+    # The same transaction identity is still unused, so the retry commits everything together.
+    retry = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "tx-129"})
+
+    assert retry.status_code == 201
+    assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
+
+
+async def test_replayed_delivery_identity_is_unique(ingest) -> None:
+    headers = {"X-Delivery-ID": "delivery-A"}
+
+    first = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers=headers)
+    replay = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers=headers)
+    conflict = await ingest.client.post(
+        "/api/v1/updates", json={**PACKAGE, "new_version": "3.0"}, headers=headers
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json()["id"] == first.json()["id"]
+    assert replay.json()["message"] == "Package update already recorded"
+    assert conflict.status_code == 409
+    # One accepted ingest record, one package row and one outbox identity per webhook/event pair.
+    assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
+    with ingest.factory() as session:
+        delivery_ids = session.execute(sa.select(WebhookOutbox.delivery_id)).scalars().all()
+    assert len(delivery_ids) == len(set(delivery_ids)) == 2
 
 
 def test_outbox_migration_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -169,9 +263,30 @@ def test_outbox_migration_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyP
     engine.dispose()
 
 
-def test_existing_webhook_and_migration_tests_pass_with_outbox() -> None:
-    migration = _load_migration()
-    assert migration.OUTBOX_COLUMNS <= set(WebhookOutbox.__table__.c.keys())
-    assert (BACKEND_ROOT / "tests" / "test_webhooks.py").exists()
-    assert (BACKEND_ROOT / "tests" / "test_migrations.py").exists()
-    assert WebhookDeliveryHistory is not None
+async def test_existing_webhook_and_migration_tests_pass_with_outbox(ingest) -> None:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    # Migration chain: the outbox revision is in the history and the history has a single head.
+    script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
+    revisions = {revision.revision for revision in script.walk_revisions()}
+    assert "b2c3d4e5f6a7" in revisions
+    assert len(script.get_heads()) == 1
+
+    # Delivery history keeps working beside outbox state: ingest queues outbox rows and writes no
+    # history; a recorded delivery attempt is stored next to the pending outbox row and neither
+    # table changes the other.
+    response = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "history-1"})
+    assert response.status_code == 201
+    assert await ingest.count(WebhookDeliveryHistory) == 0
+    with ingest.factory() as session:
+        outbox_row = session.execute(sa.select(WebhookOutbox).limit(1)).scalar_one()
+        session.add(WebhookDeliveryHistory(
+            webhook_config_id=outbox_row.webhook_config_id, event_type=outbox_row.event_type,
+            payload=outbox_row.payload, status_code=200, attempt_number=1,
+            delivered_at=datetime.now(UTC),
+        ))
+        session.commit()
+    assert await ingest.count(WebhookDeliveryHistory) == 1
+    assert await ingest.count(WebhookOutbox) == 2
+    assert (await _state(ingest))["outbox"] == 2
