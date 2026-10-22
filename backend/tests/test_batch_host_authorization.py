@@ -143,7 +143,8 @@ async def test_api_key_allowed_hosts_create_and_list_round_trip(ingest_authoriza
             json={"name": "Invalid key", "role": "user", "allowed_hosts": value},
             headers=headers,
         )
-        assert response.status_code == 422
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Validation error"
         assert await ingest_authorization["count"](models.APIKey) == before
 
 
