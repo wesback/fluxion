@@ -83,7 +83,7 @@ class Settings(BaseSettings):
             "POSTGRES_MAX_CONNECTIONS": self.postgres_max_connections,
             "RESERVED_CONNECTIONS": self.reserved_connections,
         }
-        missing = [name for name, value in required.items() if value is None]
+        missing = [name for name, value in required.items() if value is None or (isinstance(value, str) and not value.strip())]
         if missing:
             raise RuntimeError(f"Missing required pool setting: {missing[0]}")
         if not self.database_url:

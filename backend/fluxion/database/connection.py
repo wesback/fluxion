@@ -1,8 +1,6 @@
 """Database connection and session management with async support."""
 
 from collections.abc import AsyncGenerator
-from types import MethodType
-
 from sqlalchemy import event
 
 from sqlalchemy.ext.asyncio import (
@@ -40,15 +38,9 @@ def get_engine() -> AsyncEngine:
             pool_timeout=settings.db_pool_timeout,
         )
         event.listen(_engine.sync_engine, "checkout", lambda *args: get_pool_status())
+        event.listen(_engine.sync_engine, "checkin", lambda *args: get_pool_status())
 
         pool = _engine.sync_engine.pool
-        original_return_conn = pool._return_conn
-
-        def return_conn_after_record(pool_self, record) -> None:
-            original_return_conn(record)
-            get_pool_status()
-
-        pool._return_conn = MethodType(return_conn_after_record, pool)
         get_pool_status()
     return _engine
 
@@ -81,9 +73,7 @@ get_pool_status.wait_count = 0
 def record_pool_checkout_wait() -> None:
     get_pool_status.wait_count += 1
     try:
-        from fluxion.telemetry import record_pool_observability
-        status = get_pool_status()
-        record_pool_observability(status["active"], status["idle"], status["overflow"], status["waited"])
+        get_pool_status()
     except Exception:
         # Metrics must never replace or obscure the pool timeout response.
         pass

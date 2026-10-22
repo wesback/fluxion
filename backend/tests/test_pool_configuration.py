@@ -112,8 +112,20 @@ def test_pool_environment_contract(monkeypatch, field):
         env_name = env_names.get(name, name.upper())
         monkeypatch.setenv(env_name, str(value))
     monkeypatch.setenv(env_names[field], "not-a-number")
-    with pytest.raises(ValueError):
+    exact_messages = {
+        "api_replicas": "API_REPLICAS must be an integer",
+        "db_pool_size": "API_POOL_SIZE must be an integer",
+        "db_max_overflow": "API_MAX_OVERFLOW must be an integer",
+        "relay_pool_size": "RELAY_POOL_SIZE must be an integer",
+        "relay_worker_count": "RELAY_WORKER_COUNT must be an integer",
+        "db_pool_timeout": "DB_POOL_TIMEOUT must be a number",
+        "db_pool_recycle": "DB_POOL_RECYCLE must be an integer",
+        "postgres_max_connections": "POSTGRES_MAX_CONNECTIONS must be an integer",
+        "reserved_connections": "RESERVED_CONNECTIONS must be an integer",
+    }
+    with pytest.raises((ValueError, RuntimeError)) as exc_info:
         Settings().validate_pool_startup()
+    assert exact_messages[field] in str(exc_info.value)
 
     monkeypatch.setenv(env_names[field], "-1")
     settings = Settings()
@@ -127,11 +139,14 @@ def test_pool_environment_contract(monkeypatch, field):
             "db_pool_timeout": "DB_POOL_TIMEOUT must be positive",
             "db_pool_recycle": "DB_POOL_RECYCLE must be non-negative",
         }[field]
-        with pytest.raises((RuntimeError, ValueError), match=negative_text.replace("-", "\\-")):
+        with pytest.raises((RuntimeError, ValueError)) as exc_info:
             settings.validate_pool_startup()
+        assert str(exc_info.value).endswith(negative_text)
     else:
-        with pytest.raises(RuntimeError, match="must be 100|must be 20"):
+        negative_text = "POSTGRES_MAX_CONNECTIONS must be 100" if field == "postgres_max_connections" else "RESERVED_CONNECTIONS must be 20"
+        with pytest.raises(RuntimeError) as exc_info:
             settings.validate_pool_startup()
+        assert str(exc_info.value) == negative_text
 
     for name, value in VALID.items():
         env_name = env_names.get(name, name.upper())
@@ -179,6 +194,69 @@ def test_missing_pool_configuration_fails(monkeypatch, aggregate):
         with pytest.raises((RuntimeError, ValueError)):
             missing_settings.validate_pool_startup()
     assert calls == []
+
+
+@pytest.mark.parametrize("database_url,expected", [
+    (None, "Missing required pool setting: DATABASE_URL"),
+    ("postgresql://localhost/fluxion", "DATABASE_URL must contain a non-empty username"),
+    ("postgresql://user@localhost/fluxion", "DATABASE_URL must contain a non-empty password"),
+])
+@pytest.mark.asyncio
+async def test_lifespan_missing_database_credentials(monkeypatch, database_url, expected):
+    import fluxion.main as main
+    import fluxion.database.connection as connection
+
+    values = dict(VALID, database_url=database_url)
+    missing_settings = Settings(**values)
+    monkeypatch.setattr(main, "settings", missing_settings)
+    monkeypatch.setattr(connection, "settings", missing_settings)
+
+    engine_calls = []
+    connection_calls = []
+    monkeypatch.setattr(connection, "create_async_engine", lambda *args, **kwargs: engine_calls.append((args, kwargs)))
+    monkeypatch.setattr(main, "get_engine", lambda: connection_calls.append("attempted"))
+
+    with pytest.raises(RuntimeError) as exc_info:
+        async with main.lifespan(main.app):
+            pass
+    assert str(exc_info.value) == expected
+    assert engine_calls == []
+    assert connection_calls == []
+
+
+@pytest.mark.parametrize("field", [
+    "api_replicas", "db_pool_size", "db_max_overflow", "relay_pool_size",
+    "relay_worker_count", "db_pool_timeout", "db_pool_recycle",
+    "postgres_max_connections", "reserved_connections",
+])
+@pytest.mark.asyncio
+async def test_lifespan_missing_pool_setting(monkeypatch, field):
+    import fluxion.main as main
+    import fluxion.database.connection as connection
+
+    missing_settings = Settings(**dict(VALID, **{field: None}))
+    monkeypatch.setattr(main, "settings", missing_settings)
+    monkeypatch.setattr(connection, "settings", missing_settings)
+
+    engine_calls = []
+    connection_calls = []
+    monkeypatch.setattr(connection, "create_async_engine", lambda *args, **kwargs: engine_calls.append((args, kwargs)))
+    monkeypatch.setattr(main, "get_engine", lambda: connection_calls.append("attempted"))
+
+    env_name = {
+        "api_replicas": "API_REPLICAS", "db_pool_size": "API_POOL_SIZE",
+        "db_max_overflow": "API_MAX_OVERFLOW", "relay_pool_size": "RELAY_POOL_SIZE",
+        "relay_worker_count": "RELAY_WORKER_COUNT", "db_pool_timeout": "DB_POOL_TIMEOUT",
+        "db_pool_recycle": "DB_POOL_RECYCLE", "postgres_max_connections": "POSTGRES_MAX_CONNECTIONS",
+        "reserved_connections": "RESERVED_CONNECTIONS",
+    }[field]
+    with pytest.raises(RuntimeError) as exc_info:
+        async with main.lifespan(main.app):
+            pass
+    assert str(exc_info.value) == f"Missing required pool setting: {env_name}"
+    assert engine_calls == []
+    assert connection_calls == []
+
 
 def test_existing_pool_configuration_suite():
     """Run the documented backend suite without recursively running this wrapper."""

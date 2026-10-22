@@ -97,6 +97,8 @@ async def lifespan(app: FastAPI):
     """
     # Startup: validate all pool allocation before any database work or telemetry/database creation.
     settings.validate_pool_startup()
+    import fluxion.database.connection as connection_module
+    connection_module.settings = settings
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Database URL: {settings.database_url.split('@')[-1]}")  # Log without credentials
 
