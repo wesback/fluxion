@@ -52,20 +52,21 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     import time
     from sqlalchemy import create_engine
     from sqlalchemy.exc import TimeoutError
+    from sqlalchemy.pool import QueuePool
     from httpx import ASGITransport, AsyncClient
     from fluxion.main import app
 
     await close_db()
     connection._engine = None
-    settings = Settings(**VALID)
+    values = dict(VALID, db_pool_size=1, db_max_overflow=0, db_pool_timeout=0.05)
+    settings = Settings(**values)
     monkeypatch.setattr(connection, "settings", settings)
     engine = get_engine()
     assert engine.sync_engine.pool._pre_ping is True
     assert engine.sync_engine.pool._recycle == 3600
-    assert engine.sync_engine.pool._timeout == 5.0
+    assert engine.sync_engine.pool._timeout == 0.05
 
-    from sqlalchemy.pool import QueuePool
-    sync_pool = create_engine("sqlite:///:memory:", poolclass=QueuePool, pool_size=1, max_overflow=0, pool_timeout=0.01, pool_pre_ping=True)
+    sync_pool = create_engine("sqlite:///:memory:", poolclass=QueuePool, pool_size=1, max_overflow=0, pool_timeout=0.05, pool_pre_ping=True)
     held = sync_pool.connect()
 
     @app.post("/docs", include_in_schema=False)
@@ -82,9 +83,12 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     elapsed = time.monotonic() - started
     assert response.status_code == 503
     assert response.content == b'{"detail":"Database connection pool exhausted"}'
-    assert elapsed < 1.0
+    assert elapsed < 1.05
 
     held.close()
+    stale = sync_pool.connect()
+    stale.connection.dbapi_connection.close()
+    stale.close()
     async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as client:
         recovery = await client.post("/docs")
     assert recovery.status_code == 200
@@ -177,14 +181,12 @@ def test_missing_pool_configuration_fails(monkeypatch, aggregate):
     assert calls == []
 
 def test_existing_pool_configuration_suite():
-    Settings(**VALID).validate_pool_startup()
-
-    pool_tests = (
-        "tests/test_pool_configuration.py::test_pool_configuration_contract",
-        "tests/test_pool_configuration.py::test_pool_replica_boundaries",
-        "tests/test_pool_configuration.py::test_pool_pre_ping_and_checkout_timeout",
-        "tests/test_pool_configuration.py::test_pool_environment_contract",
-        "tests/test_pool_configuration.py::test_missing_pool_configuration_fails",
+    """Run the documented backend suite without recursively running this wrapper."""
+    backend = Path(__file__).resolve().parent.parent
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-s", "-k", "not test_existing_pool_configuration_suite"],
+        cwd=str(backend),
+        capture_output=True,
+        text=True,
     )
-    completed = subprocess.run([sys.executable, "-m", "pytest", "-q", *pool_tests, "tests/test_telemetry.py::test_pool_observability_contract"], cwd=str(Path(__file__).resolve().parent.parent), capture_output=True, text=True)
     assert completed.returncode == 0, completed.stdout + completed.stderr

@@ -4,6 +4,8 @@ import math
 
 from pydantic import AliasChoices, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 
 class Settings(BaseSettings):
@@ -86,6 +88,16 @@ class Settings(BaseSettings):
             raise RuntimeError(f"Missing required pool setting: {missing[0]}")
         if not self.database_url:
             raise RuntimeError("Missing required pool setting: DATABASE_URL")
+        try:
+            database_url = make_url(self.database_url)
+        except ArgumentError:
+            raise RuntimeError("DATABASE_URL must contain a non-empty username and password") from None
+        username = database_url.username.strip() if database_url.username else ""
+        password = database_url.password.strip() if database_url.password else ""
+        if not username:
+            raise RuntimeError("DATABASE_URL must contain a non-empty username")
+        if not password:
+            raise RuntimeError("DATABASE_URL must contain a non-empty password")
         if self.api_replicas < 1 or self.api_replicas > 10:
             raise RuntimeError("API_REPLICAS must be between 1 and 10")
         if self.db_pool_size < 0:
