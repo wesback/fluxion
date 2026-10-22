@@ -55,9 +55,19 @@ def test_outbox_schema_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         assert set(models.WebhookOutbox.__table__.c.keys()) == columns | {"id"}
         assert set(models.DeliveryIdentity.__table__.c.keys()) == identity_columns
         assert models.DeliveryIdentity.__table__.primary_key.columns.keys() == ["delivery_id"]
-        assert {index.name for index in models.WebhookOutbox.__table__.indexes} >= {
-            "ix_webhook_outbox_status", "ix_webhook_outbox_next_attempt_at"
+        assert models.WebhookOutbox.__table__.primary_key.columns.keys() == ["id"]
+        outbox_unique = {
+            tuple(constraint.columns.keys())
+            for constraint in models.WebhookOutbox.__table__.constraints
+            if hasattr(constraint, "columns") and constraint.__class__.__name__ == "UniqueConstraint"
         }
+        assert ("delivery_id",) in outbox_unique
+        outbox_indexes = {
+            index.name: tuple(column.name for column in index.columns)
+            for index in models.WebhookOutbox.__table__.indexes
+        }
+        assert outbox_indexes["ix_webhook_outbox_status"] == ("status",)
+        assert outbox_indexes["ix_webhook_outbox_next_attempt_at"] == ("next_attempt_at",)
         connection.execute(sa.text("INSERT INTO webhook_outbox (delivery_id, webhook_config_id, event_type, payload, status, attempt_count, next_attempt_at, created_at, updated_at) VALUES ('same', 1, 'package_update', '{}', 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
         with pytest.raises(sa.exc.IntegrityError):
             connection.execute(sa.text("INSERT INTO webhook_outbox (delivery_id, webhook_config_id, event_type, payload, status, attempt_count, next_attempt_at, created_at, updated_at) VALUES ('same', 1, 'package_update', '{}', 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
