@@ -97,7 +97,12 @@ Each rule comes from a story that stopped for a person because it was missing (D
   stories: the behaviour first, then a "tests only" story.
 - **Small enough.** Before implementation, estimate the changed lines including tests and record
   `Expected size: about N changed lines, including tests.` A story likely to exceed 300 changed lines is split into
-  independent stories before implementation; every part is estimated at 300 lines or fewer.
+  independent stories before implementation; every part is estimated at 300 lines or fewer. A replaced line counts
+  twice (removed and added): a story that restructures or rewrites an existing file counts that file's old and new length.
+- **A dependency is a real prerequisite.** A story lists `Depends on #N` only when it calls, extends or edits code, data or files
+  that #N adds or changes. The same PRD, the same area or a preferred order is not a dependency. Stories without a dependency
+  between them are built at the same time when their files differ; a chain of N dependent stories takes N cycles one after
+  the other, so plan wide rather than deep.
 - **No wishlist or hedge words, even as ordinary words.** The Definition-of-Ready gate rejects `TBD`, `TODO`, `XXX`, `FIXME`,
   `???`, "not sure", "decide later", "to be determined", "to be decided", "up to the dev" and the word "placeholder"
   anywhere outside a fenced code block. Write "template field", "token" or "parameter" instead.
@@ -133,8 +138,11 @@ The reviewers fail a pull request on the same few things, so check them before y
 3. **One negative case per criterion** unless it is purely presentational: invalid input, a denied role, missing data, an out-of-scope id.
 4. **Security criteria: try to get around them.** Ask what a caller can do without the check (another role, an indirect reference, an unlisted path) and test that it fails.
 5. **Stay on the Files line.** If the change needs another file, say so in your final message instead of editing it.
-6. **No wishlist words** (TBD, TODO, "placeholder") in anything you write.
-7. **Run the full test command** and make it pass before you finish.
+6. **Edit in place.** Change only the functions, blocks and lines the story needs. Never rewrite, reorder or reformat a whole
+   file or section you are not changing, and never drop documentation or comments you were not asked to change: every
+   rewritten line counts toward the size limit twice and hides the real change from the reviewers.
+7. **No wishlist words** (TBD, TODO, "placeholder") in anything you write.
+8. **Run the full test command** and make it pass before you finish.
 
 ### Rules by language (D203)
 
@@ -232,7 +240,8 @@ A feature too large for one story starts as a PRD. The merge of the PRD is the h
    `docs/security/`), and the Functional Planner (the stories). The stories become issues with `ai-eligible`, a
    `PRD:` line, `Depends on #N` lines, and the threat model's mitigations as acceptance criteria. Review the created
    issues; each still has to pass the readiness gate before it is built.
-6. **Stories are built one at a time** in dependency order and merged by the pipeline.
+6. **Stories are built in dependency order** and merged by the pipeline; stories that do not depend on each other and touch
+   different files are built at the same time.
 
 Changing an approved PRD later: edit it in a PR (an addendum is fine). A changed PRD file is planned again when
 planning is on, so say in the PR whether the change needs new stories.
