@@ -31,6 +31,7 @@ async def authorize_batch_hostname(request: Request) -> dict[str, Any]:
     """Fail closed and enforce exact per-key hostname authorization."""
     role = getattr(request.state, "api_key_role", None)
     allowed_hosts = getattr(request.state, "api_key_allowed_hosts", None)
+    host_scope = getattr(request.state, "api_key_host_scope", "listed")
     if role is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
 
@@ -49,11 +50,11 @@ async def authorize_batch_hostname(request: Request) -> dict[str, Any]:
             except (KeyError, TypeError, ValueError):
                 hostname = None
 
-    if role == "admin":
-        return {"role": role, "allowed_hosts": allowed_hosts or []}
-    if not isinstance(hostname, str) or hostname not in (allowed_hosts or []):
+    if role == "admin" or host_scope == "all":
+        return {"role": role, "allowed_hosts": allowed_hosts or [], "host_scope": host_scope}
+    if host_scope != "listed" or not isinstance(hostname, str) or hostname not in (allowed_hosts or []):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
-    return {"role": role, "allowed_hosts": allowed_hosts or []}
+    return {"role": role, "allowed_hosts": allowed_hosts or [], "host_scope": host_scope}
 
 
 MAX_BATCH_PACKAGE_ITEMS = 100

@@ -36,6 +36,9 @@ class APIKey(Base):
         String(50), nullable=False, default="user", index=True
     )
     allowed_hosts: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    host_scope: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="listed", server_default="listed"
+    )
 
     def __repr__(self) -> str:
         """String representation of APIKey."""

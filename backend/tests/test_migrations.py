@@ -228,6 +228,38 @@ def test_api_key_allowed_hosts_migration_defaults_existing_rows(tmp_path: Path, 
     engine.dispose()
 
 
+def test_api_key_host_scope_migration_sets_existing_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    migration_path = VERSIONS / "d4e5f6a7b8c9_add_api_key_host_scope.py"
+    spec = importlib.util.spec_from_file_location("api_key_host_scope", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(migration)
+
+    database = tmp_path / "api_key_host_scope.sqlite"
+    engine = sa.create_engine(f"sqlite:///{database}")
+    originals = ((7, "hash-empty", "user", 1, "[]", "all"), (8, "hash-listed", "user", 0, '["node1.example.test"]', "listed"))
+    with engine.begin() as connection:
+        connection.execute(sa.text(
+            "CREATE TABLE api_keys (id INTEGER PRIMARY KEY, key_hash TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL, last_used TEXT, is_active INTEGER NOT NULL, role TEXT NOT NULL, allowed_hosts JSON NOT NULL)"
+        ))
+        for key_id, key_hash, role, active, allowed_hosts, _ in originals:
+            connection.execute(sa.text(
+                "INSERT INTO api_keys (id, key_hash, name, created_at, is_active, role, allowed_hosts) VALUES (:id, :hash, :name, '2026-01-01', :active, :role, :hosts)"
+            ), {"id": key_id, "hash": key_hash, "name": f"Key {key_id}", "active": active, "role": role, "hosts": allowed_hosts})
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        monkeypatch.setattr(migration, "op", operations)
+        migration.upgrade()
+        scopes = dict(connection.execute(sa.text("SELECT id, host_scope FROM api_keys")).all())
+        assert scopes == {7: "all", 8: "listed"}
+        migration.downgrade()
+        remaining = {row[1] for row in connection.execute(sa.text("PRAGMA table_info(api_keys)"))}
+        assert "host_scope" not in remaining
+        rows = connection.execute(sa.text("SELECT id, key_hash, role, is_active, allowed_hosts FROM api_keys ORDER BY id")).all()
+        assert [(row[0], row[1], row[2], row[3], row[4]) for row in rows] == [(7, "hash-empty", "user", 1, "[]"), (8, "hash-listed", "user", 0, '["node1.example.test"]')]
+    engine.dispose()
+
+
 def test_existing_migration_sequence_includes_new_head() -> None:
     """AC: the migration graph terminates at the documented new head."""
     migration_files = list(VERSIONS.glob("*.py"))
@@ -242,7 +274,8 @@ def test_existing_migration_sequence_includes_new_head() -> None:
     assert revisions["b1c2d3e4f5a6"] == "4f6a2c1d9b77"
     assert revisions["b2c3d4e5f6a7"] == "b1c2d3e4f5a6"
     assert revisions["c3d4e5f6a7b8"] == "b2c3d4e5f6a7"
+    assert revisions["d4e5f6a7b8c9"] == "c3d4e5f6a7b8"
     assert "4f6a2c1d9b77" in revisions
     heads = {revision for revision, parent in revisions.items() if revision != "__pycache__"}
     parents = {parent for parent in revisions.values() if isinstance(parent, str)}
-    assert heads - parents == {"c3d4e5f6a7b8"}
+    assert heads - parents == {"d4e5f6a7b8c9"}

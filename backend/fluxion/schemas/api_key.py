@@ -15,6 +15,7 @@ class CreateAPIKeyRequest(BaseModel):
     )
     role: str = Field(default="user", description="Role for the API key (user or admin)")
     allowed_hosts: list[str] = Field(default_factory=list, description="Exact hostnames allowed for batch ingest")
+    host_scope: str | None = Field(default=None, description="Hostname authorization scope")
 
     @field_validator("allowed_hosts")
     @classmethod
@@ -25,6 +26,7 @@ class CreateAPIKeyRequest(BaseModel):
                 raise ValueError("Allowed hostnames may contain only alphanumeric characters, dots, hyphens, and underscores and no wildcard")
             validated.append(host.lower())
         return validated
+
 
 
 class CreateAPIKeyResponse(BaseModel):
@@ -47,6 +49,7 @@ class APIKeyMetadata(BaseModel):
     last_used: datetime | None = Field(None, description="When the key was last used")
     is_active: bool = Field(..., description="Whether the key is active")
     allowed_hosts: list[str] = Field(default_factory=list, description="Exact hostnames allowed for batch ingest")
+    host_scope: str = Field(..., description="Hostname authorization scope")
 
 
 class ListAPIKeysResponse(BaseModel):
