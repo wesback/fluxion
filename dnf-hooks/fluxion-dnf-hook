@@ -1,0 +1,151 @@
+#!/bin/bash
+
+load_config() {
+    local config_file="${FLUXION_CONFIG_FILE:-/etc/fluxion/config}"
+    local key value config_key
+    for key in FLUXION_API_URL FLUXION_API_KEY FLUXION_TIMEOUT FLUXION_LOG_FILE FLUXION_STATE_DIR; do
+        local current=""
+        printf -v current '%s' "${!key:-}"
+        [[ -n "$current" ]] && continue
+        while IFS='=' read -r config_key value; do
+            config_key="${config_key%$'\r'}"
+            value="${value%$'\r'}"
+            if [[ "$config_key" == "$key" ]]; then
+                printf -v "$key" '%s' "$value"
+                break
+            fi
+        done < "$config_file" 2>/dev/null || true
+    done
+    FLUXION_TIMEOUT="${FLUXION_TIMEOUT:-5}"
+    FLUXION_LOG_FILE="${FLUXION_LOG_FILE:-/var/log/fluxion-hook.log}"
+    FLUXION_STATE_DIR="${FLUXION_STATE_DIR:-/var/lib/fluxion}"
+}
+
+log_message() {
+    [[ -n "$FLUXION_LOG_FILE" ]] || return 0
+    printf '[%s] [%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$1" "$2" >> "$FLUXION_LOG_FILE" 2>/dev/null || true
+}
+
+json_escape() {
+    local text="$1"
+    text="${text//\\/\\\\}"
+    text="${text//\"/\\\"}"
+    text="${text//$'\n'/\\n}"
+    text="${text//$'\r'/\\r}"
+    text="${text//$'\t'/\\t}"
+    printf '%s' "$text"
+}
+
+detect_os_info() {
+    local value="Unknown"
+    if [[ -r /etc/os-release ]]; then
+        while IFS='=' read -r key value; do
+            if [[ "$key" == PRETTY_NAME ]]; then
+                value="${value#\"}"; value="${value%\"}"
+                printf '%s' "$value"
+                return
+            fi
+        done < /etc/os-release
+    fi
+    printf '%s' "$value"
+}
+
+main() {
+    local action="${1:-}"
+    load_config
+
+    if [[ "$action" == stage ]]; then
+        [[ -n "$FLUXION_API_URL" ]] || return 0
+        mkdir -p "$FLUXION_STATE_DIR" 2>/dev/null || return 0
+        local state_mode="$(stat -c '%a' "$FLUXION_STATE_DIR" 2>/dev/null || true)"
+        if [[ -n "$state_mode" ]]; then
+            local write_bits=$((8#$state_mode & 222))
+            ((write_bits != 0)) || return 0
+        fi
+        [[ -w "$FLUXION_STATE_DIR" ]] || return 0
+        local tmp_file="$FLUXION_STATE_DIR/.dnf-before.list.$$"
+        if rpm -qa --qf '%{NAME}.%{ARCH} %{NAME} %{EVR}\n' > "$tmp_file" 2>/dev/null; then
+            mv -f "$tmp_file" "$FLUXION_STATE_DIR/dnf-before.list" 2>/dev/null || rm -f "$tmp_file" 2>/dev/null || true
+        else
+            rm -f "$tmp_file" 2>/dev/null || true
+        fi
+        return 0
+    fi
+
+    if [[ "$action" != report ]]; then
+        return 0
+    fi
+
+    local before="$FLUXION_STATE_DIR/dnf-before.list"
+    if [[ ! -f "$before" ]]; then return 0; fi
+    local before_copy="$FLUXION_STATE_DIR/.dnf-before.list.$$"
+    cp "$before" "$before_copy" 2>/dev/null || true
+    rm -f "$before" 2>/dev/null || true
+
+    [[ -n "$FLUXION_API_URL" && -n "$FLUXION_API_KEY" ]] || { rm -f "$before_copy" 2>/dev/null || true; return 0; }
+    local after="$FLUXION_STATE_DIR/.dnf-after.list.$$"
+    if ! rpm -qa --qf '%{NAME}.%{ARCH} %{NAME} %{EVR}\n' > "$after" 2>/dev/null; then rm -f "$after" "$before_copy" 2>/dev/null || true; return 0; fi
+
+    declare -A old_packages=()
+    declare -A new_packages=()
+    declare -A old_names=()
+    declare -A new_names=()
+    local key name version
+    while read -r key name version; do
+        [[ -n "$key" ]] || continue
+        old_packages["$key"]="$version"; old_names["$key"]="$name"
+    done < "$before_copy" 2>/dev/null || true
+    while read -r key name version; do
+        [[ -n "$key" ]] || continue
+        new_packages["$key"]="$version"; new_names["$key"]="$name"
+    done < "$after" 2>/dev/null || true
+    rm -f "$after" 2>/dev/null || true
+    rm -f "$before_copy" 2>/dev/null || true
+
+    local -a differences=()
+    local k
+    for k in "${!old_packages[@]}" "${!new_packages[@]}"; do
+        if [[ -n "${old_packages[$k]+x}" && -n "${new_packages[$k]+x}" ]]; then
+            if [[ "${old_packages[$k]}" != "${new_packages[$k]}" ]]; then
+                differences+=("${new_names[$k]}|${old_packages[$k]}|${new_packages[$k]}")
+            fi
+        elif [[ -n "${old_packages[$k]+x}" ]]; then
+            differences+=("${old_names[$k]}|${old_packages[$k]}|removed")
+        elif [[ -n "${new_packages[$k]+x}" ]]; then
+            differences+=("${new_names[$k]}||${new_packages[$k]}")
+        fi
+    done
+    if ((${#differences[@]} == 0)); then return 0; fi
+    mapfile -t differences < <(printf '%s\n' "${differences[@]}" | sort -u -t'|' -k1,1)
+
+    local hostname_value os_info endpoint base url
+    hostname_value=$(hostname -f 2>/dev/null || hostname 2>/dev/null || true)
+    [[ -n "$hostname_value" ]] || hostname_value="localhost"
+    os_info=$(detect_os_info)
+    base="${FLUXION_API_URL%/}"
+    if [[ "$base" == */updates/ingest/dnf ]]; then endpoint="$base"; else endpoint="$base/updates/ingest/dnf"; fi
+
+    local i start count end old new pkg updates json_payload json_updates update
+    for ((start=0; start<${#differences[@]}; start+=100)); do
+        json_updates=""
+        count=0
+        end=$((start + 100)); ((end > ${#differences[@]})) && end=${#differences[@]}
+        for ((i=start; i<end; i++)); do
+            IFS='|' read -r pkg old new <<< "${differences[$i]}"
+            ((count > 0)) && json_updates+=','
+            if [[ -n "$old" ]]; then old_json="\"$(json_escape "$old")\""; else old_json='null'; fi
+            json_updates+='{'
+            json_updates+='"package_name":"'$(json_escape "$pkg")'","old_version":'${old_json}',"new_version":"'$(json_escape "$new")'","is_security":false'
+            json_updates+='}'
+            ((count++))
+        done
+        json_payload='{"hostname":"'$(json_escape "$hostname_value")'","os_info":"'$(json_escape "$os_info")'","updates":['$json_updates']}'
+        if ! curl -X POST -H 'Content-Type: application/json' -H "X-API-Key: $FLUXION_API_KEY" --max-time "$FLUXION_TIMEOUT" --silent --show-error --fail -d "$json_payload" "$endpoint" >/dev/null 2>&1; then
+            log_message ERROR "Failed to send batch update (${count} packages)"
+        fi
+    done
+    return 0
+}
+
+main "$@"
+exit 0
