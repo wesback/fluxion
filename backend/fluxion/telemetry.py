@@ -2,6 +2,7 @@
 
 import logging
 
+
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -36,6 +37,8 @@ _http_request_counter: metrics.Counter | None = None
 _http_request_duration: metrics.Histogram | None = None
 _db_query_duration: metrics.Histogram | None = None
 _package_updates_counter: metrics.Counter | None = None
+_package_batch_rows: metrics.Counter | None = None
+_package_batch_transaction: metrics.Histogram | None = None
 _db_connections: metrics.UpDownCounter | None = None
 _pool_active: metrics.UpDownCounter | None = None
 _pool_idle: metrics.UpDownCounter | None = None
@@ -64,7 +67,7 @@ def setup_telemetry() -> None:
         _tracer = None
         _meter = None
         for name in ("_http_request_counter", "_http_request_duration", "_db_query_duration",
-                     "_package_updates_counter", "_db_connections", "_pool_active", "_pool_idle",
+                     "_package_updates_counter", "_package_batch_rows", "_package_batch_transaction", "_db_connections", "_pool_active", "_pool_idle",
                      "_pool_overflow", "_pool_checkout_waits"):
             globals()[name] = None
         logger.info("OpenTelemetry is disabled")
@@ -128,7 +131,8 @@ def _setup_metrics(resource: Resource) -> None:
 def _initialize_metrics() -> None:
     """Initialize metric instruments."""
     global _http_request_counter, _http_request_duration
-    global _db_query_duration, _package_updates_counter, _db_connections
+    global _db_query_duration, _package_updates_counter
+    global _package_batch_rows, _package_batch_transaction, _db_connections
     global _pool_active, _pool_idle, _pool_overflow, _pool_checkout_waits
 
     if _meter is None:
@@ -169,6 +173,16 @@ def _initialize_metrics() -> None:
         name="package_updates_total",
         description="Total number of package updates by hostname",
         unit="1",
+    )
+    _package_batch_rows = _meter.create_counter(
+        name="package_batch_rows_total",
+        description="Package batch rows accepted or rejected",
+        unit="1",
+    )
+    _package_batch_transaction = _meter.create_histogram(
+        name="package_batch_transaction_seconds",
+        description="Package batch database transaction duration",
+        unit="s",
     )
 
 
@@ -260,6 +274,18 @@ def record_package_update(hostname: str, count: int = 1) -> None:
     """
     if _package_updates_counter is not None:
         _package_updates_counter.add(count, attributes={"hostname": hostname})
+
+
+def record_package_batch_rows(result: str, count: int) -> None:
+    """Record accepted or rejected package batch rows."""
+    if _package_batch_rows is not None and result in {"accepted", "rejected"}:
+        _package_batch_rows.add(count, attributes={"result": result})
+
+
+def record_package_batch_transaction(outcome: str, duration: float) -> None:
+    """Record a package batch transaction outcome and duration."""
+    if _package_batch_transaction is not None and outcome in {"committed", "rolled_back"}:
+        _package_batch_transaction.record(duration, attributes={"outcome": outcome})
 
 
 def record_db_connection_change(delta: int) -> None:
