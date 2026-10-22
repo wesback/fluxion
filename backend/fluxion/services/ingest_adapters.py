@@ -93,11 +93,18 @@ class ZypperIngestAdapter(BaseIngestAdapter):
     package_manager = "zypper"
 
 
+class PacmanIngestAdapter(BaseIngestAdapter):
+    """Normalize pacman update payloads."""
+
+    package_manager = "pacman"
+
+
 ADAPTERS: dict[str, type[BaseIngestAdapter]] = {
     "dnf": DnfIngestAdapter,
     "yum": YumIngestAdapter,
     "apk": ApkIngestAdapter,
     "zypper": ZypperIngestAdapter,
+    "pacman": PacmanIngestAdapter,
 }
 
 
