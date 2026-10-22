@@ -1,0 +1,210 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 143,
+  "branch": "ai-sdlc/issue-143",
+  "commitSha": "b9c8dd89fcbbc370d22914a3a6fab4258444094c",
+  "round": 2,
+  "pipelineVersion": "9a3f750",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The previously reported telemetry exposure and item-level package manager issues appear fixed. The new validation test does not catch regressions in batch-level package_manager validation.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_validation.py",
+          "line": 186,
+          "message": "The malformed-batch contract test does not cover an unsupported batch-level package_manager, although the criterion requires validation of both the batch and item fields. Add a case with package_manager=\"freebsd\" on the batch.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test varies item.package_manager but always sets the batch-level package_manager to \"apt\". It never exercises the new batch-level validation at updates.py:107-109.",
+            "failureScenario": "If batch-level package_manager validation is removed and a batch with package_manager=\"freebsd\" is accepted, every case in test_malformed_batch_contract still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The added tests cover the main batch endpoint and several malformed item cases, but miss the ingest endpoint’s telemetry contract and batch-level package-manager rejection.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_bulk_ingest_telemetry.py",
+          "line": 74,
+          "message": "The observability contract test does not exercise the ingest route, so it does not prove the criterion that both batch routes emit the required metrics.",
+          "confidence": 0.96,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The named observability test sends requests only to /api/v1/updates/batch. The acceptance criterion also requires metrics from /api/v1/updates/ingest/{package_manager}.",
+            "failureScenario": "If the ingest route stops recording its row, transaction, or request-duration metrics, this test still passes because it never calls that route."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_validation.py",
+          "line": 186,
+          "message": "The malformed-batch test does not cover an unsupported batch-level package_manager, leaving that required validation path untested.",
+          "confidence": 0.91,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "Every parameterized request sets the batch-level package_manager to apt; the cases vary only the item. The acceptance criterion requires rejecting unsupported package_manager values at both the batch and item levels before SQL runs.",
+            "failureScenario": "If batch-level package_manager validation is removed, a request with package_manager set to freebsd can proceed to database work, while every case in test_malformed_batch_contract still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The round 3 changes remove the hostname metric label and reject unsupported package_manager values before batch processing. I found no reachable security defect in the scoped changes.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_bulk_ingest_telemetry.py",
+      "backend/tests/test_validation.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
