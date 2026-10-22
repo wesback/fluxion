@@ -203,7 +203,8 @@ def test_existing_migration_sequence_includes_new_head() -> None:
         revisions[getattr(module, "revision", None)] = getattr(module, "down_revision", None)
 
     assert revisions["b1c2d3e4f5a6"] == "4f6a2c1d9b77"
+    assert revisions["b2c3d4e5f6a7"] == "b1c2d3e4f5a6"
     assert "4f6a2c1d9b77" in revisions
     heads = {revision for revision, parent in revisions.items() if revision != "__pycache__"}
     parents = {parent for parent in revisions.values() if isinstance(parent, str)}
-    assert heads - parents == {"b1c2d3e4f5a6"}
+    assert heads - parents == {"b2c3d4e5f6a7"}
