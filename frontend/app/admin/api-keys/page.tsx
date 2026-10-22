@@ -6,6 +6,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select } from "@/components/ui/select"
 import {
@@ -18,14 +19,16 @@ import {
 } from "@/components/ui/dialog"
 import { TableSkeleton } from "@/components/ui/skeleton"
 import { ErrorBoundary } from "@/components/error-boundary"
-import { useAPIKeys, useCreateAPIKey, useDeleteAPIKey } from "@/lib/hooks/use-admin"
+import { useAPIKeys, useCreateAPIKey, useUpdateAPIKey, useDeleteAPIKey } from "@/lib/hooks/use-admin"
 import { formatDistanceToNow } from "date-fns"
-import { Plus, Trash2, Copy, RefreshCw, Key, AlertTriangle } from "lucide-react"
+import { Plus, Trash2, Copy, RefreshCw, Key, AlertTriangle, Pencil } from "lucide-react"
 import { toast } from "sonner"
+import { buildHostScopeUpdate } from "@/lib/host-scope.mjs"
 
 function APIKeysContent() {
   const { data, isLoading, error, refetch } = useAPIKeys()
   const createMutation = useCreateAPIKey()
+  const updateMutation = useUpdateAPIKey()
   const deleteMutation = useDeleteAPIKey()
 
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -33,6 +36,14 @@ function APIKeysContent() {
   const [showKeyDialog, setShowKeyDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState("")
   const [newKeyRole, setNewKeyRole] = useState("user")
+  const [newHostScope, setNewHostScope] = useState<"all" | "listed">("all")
+  const [newAllowedHosts, setNewAllowedHosts] = useState("")
+  const [newHostScopeError, setNewHostScopeError] = useState<string | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editTarget, setEditTarget] = useState<any>(null)
+  const [editHostScope, setEditHostScope] = useState<"all" | "listed">("all")
+  const [editAllowedHosts, setEditAllowedHosts] = useState("")
+  const [editHostScopeError, setEditHostScopeError] = useState<string | null>(null)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null)
 
@@ -43,17 +54,51 @@ function APIKeysContent() {
       toast.error("Please enter a name for the API key")
       return
     }
+    const scopeResult: any = buildHostScopeUpdate(newHostScope, newAllowedHosts)
+    if ("error" in scopeResult) {
+      setNewHostScopeError(scopeResult.error ?? null)
+      return
+    }
     try {
       const result = await createMutation.mutateAsync({
         name: newKeyName.trim(),
         role: newKeyRole,
+        ...scopeResult.body,
       })
       setCreatedKey(result.api_key)
       setShowCreateDialog(false)
       setShowKeyDialog(true)
       setNewKeyName("")
       setNewKeyRole("user")
+      setNewHostScope("all")
+      setNewAllowedHosts("")
+      setNewHostScopeError(null)
       toast.success("API key created successfully")
+    } catch {
+      // Error handled by mutation hook
+    }
+  }
+
+  const openEditHosts = (key: any) => {
+    setEditTarget(key)
+    setEditHostScope(key.host_scope === "listed" ? "listed" : "all")
+    setEditAllowedHosts((key.allowed_hosts || []).join("\n"))
+    setEditHostScopeError(null)
+    setShowEditDialog(true)
+  }
+
+  const handleEditHosts = async () => {
+    if (!editTarget) return
+    const scopeResult: any = buildHostScopeUpdate(editHostScope, editAllowedHosts)
+    if ("error" in scopeResult) {
+      setEditHostScopeError(scopeResult.error ?? null)
+      return
+    }
+    try {
+      await updateMutation.mutateAsync({ keyId: editTarget.id, data: scopeResult.body })
+      setShowEditDialog(false)
+      setEditTarget(null)
+      setEditHostScopeError(null)
     } catch {
       // Error handled by mutation hook
     }
@@ -126,6 +171,7 @@ function APIKeysContent() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Hosts</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden md:table-cell">Created</TableHead>
                   <TableHead className="hidden md:table-cell">Last Used</TableHead>
@@ -135,7 +181,7 @@ function APIKeysContent() {
               <TableBody>
                 {apiKeys.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       <Key className="w-8 h-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
                       <p>No API keys found</p>
                       <p className="text-xs mt-1">Create your first API key to get started</p>
@@ -149,6 +195,11 @@ function APIKeysContent() {
                         <Badge variant={key.role === "admin" ? "default" : "secondary"}>
                           {key.role}
                         </Badge>
+                      </TableCell>
+                      <TableCell title={(key.allowed_hosts || []).join("\n")}>
+                        {key.host_scope === "listed"
+                          ? `${(key.allowed_hosts || []).length} ${(key.allowed_hosts || []).length === 1 ? "host" : "hosts"}`
+                          : "All hosts"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={key.is_active ? "success" : "destructive"}>
@@ -170,6 +221,15 @@ function APIKeysContent() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditHosts(key)}
+                          aria-label={`Edit hosts for API key ${key.name}`}
+                          title="Edit hosts"
+                        >
+                          <Pencil className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -229,6 +289,20 @@ function APIKeysContent() {
                 Admin keys can manage API keys and webhooks. User keys can only submit and query updates.
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-key-host-scope">Host scope</Label>
+              <Select id="new-key-host-scope" value={newHostScope} onChange={(e) => { setNewHostScope(e.target.value as "all" | "listed"); setNewHostScopeError(null) }}>
+                <option value="all">All hosts</option>
+                <option value="listed">Only these hosts</option>
+              </Select>
+              {newHostScope === "listed" && (
+                <>
+                  <Label htmlFor="new-key-hosts">Allowed hosts</Label>
+                  <Textarea id="new-key-hosts" value={newAllowedHosts} onChange={(e) => { setNewAllowedHosts(e.target.value); setNewHostScopeError(null) }} placeholder="node1.example.test\nnode2.example.test" rows={4} />
+                </>
+              )}
+              {newHostScopeError && <p className="text-xs text-status-error">{newHostScopeError}</p>}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
@@ -271,6 +345,36 @@ function APIKeysContent() {
             <Button onClick={() => { setShowKeyDialog(false); setCreatedKey(null) }}>
               Done
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Hosts Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={(open) => { setShowEditDialog(open); if (!open) { setEditTarget(null); setEditHostScopeError(null) } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit host scope</DialogTitle>
+            <DialogDescription>Choose which hosts this API key can report for.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-key-host-scope">Host scope</Label>
+              <Select id="edit-key-host-scope" value={editHostScope} onChange={(e) => { setEditHostScope(e.target.value as "all" | "listed"); setEditHostScopeError(null) }}>
+                <option value="all">All hosts</option>
+                <option value="listed">Only these hosts</option>
+              </Select>
+            </div>
+            {editHostScope === "listed" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-key-hosts">Allowed hosts</Label>
+                <Textarea id="edit-key-hosts" value={editAllowedHosts} onChange={(e) => { setEditAllowedHosts(e.target.value); setEditHostScopeError(null) }} placeholder="node1.example.test\nnode2.example.test" rows={4} />
+              </div>
+            )}
+            {editHostScopeError && <p className="text-xs text-status-error">{editHostScopeError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
+            <Button onClick={handleEditHosts} disabled={updateMutation.isPending}>{updateMutation.isPending ? "Saving..." : "Save Changes"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -5,6 +5,8 @@ import {
   type ListAPIKeysResponse,
   type CreateAPIKeyRequest,
   type CreateAPIKeyResponse,
+  type UpdateAPIKeyRequest,
+  type APIKeyMetadata,
   type ListWebhooksResponse,
   type WebhookConfig,
   type WebhookConfigCreate,
@@ -58,6 +60,21 @@ export function useCreateAPIKey() {
     },
     onError: (error) => {
       const message = error instanceof ApiError ? error.message : 'Failed to create API key';
+      toast.error(message);
+    },
+  });
+}
+
+export function useUpdateAPIKey() {
+  const queryClient = useQueryClient();
+  return useMutation<APIKeyMetadata, Error, { keyId: number; data: UpdateAPIKeyRequest }>({
+    mutationFn: ({ keyId, data }) => apiClient.updateAPIKey(keyId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.apiKeys });
+      toast.success('API key host scope updated successfully');
+    },
+    onError: (error) => {
+      const message = error instanceof ApiError ? error.message : 'Failed to update API key host scope';
       toast.error(message);
     },
   });
