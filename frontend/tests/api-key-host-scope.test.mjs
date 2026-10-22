@@ -41,18 +41,20 @@ test("patchProxyForwardsHostScopeUpdate", async () => {
   let calls = []
   const axios = { patch: async (url, body, config) => { calls.push({ url, body, config }); return { data: { id: 7, host_scope: "listed", allowed_hosts: ["node1.example.test"] } } }, isAxiosError: () => false }
   let route = loadRoute(axios, "secret")
-  let response = await route.PATCH({ json: async () => ({ host_scope: "listed", allowed_hosts: ["node1.example.test"] }), headers: { get: () => null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
+  const patchBody = { host_scope: "listed", allowed_hosts: ["node1.example.test"] }
+  let response = await route.PATCH({ json: async () => patchBody, headers: { get: (name) => name === "sec-fetch-site" ? "same-origin" : name === "origin" ? "http://localhost" : name === "x-requested-with" ? "XMLHttpRequest" : null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
   assert.equal(response.status, 200)
   assert.deepEqual(response.body, { id: 7, host_scope: "listed", allowed_hosts: ["node1.example.test"] })
   assert.equal(calls.length, 1)
   assert.equal(calls[0].url.endsWith("/api/v1/admin/api-keys/7"), true)
   assert.equal(calls[0].config.headers["X-API-Key"], "secret")
+  assert.deepEqual(calls[0].body, patchBody)
 
   calls = []
   axios.isAxiosError = () => true
   axios.patch = async () => { throw { response: { status: 422, data: { detail: "Invalid hostname" } } } }
   route = loadRoute(axios, "secret")
-  response = await route.PATCH({ json: async () => ({ host_scope: "listed" }), headers: { get: () => null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
+  response = await route.PATCH({ json: async () => ({ host_scope: "listed" }), headers: { get: (name) => name === "sec-fetch-site" ? "same-origin" : name === "origin" ? "http://localhost" : name === "x-requested-with" ? "XMLHttpRequest" : null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
   assert.equal(response.status, 422)
   assert.equal(JSON.stringify(response.body), JSON.stringify({ error: "Invalid hostname" }))
 
@@ -62,11 +64,18 @@ test("patchProxyForwardsHostScopeUpdate", async () => {
   assert.equal(response.status, 500)
   assert.equal(JSON.stringify(response.body), JSON.stringify({ error: "Server configuration error" }))
   assert.equal(calls.length, 0)
+
+  calls = []
+  route = loadRoute(axios, "secret")
+  response = await route.PATCH({ json: async () => patchBody, headers: { get: () => null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
+  assert.equal(response.status, 403)
+  assert.equal(JSON.stringify(response.body), JSON.stringify({ error: "Forbidden" }))
+  assert.equal(calls.length, 0)
 })
 
 function elementType(value) { return typeof value === "function" ? value.name : String(value) }
 
-test("apiKeysPageEditsHostScope", () => {
+test("apiKeysPageEditsHostScope", async () => {
   const source = readFileSync(join(root, "app/admin/api-keys/page.tsx"), "utf8")
   assert.match(source, /<TableHead>Hosts<\/TableHead>/)
   assert.match(source, /Edit hosts for API key/)
@@ -74,6 +83,7 @@ test("apiKeysPageEditsHostScope", () => {
   assert.match(source, /buildHostScopeUpdate/)
 
   let updateCalls = 0
+  let createCalls = []
   let slots = []
   let index = 0
   const reactStub = {
@@ -96,7 +106,7 @@ test("apiKeysPageEditsHostScope", () => {
     "@/components/error-boundary": { ErrorBoundary: passthrough },
     "@/lib/hooks/use-admin": {
       useAPIKeys: () => ({ data: { items: [{ id: 7, name: "shared", role: "user", host_scope: "listed", allowed_hosts: ["node1.example.test", "node2.example.test"], is_active: true, created_at: "2026-01-01T00:00:00Z", last_used: null }], total: 1 }, isLoading: false, error: null, refetch: () => {} }),
-      useCreateAPIKey: () => ({ mutateAsync: async () => ({ api_key: "new-key" }), isPending: false }),
+      useCreateAPIKey: () => ({ mutateAsync: async (body) => { createCalls.push(body); return { api_key: "new-key" } }, isPending: false }),
       useUpdateAPIKey: () => ({ mutateAsync: async () => { updateCalls++ }, isPending: false }),
       useDeleteAPIKey: () => ({ mutateAsync: async () => {}, isPending: false }),
     },
@@ -140,4 +150,27 @@ test("apiKeysPageEditsHostScope", () => {
   render()
   assert.equal(renderToStaticMarkup(tree).includes("Add at least one hostname or choose All hosts"), true)
   assert.equal(updateCalls, 0)
+
+  const createButton = find((node) => node.props.children?.[0]?.props?.children === undefined && node.props.children === undefined)
+  const createActions = []
+  walk(tree, (node) => { if (node.props.onClick && typeof node.props.children === "string" && node.props.children === "Create Key") createActions.push(node) })
+  assert.ok(createActions.length > 0)
+  createActions[0].props.onClick()
+  render()
+  const createName = find((node) => node.props.id === "key-name")
+  assert.ok(createName)
+  createName.props.onChange({ target: { value: "scoped-key" } })
+  render()
+  const createScope = find((node) => node.props.id === "new-key-host-scope")
+  assert.ok(createScope)
+  createScope.props.onChange({ target: { value: "listed" } })
+  render()
+  const createHosts = find((node) => node.props.id === "new-key-hosts")
+  assert.ok(createHosts)
+  createHosts.props.onChange({ target: { value: "Node1.example.test,node1.example.test\nNODE2.EXAMPLE.TEST" } })
+  render()
+  const createSubmit = find((node) => node.props.children === "Create Key")
+  assert.ok(createSubmit)
+  await createSubmit.props.onClick()
+  assert.equal(JSON.stringify(createCalls), JSON.stringify([{ name: "scoped-key", role: "user", host_scope: "listed", allowed_hosts: ["node1.example.test", "node2.example.test"] }]))
 })
