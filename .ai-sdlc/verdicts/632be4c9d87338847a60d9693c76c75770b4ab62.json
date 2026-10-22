@@ -1,0 +1,362 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 129,
+  "branch": "ai-sdlc/issue-129",
+  "commitSha": "632be4c9d87338847a60d9693c76c75770b4ab62",
+  "round": 2,
+  "pipelineVersion": "18314a8",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 5,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The replay lookup now uses the dedicated delivery identity table, and the unbounded outbox scan finding is resolved. The transaction, rollback, replay, and existing-behavior tests still do not exercise the production behaviors required by their acceptance criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 65,
+          "message": "AC-2's named test still checks helper output only; it does not verify exact outbox pairs are committed atomically with package rows.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_package_commit_creates_exact_outbox_pairs calls only _enqueue_package_outbox using a FakeSession; it does not invoke package ingestion or commit package and outbox rows.",
+            "failureScenario": "If package ingestion stops calling the outbox helper or commits package and outbox rows separately, this test still passes, leaving AC-2's atomic package transaction unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 75,
+          "message": "AC-2's insert-failure test still does not exercise production rollback or verify the expected HTTP 500 response.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_insert_failure_rolls_back_transaction manually raises from a fake session's add method and calls its own rollback; it does not invoke ingestion or check an HTTP response.",
+            "failureScenario": "If production ingestion leaves package rows committed after an outbox insert fails, this test still passes and does not detect the missing HTTP 500 response required by AC-2."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 106,
+          "message": "AC-3's test still proves only the fake rollback implementation, not atomic rollback for the production transaction identity.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_transaction_identity_rolls_back_atomically calls a fake rollback method that clears its own lists; no production transaction or session is involved.",
+            "failureScenario": "If production rollback leaves package rows without outbox rows, or outbox rows without package rows, the fake lists still clear and the test passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 127,
+          "message": "AC-4's named test still does not exercise repeated submissions or verify the resulting package, ingest, and outbox records.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique calls _delivery_replay_status with preset fake results; it does not submit repeated package requests or inspect ingest and outbox records.",
+            "failureScenario": "If repeated submissions create duplicate accepted ingest records or outbox identities, the preset fake results still produce the asserted statuses and the test passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 172,
+          "message": "AC-6's named test still does not verify existing webhook and migration behavior with outbox state.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_existing_webhook_and_migration_tests_pass_with_outbox checks model metadata and whether two test files exist; it does not run or assert their behavior alongside outbox state.",
+            "failureScenario": "If delivery-history behavior regresses or the existing webhook and migration tests fail, these metadata and file-existence assertions still pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 5,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The prior replay bypass and full-outbox scan findings appear fixed. The named tests for AC-2, AC-3, AC-4, and AC-6 still do not exercise the production behaviors those criteria require.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 65,
+          "message": "AC-2's named test checks webhook/event pairs but does not verify that package and outbox rows are committed together.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_package_commit_creates_exact_outbox_pairs calls only _enqueue_package_outbox with a fake session. It does not invoke package ingestion or commit package and outbox rows together.",
+            "failureScenario": "If package ingestion omits the outbox call or commits package and outbox rows separately, the helper-only test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 75,
+          "message": "AC-2's insert-failure test does not exercise production rollback or verify the expected HTTP 500 response.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_outbox_insert_failure_rolls_back_transaction raises an exception from a fake session's add method and calls that fake's rollback. It never invokes ingestion or checks persisted rows or an HTTP response.",
+            "failureScenario": "If production ingestion commits a package row before an outbox insert fails, the test's manually cleared lists still pass and do not detect the partial commit or missing HTTP 500."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 106,
+          "message": "AC-3's test does not verify atomic rollback of package and outbox rows for a transaction identity.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_transaction_identity_rolls_back_atomically calls only its fake session's rollback method, which clears its own lists. It does not run the package transaction or database rollback.",
+            "failureScenario": "If production rollback leaves package rows without outbox rows, or outbox rows without package rows, this fake-session test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 127,
+          "message": "AC-4's named test does not exercise repeated delivery submissions or verify the resulting records.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique calls _delivery_replay_status with preset fake results. It does not submit repeated requests or inspect accepted ingest and outbox records.",
+            "failureScenario": "If repeated submissions create duplicate accepted ingest records or outbox identities, the preset helper results still match the assertions and the test passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 172,
+          "message": "AC-6's named test does not verify existing webhook and migration behavior with outbox state.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_existing_webhook_and_migration_tests_pass_with_outbox checks file existence and model metadata. It does not run or assert existing webhook, migration, or delivery-history behavior alongside outbox state.",
+            "failureScenario": "If delivery-history behavior regresses or existing webhook or migration tests fail, these existence and metadata assertions still pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 5,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The replay lookup now uses the dedicated delivery identity table, fixing the prior dependency on outbox rows; the full-table outbox scan is also gone. The previously raised transaction, replay, and existing-behavior test gaps remain.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 65,
+          "message": "AC-2's exact-pair test still does not verify that package and outbox rows are created and committed together.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The named test calls only _enqueue_package_outbox with a fake session; it does not run package ingestion or commit package and outbox rows together.",
+            "failureScenario": "If ingestion stops enqueueing intents or commits package and outbox rows separately, the helper-only assertions still pass, leaving AC-2 unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 75,
+          "message": "AC-2's forced insert-failure test still does not exercise production transaction rollback or the expected HTTP 500 response.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test manually adds a string to a fake session, forces an exception by adding a WebhookOutbox object, then calls the fake rollback. It does not invoke package ingestion or assert an HTTP 500 response.",
+            "failureScenario": "If production ingestion partially commits package rows when an outbox insert fails, this test still passes, leaving AC-2's failure behavior unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 106,
+          "message": "AC-3's rollback test still verifies only its fake rollback implementation, not atomic rollback of production rows for the transaction identity.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test initializes fake lists with strings and calls its own rollback method; it does not run the production package transaction or database rollback.",
+            "failureScenario": "If production rollback leaves package rows without outbox rows, or outbox rows without package rows, the fake lists still clear and the test passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 127,
+          "message": "AC-4's replay test still does not exercise repeated delivery submissions or verify the resulting package, ingest, and outbox records.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test calls _delivery_replay_status against preset fake query results; it does not submit repeated package requests or inspect accepted ingest and outbox records.",
+            "failureScenario": "If ingestion accepts a reused delivery identity or creates duplicate records, the helper's preset results still produce the expected statuses and the test passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 172,
+          "message": "AC-6's named test still does not verify existing webhook and migration behavior with outbox state.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test checks test-file existence and model imports; it does not run or assert existing webhook and migration behavior alongside outbox state.",
+            "failureScenario": "If delivery-history behavior regresses or an existing webhook or migration test fails, these existence and import assertions still pass."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
