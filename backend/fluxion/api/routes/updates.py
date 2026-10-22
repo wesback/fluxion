@@ -9,7 +9,7 @@ from typing import Any
 
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.database import get_session
@@ -56,6 +56,8 @@ async def authorize_batch_hostname(request: Request) -> dict[str, Any]:
     return {"role": role, "allowed_hosts": allowed_hosts or []}
 
 
+MAX_BATCH_PACKAGE_ITEMS = 100
+
 INSTALL_SENTINEL_OLD_VERSIONS = {
     "-",
     "n/a",
@@ -100,6 +102,11 @@ async def ingest_package_manager_updates(
         )
     try:
         normalized = adapter.normalize(payload)
+        if len(normalized.updates) > MAX_BATCH_PACKAGE_ITEMS:
+            raise HTTPException(
+                status_code=413,
+                detail="Batch package count exceeds 100",
+            )
         batch = BatchPackageUpdateRequest(
             hostname=normalized.hostname,
             os_info=normalized.os_info,
@@ -602,6 +609,11 @@ async def _create_batch_package_updates_impl(
     delivery_id: str | None = None,
 ) -> BatchPackageUpdateResponse:
     """Implementation of batch package update creation with tracing."""
+    if len(batch_data.updates) > MAX_BATCH_PACKAGE_ITEMS:
+        raise HTTPException(
+            status_code=413,
+            detail="Batch package count exceeds 100",
+        )
     try:
         request_payload = {
             "hostname": batch_data.hostname,
@@ -647,66 +659,52 @@ async def _create_batch_package_updates_impl(
         else:
             host, now = await _upsert_host(batch_data.hostname, session, batch_data.os_info)
 
-        # Create all package update records
-        created_ids: list[int] = []
+        # Insert all package rows with one SQLAlchemy bulk operation.
         package_changes: list[tuple[str, str | None, str, bool]] = []
-
+        package_rows: list[dict[str, Any]] = []
         for update_item in batch_data.updates:
-            # Normalize old_version sentinel values to None for new installs
             old_version = _normalize_old_version(update_item.old_version)
+            package_manager = batch_data.package_manager or update_item.package_manager
+            package_rows.append({
+                "host_id": host.id,
+                "package_name": update_item.package_name,
+                "old_version": old_version,
+                "new_version": update_item.new_version,
+                "is_security": update_item.is_security,
+                "package_manager": package_manager,
+                "update_timestamp": now,
+                "created_at": now,
+                "delivery_id": identity,
+            })
+            package_changes.append((
+                update_item.package_name,
+                old_version,
+                update_item.new_version,
+                update_item.is_security,
+            ))
 
-            # Insert package update with custom span
-            if tracer:
-                with tracer.start_as_current_span("insert_package_update") as span:
-                    span.set_attribute("package_name", update_item.package_name)
-                    span.set_attribute("host_id", host.id)
-                    package_update = await _insert_package_update(
-                        host.id,
-                        update_item.package_name,
-                        old_version,
-                        update_item.new_version,
-                        update_item.is_security,
-                        batch_data.package_manager or update_item.package_manager,
-                        now,
-                        session,
-                        identity,
-                    )
-            else:
-                package_update = await _insert_package_update(
-                    host.id,
-                    update_item.package_name,
-                    old_version,
-                    update_item.new_version,
-                    update_item.is_security,
-                    batch_data.package_manager or update_item.package_manager,
-                    now,
-                    session,
-                    identity,
-                )
+        if tracer:
+            with tracer.start_as_current_span("insert_package_updates"):
+                await session.execute(insert(PackageUpdate), package_rows)
+        else:
+            await session.execute(insert(PackageUpdate), package_rows)
 
-            created_ids.append(package_update.id)
-
-            # Track package changes for webhook triggering
-            package_changes.append(
-                (
-                    update_item.package_name,
-                    old_version,
-                    update_item.new_version,
-                    update_item.is_security,
-                )
+        ids_result = await session.execute(
+            select(PackageUpdate.id)
+            .where(
+                PackageUpdate.host_id == host.id,
+                PackageUpdate.delivery_id == identity,
             )
+            .order_by(PackageUpdate.id.asc())
+        )
+        created_ids = list(ids_result.scalars().all())
 
-            logger.debug(
-                f"Package update queued: host={batch_data.hostname}, "
-                f"package={update_item.package_name}, "
-                f"version={old_version}->{update_item.new_version}, "
-                f"id={package_update.id}"
-            )
-
+        for update_item, package_id in zip(batch_data.updates, created_ids, strict=True):
+            old_version = _normalize_old_version(update_item.old_version)
             await _enqueue_package_outbox(
                 session,
                 identity,
-                package_update.id,
+                package_id,
                 batch_data.hostname,
                 update_item.package_name,
                 old_version,
