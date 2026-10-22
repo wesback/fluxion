@@ -1,0 +1,307 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 129,
+  "branch": "ai-sdlc/issue-129",
+  "commitSha": "72ba9ed9ce4b90131a6be0d6b598ec1c2fd74df7",
+  "round": 2,
+  "pipelineVersion": "459fc5f",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The latest changes remove the process-local replay cache and distinguish outbox IDs per package, but batch replay can still return IDs from an unrelated delivery. The AC-2 and AC-3 tests also continue to exercise only the single-update endpoint.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 336,
+          "message": "Batch replay can return package IDs from another delivery. The query must identify rows created by the accepted delivery to satisfy the exact original-ID response contract.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_create_batch_package_updates_impl calls _batch_original_package_ids for a matching replay. The helper queries package rows by host and update fields, ordered by ID, but does not associate those rows with the supplied delivery identity.",
+            "failureScenario": "If the same package update was recorded under an earlier delivery ID, then delivery-A is accepted with that content, replaying delivery-A returns the earlier row's ID instead of exactly the ID created for delivery-A."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 159,
+          "message": "The AC-2 batch transaction and insert-failure behaviors remain untested: the named tests exercise only single-update ingestion and do not use the required SQLite insert-failure trigger.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test named for batch persistence posts to `/api/v1/updates`, which exercises the single-update route. The rollback test at line 187 also posts to that route and monkeypatches the outbox constructor instead of installing the specified SQLite trigger.",
+            "failureScenario": "If `/api/v1/updates/batch` omits an expected webhook pair or fails to roll back package, identity, diagnostic, and outbox rows after a database insert error, these tests still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 225,
+          "message": "The AC-3 replay contract remains unverified for the batch endpoint: its required batch cases and captured-SQL assertions are missing.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The replay-contract test submits requests only to `/api/v1/updates`; it does not exercise batch replay, capture SQL, or test a new identity with no matching webhook.",
+            "failureScenario": "If batch replay returns incorrect IDs, fails to persist an identity when no webhook matches, or selects outbox payload rows during lookup, this test still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The latest fix removes the process-local replay cache, but its database recovery query can return package IDs from another delivery. The updated tests still exercise the single-update route for AC-2 and AC-3, leaving the required batch behaviors unchecked.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 330,
+          "message": "Batch replay can return IDs from another delivery because the recovery query does not associate package rows with the accepted delivery identity.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_batch_original_package_ids looks up package updates by host and package fields, then returns the matching IDs without tying those rows to the accepted delivery identity.",
+            "failureScenario": "If an identical package update was recorded under another delivery ID before delivery-A was accepted, replaying delivery-A can return that earlier row's ID instead of exactly the IDs from delivery-A's original batch."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 154,
+          "message": "AC-2 remains unverified: the named tests exercise the single-update route and do not test batch persistence or trigger-based rollback.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_batch_commit_persists_exact_enabled_webhook_event_pairs and test_outbox_insert_failure_returns_500_and_rolls_back both POST to /api/v1/updates. The failure test replaces the WebhookOutbox constructor; neither submits a batch or installs the acceptance criterion's SQLite insert-failure trigger.",
+            "failureScenario": "If batch ingestion omits an outbox pair or a triggered outbox insert failure leaves batch package, identity, or diagnostic rows committed, these single-update tests still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 208,
+          "message": "AC-3 remains unverified: the named replay test does not exercise the batch endpoint or its required SQL lookup and no-webhook cases.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_delivery_identity_replay_contract submits only to /api/v1/updates and checks single-update responses. It does not exercise batch replay, capture the identity lookup SQL, or test a new identity when no webhook matches.",
+            "failureScenario": "If batch replay returns IDs unrelated to the accepted batch, selects outbox payload rows, or fails to persist an identity without a matching webhook, this test still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The change has no concrete injection or authentication vulnerability evident in the reviewed code. Batch replay can return unrelated package IDs, and the AC-2 and AC-3 tests still do not exercise the required batch behaviors.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/api/routes/updates.py",
+          "line": 328,
+          "message": "Batch replay can return package IDs from an unrelated earlier update, violating the requirement to return exactly the original IDs.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "_batch_original_package_ids finds package rows by host and update content, then returns the earliest matching IDs. It does not associate those rows with the accepted delivery identity.",
+            "failureScenario": "If an identical package update was recorded before delivery-A is accepted, replaying delivery-A can return that earlier row's ID instead of the ID created for delivery-A."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 157,
+          "message": "AC-2 remains unverified: the named tests do not exercise batch ingestion or the specified database insert-failure rollback.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_batch_commit_persists_exact_enabled_webhook_event_pairs posts to /api/v1/updates, the single-update route. The failure test also uses that route and replaces the outbox constructor instead of installing the required SQLite insert-failure trigger.",
+            "failureScenario": "If /api/v1/updates/batch omits an outbox pair or partially commits rows when an outbox insert fails, these tests can still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 202,
+          "message": "AC-3 remains unverified: the replay contract test does not exercise the required batch cases or assert the lookup query.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_delivery_identity_replay_contract submits requests only to /api/v1/updates. It does not test batch replay, capture the delivery-identity lookup SQL, or cover a new identity with no matching webhook.",
+            "failureScenario": "If batch replay returns incorrect IDs, scans outbox payloads, or fails to persist an identity when no webhook matches, this test can still pass."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
