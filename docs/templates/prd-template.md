@@ -42,6 +42,39 @@ license: "CC-BY 4.0 (Microsoft HVE-Core)"
 
 ---
 
+## Research Readiness
+
+Research status: `{{research_status}}`
+
+Rationale: {{research_rationale}}
+
+Research artifact: {{research_artifact_path_or_not_applicable}}
+
+Planning blockers: {{planning_blockers_or_none}}
+
+*Guidance*: Set Research status to `Required` when material requirements depend on external facts, unfamiliar APIs or
+platform behavior, consequential assumptions, or competing product or architecture choices. Otherwise set it to
+`Not required` and give the evidence-based rationale. For `Required`, complete bounded HVE Core RPI Research before
+PRD approval. Run the Research phase only; the pipeline's Functional Planner and AI-SDLC steps own story planning and
+implementation. Set `docs` as the trusted evidence root so the dated primary artifact is committed at
+`docs/research/YYYY-MM-DD/<task-slug>-research.md` in the same PR as this PRD. Record each material finding below and
+resolve every question that could change scope, behavior, security, or story order before setting the field to
+`Planning blockers: None`. A PRD merged for automatic planning must have no planning blockers.
+
+### Research Finding Dispositions
+
+{{research_finding_dispositions}}
+
+*Guidance*: When research is required, record one row for every material finding that affects the PRD. Keep the
+primary Research artifact authoritative for evidence and the PRD authoritative for requirement decisions. If the
+research produced no material findings, state that here with the reason.
+
+| Gap ID     | Evidence IDs | Affected targets              | Disposition                                                            | Rationale     | Primary research artifact   |
+|------------|--------------|-------------------------------|------------------------------------------------------------------------|---------------|-----------------------------|
+| `<Gap ID>` | `<C# / W#>`  | `<Section or requirement ID>` | `<Incorporated / Revised / Rejected / Deferred / Retained-assumption>` | `<Rationale>` | `docs/research/YYYY-MM-DD/<task-slug>-research.md` |
+
+---
+
 ## Product Context
 
 {{product_context_content}}
@@ -311,16 +344,6 @@ Target: `{{fr_to_goal_coverage_threshold_pct}}%`. Any gap requires an active wai
 | ID     | Assumption    | Evidence status                                | Impact if false | Mitigation     | Source                                  |
 |--------|---------------|------------------------------------------------|-----------------|----------------|-----------------------------------------|
 | `<ID>` | `<Statement>` | `<Untested / Partially supported / Evidenced>` | `<Impact>`      | `<Mitigation>` | `<Handoff, discovery, or evidence IDs>` |
-
-### Research Finding Dispositions
-
-{{research_finding_dispositions}}
-
-*Guidance*: Include this table when bounded `rpi-research` evidence was considered. Record one row per material finding. Keep the primary Research artifact authoritative for evidence and the PRD authoritative for requirement decisions.
-
-| Gap ID     | Evidence IDs | Affected targets              | Disposition                                                            | Rationale     | Primary research artifact   |
-|------------|--------------|-------------------------------|------------------------------------------------------------------------|---------------|-----------------------------|
-| `<Gap ID>` | `<C# / W#>`  | `<Section or requirement ID>` | `<Incorporated / Revised / Rejected / Deferred / Retained-assumption>` | `<Rationale>` | `<Workspace-relative path>` |
 
 ### Risk Register
 
