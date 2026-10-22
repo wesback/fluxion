@@ -1,5 +1,7 @@
 """Application configuration using Pydantic settings."""
 
+import math
+
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,9 +32,12 @@ class Settings(BaseSettings):
         if value is None:
             return value
         try:
-            return float(value)
+            parsed = float(value)
         except (TypeError, ValueError):
             raise ValueError("DB_POOL_TIMEOUT must be a number") from None
+        if not math.isfinite(parsed):
+            raise ValueError("DB_POOL_TIMEOUT must be a finite number")
+        return parsed
 
     @field_validator(
         "api_replicas", "db_pool_size", "db_max_overflow", "relay_pool_size",

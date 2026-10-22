@@ -40,6 +40,10 @@ _pool_active: metrics.UpDownCounter | None = None
 _pool_idle: metrics.UpDownCounter | None = None
 _pool_overflow: metrics.UpDownCounter | None = None
 _pool_checkout_waits: metrics.Counter | None = None
+_pool_last_active = 0
+_pool_last_idle = 0
+_pool_last_overflow = 0
+_pool_last_waited = 0
 
 
 def setup_telemetry() -> None:
@@ -264,15 +268,22 @@ def record_db_connection_change(delta: int) -> None:
 
 
 def record_pool_observability(active: int, idle: int, overflow: int, waited: int = 0) -> None:
-    """Record pool gauges and checkout waits without labels or caller data."""
+    """Record pool state changes and checkout saturation without caller data."""
+    global _pool_last_active, _pool_last_idle, _pool_last_overflow, _pool_last_waited
+
     if _pool_active is not None:
-        _pool_active.add(active)
+        _pool_active.add(active - _pool_last_active)
     if _pool_idle is not None:
-        _pool_idle.add(idle)
+        _pool_idle.add(idle - _pool_last_idle)
     if _pool_overflow is not None:
-        _pool_overflow.add(overflow)
-    if _pool_checkout_waits is not None and waited > 0:
-        _pool_checkout_waits.add(1)
+        _pool_overflow.add(overflow - _pool_last_overflow)
+    _pool_last_active = active
+    _pool_last_idle = idle
+    _pool_last_overflow = overflow
+
+    if _pool_checkout_waits is not None and waited > _pool_last_waited:
+        _pool_checkout_waits.add(waited - _pool_last_waited)
+    _pool_last_waited = waited
 
 
 def shutdown_telemetry() -> None:

@@ -88,9 +88,31 @@ def test_shutdown_telemetry():
 
 
 def test_pool_observability_contract():
-    """Pool metrics use fixed names and no caller-data labels."""
-    from fluxion.telemetry import record_pool_observability
-    record_pool_observability(active=2, idle=3, overflow=1, waited=1)
+    """Pool metrics use fixed names and record current state plus one wait event."""
+    import fluxion.telemetry as telemetry
+
+    calls = {"active": [], "idle": [], "overflow": [], "waits": []}
+
+    class Gauge:
+        def __init__(self, key): self.key = key
+        def add(self, value, attributes=None): calls[self.key].append((value, attributes))
+
+    telemetry._pool_active = Gauge("active")
+    telemetry._pool_idle = Gauge("idle")
+    telemetry._pool_overflow = Gauge("overflow")
+    telemetry._pool_checkout_waits = Gauge("waits")
+    telemetry._pool_last_active = 0
+    telemetry._pool_last_idle = 0
+    telemetry._pool_last_overflow = 0
+    telemetry._pool_last_waited = 0
+
+    telemetry.record_pool_observability(2, 3, 1, waited=1)
+    telemetry.record_pool_observability(2, 3, 1, waited=1)
+
+    assert calls["active"] == [(2, None), (0, None)]
+    assert calls["idle"] == [(3, None), (0, None)]
+    assert calls["overflow"] == [(1, None), (0, None)]
+    assert calls["waits"] == [(1, None)]
 
 
 def test_shutdown_telemetry_disabled():

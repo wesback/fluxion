@@ -30,8 +30,8 @@ def test_pool_configuration_contract():
             Settings(**values).validate_pool_startup()
 
 
-@pytest.mark.parametrize("replicas,api_total,relay_total,valid", [(1,8,4,True),(10,8,8,False),(0,7,7,False),(11,7,7,False),(1,7,7,True),(1,8,8,True),(1,9,7,False),(1,7,9,False)])
-def test_pool_replica_boundaries(replicas, api_total, relay_total, valid):
+@pytest.mark.parametrize("replicas,api_total,relay_total,aggregate,valid", [(-1,7,7,None,False),(0,7,7,None,False),(11,7,7,None,False),(1,7,7,14,True),(1,8,8,16,True),(1,9,7,None,False),(1,7,9,None,False),(9,8,7,79,True),(10,8,0,80,True),(10,8,1,81,False)])
+def test_pool_replica_boundaries(replicas, api_total, relay_total, aggregate, valid):
     values = dict(VALID, api_replicas=replicas, db_pool_size=api_total, db_max_overflow=0, relay_pool_size=relay_total)
     settings = Settings(**values)
     if valid:
@@ -52,6 +52,14 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     assert engine.sync_engine.pool._pre_ping is True
     assert engine.sync_engine.pool._recycle == 3600
     assert engine.sync_engine.pool._timeout == 5.0
+
+    from starlette.requests import Request
+    from sqlalchemy.exc import TimeoutError
+    from fluxion.main import pool_timeout_exception_handler
+
+    response = await pool_timeout_exception_handler(Request({"type": "http"}), TimeoutError())
+    assert response.status_code == 503
+    assert response.body == b'{"detail":"Database connection pool exhausted"}'
     await engine.dispose()
 
 
@@ -67,9 +75,22 @@ def test_pool_environment_contract(field):
 
 @pytest.mark.parametrize("aggregate", [79,80,81])
 def test_missing_pool_configuration_fails(aggregate):
+    api_total = 8
+    relay_total = 7 if aggregate == 79 else (0 if aggregate == 80 else 1)
+    replicas = 9 if aggregate == 79 else 10
+    values = dict(VALID, api_replicas=replicas, db_pool_size=api_total, db_max_overflow=0, relay_pool_size=relay_total)
     if aggregate == 81:
+        values = dict(VALID, api_replicas=10, db_pool_size=8, db_max_overflow=0, relay_pool_size=1)
         with pytest.raises(RuntimeError, match="Aggregate application"):
-            Settings(**dict(VALID, api_replicas=10, db_pool_size=7, db_max_overflow=1, relay_pool_size=8)).validate_pool_startup()
+            Settings(**values).validate_pool_startup()
+    else:
+        Settings(**values).validate_pool_startup()
+
+    for field in ("database_url", "db_pool_size", "db_max_overflow", "relay_pool_size", "api_replicas", "db_pool_timeout"):
+        missing = dict(VALID)
+        missing[field] = None
+        with pytest.raises((RuntimeError, ValueError)):
+            Settings(**missing).validate_pool_startup()
 
 
 def test_existing_pool_configuration_suite():

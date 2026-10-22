@@ -104,6 +104,25 @@ For detailed API documentation, see [docs/api/README.md](docs/api/README.md)
 - `GET /health` - Health check endpoint
 - `GET /ready` - Readiness check (verifies database connection)
 
+### Database pool settings
+
+All SQLAlchemy pool tuning is required at startup and is read only from environment variables. API and relay pool totals are bounded, and the startup validator rejects configurations that would allocate more than 80 application connections.
+
+| Variable | Required value |
+|----------|----------------|
+| `DATABASE_URL` | PostgreSQL connection URL with credentials |
+| `API_REPLICAS` | Integer from 1 through 10 |
+| `API_POOL_SIZE` | Non-negative base API pool size |
+| `API_MAX_OVERFLOW` | Non-negative API overflow |
+| `RELAY_POOL_SIZE` | Non-negative relay pool size, at most 8 |
+| `RELAY_WORKER_COUNT` | Integer relay worker count |
+| `DB_POOL_TIMEOUT` | Positive checkout timeout in seconds |
+| `DB_POOL_RECYCLE` | Non-negative recycle interval in seconds |
+| `POSTGRES_MAX_CONNECTIONS` | `100` |
+| `RESERVED_CONNECTIONS` | `20` |
+
+The API pool total (`API_POOL_SIZE + API_MAX_OVERFLOW`) must be at most 8, and `API_REPLICAS * API pool total + RELAY_POOL_SIZE` must be at most 80. Metrics expose only pool-state numbers and use no database URL or caller values as labels.
+
 ### Database Schema
 
 See the [main README](../README.md) for detailed schema documentation.

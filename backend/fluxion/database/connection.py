@@ -49,12 +49,18 @@ def get_pool_status() -> dict[str, int]:
     checked_out = getattr(pool, "checkedout", lambda: 0)()
     checked_in = getattr(pool, "checkedin", lambda: 0)()
     overflow = getattr(pool, "overflow", lambda: 0)()
-    return {
+    status = {
         "active": checked_out,
         "idle": checked_in,
         "overflow": max(0, overflow),
         "waited": get_pool_status.wait_count,
     }
+    try:
+        from fluxion.telemetry import record_pool_observability
+        record_pool_observability(status["active"], status["idle"], status["overflow"], status["waited"])
+    except Exception:
+        pass
+    return status
 
 
 get_pool_status.wait_count = 0
