@@ -96,8 +96,8 @@ Each rule comes from a story that stopped for a person because it was missing (D
   endpoint test add 60 to 150 lines each. An endpoint with its contract table and its performance or limit tests is two
   stories: the behaviour first, then a "tests only" story.
 - **Small enough.** Before implementation, estimate the changed lines including tests and record
-  `Expected size: about N changed lines, including tests.` A story likely to exceed 500 changed lines is split into
-  independent stories before implementation; every part is estimated at 500 lines or fewer.
+  `Expected size: about N changed lines, including tests.` A story likely to exceed 300 changed lines is split into
+  independent stories before implementation; every part is estimated at 300 lines or fewer.
 - **No wishlist or hedge words, even as ordinary words.** The Definition-of-Ready gate rejects `TBD`, `TODO`, `XXX`, `FIXME`,
   `???`, "not sure", "decide later", "to be determined", "to be decided", "up to the dev" and the word "placeholder"
   anywhere outside a fenced code block. Write "template field", "token" or "parameter" instead.
