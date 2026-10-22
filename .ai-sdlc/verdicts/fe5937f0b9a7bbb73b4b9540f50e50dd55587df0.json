@@ -1,0 +1,240 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 147,
+  "branch": "ai-sdlc/issue-147",
+  "commitSha": "fe5937f0b9a7bbb73b4b9540f50e50dd55587df0",
+  "round": 0,
+  "pipelineVersion": "9a3f750",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The route implementation appears to enforce the requested host-scope validation and updates. The tests leave required response-shape, narrowing, and listed-with-empty-hosts behavior unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_api_key_update.py",
+          "line": 90,
+          "message": "The test for the first acceptance criterion does not assert that a successful PATCH response matches one GET /admin/api-keys item. Assert the exact response body for a successful case.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_update_host_scope_contract checks the PATCH status and stored database values, but never checks the response body.",
+            "failureScenario": "If PATCH returns HTTP 200 with a response missing fields or values that differ from a GET item, this test still passes, so the required response shape is unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_api_key_update.py",
+          "line": 112,
+          "message": "The second acceptance criterion's required restriction scenario is not tested. Add the specified node1-to-node2 update and assert the node1 batch returns the exact 403 response and creates no package rows.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_update_takes_effect_and_requires_admin changes the key from listed to all, then posts a batch for a host outside the original list.",
+            "failureScenario": "If PATCH fails to apply a narrowed allowed_hosts list, the test never exercises that path: it does not update the key to allow node2 and then verify a batch for node1 is rejected with no package rows."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_api_key_update.py",
+          "line": 74,
+          "message": "The contract test omits the specified negative case. Add a test asserting that this request returns HTTP 422 and leaves the stored key unchanged.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_update_host_scope_contract's cases omit the acceptance criterion's negative case for changing an all-scope key with no hosts to listed while omitting allowed_hosts.",
+            "failureScenario": "If PATCH accepts {\"host_scope\":\"listed\"} for an all-scope key with an empty allowed_hosts list, none of the listed cases detects it."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The route’s update logic appears to implement the requested host-scope changes, but the named tests miss two required scenarios: rejecting an omitted-host transition to listed, and enforcing a changed host list on the next batch.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_api_key_update.py",
+          "line": 71,
+          "message": "The contract test omits the acceptance criterion’s required negative case: changing an all-scope key with no hosts to listed without sending allowed_hosts.",
+          "confidence": 0.91,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_update_host_scope_contract checks rejecting an empty allowed_hosts list for a key that is already listed, but does not send {\"host_scope\":\"listed\"} for an all-scope key with an empty host list.",
+            "failureScenario": "If updating an all-scope key to listed while omitting allowed_hosts incorrectly succeeds with an empty list, the named test still passes; the acceptance criterion requires HTTP 422 and no stored change for that input."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_api_key_update.py",
+          "line": 101,
+          "message": "The behavior test does not verify that a listed-host update takes effect on the next batch, including rejection of the formerly allowed host and absence of package rows.",
+          "confidence": 0.94,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_update_takes_effect_and_requires_admin changes the key from listed to all before its follow-up batch request. It never follows a listed-to-listed allowed_hosts update with a batch request.",
+            "failureScenario": "If authorization continues using cached allowed_hosts after a listed key is changed from [\"node1.example.test\"] to [\"node2.example.test\"], a batch for node1 is incorrectly accepted; the current test does not exercise that sequence or assert that no package rows were created."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "I found no direct security vulnerability in the route. The named behavior test misses the required post-update denial case for a changed listed-host allowlist.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_api_key_update.py",
+          "line": 120,
+          "message": "The named test does not cover the criterion’s negative case for changing a listed key’s allowed hosts. Add the PATCH-to-node2 then batch-for-node1 scenario and assert HTTP 403, the exact response body, and no package rows.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test PATCHes the key to host_scope=\"all\" and then checks that a batch succeeds. It never checks batch authorization after changing allowed_hosts on a listed key.",
+            "failureScenario": "If PATCH stores [\"node2.example.test\"] but batch authorization still accepts node1.example.test, the current test suite can pass. The acceptance criterion requires that request to return HTTP 403 with the exact denial body and create no package rows."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_api_key_update.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
