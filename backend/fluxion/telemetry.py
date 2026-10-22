@@ -14,6 +14,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import ConsoleMetricExporter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -36,6 +37,14 @@ _http_request_duration: metrics.Histogram | None = None
 _db_query_duration: metrics.Histogram | None = None
 _package_updates_counter: metrics.Counter | None = None
 _db_connections: metrics.UpDownCounter | None = None
+_pool_active: metrics.UpDownCounter | None = None
+_pool_idle: metrics.UpDownCounter | None = None
+_pool_overflow: metrics.UpDownCounter | None = None
+_pool_checkout_waits: metrics.Counter | None = None
+_pool_last_active = 0
+_pool_last_idle = 0
+_pool_last_overflow = 0
+_pool_last_waited = 0
 
 
 def setup_telemetry() -> None:
@@ -52,6 +61,12 @@ def setup_telemetry() -> None:
     global _tracer, _meter
 
     if not settings.otel_enabled:
+        _tracer = None
+        _meter = None
+        for name in ("_http_request_counter", "_http_request_duration", "_db_query_duration",
+                     "_package_updates_counter", "_db_connections", "_pool_active", "_pool_idle",
+                     "_pool_overflow", "_pool_checkout_waits"):
+            globals()[name] = None
         logger.info("OpenTelemetry is disabled")
         return
 
@@ -104,17 +119,17 @@ def _setup_tracing(resource: Resource) -> None:
 
 
 def _setup_metrics(resource: Resource) -> None:
-    """Configure metrics provider and exporters."""
-    # Metrics export disabled - Jaeger doesn't support OTLP metrics protocol
-    # For production, consider adding Prometheus or OpenTelemetry Collector
-    logger.info("Metrics export is disabled (not supported by Jaeger)")
-    return
+    """Configure an in-process metric provider with a console exporter."""
+    metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    metrics.set_meter_provider(meter_provider)
 
 
 def _initialize_metrics() -> None:
     """Initialize metric instruments."""
     global _http_request_counter, _http_request_duration
     global _db_query_duration, _package_updates_counter, _db_connections
+    global _pool_active, _pool_idle, _pool_overflow, _pool_checkout_waits
 
     if _meter is None:
         return
@@ -144,6 +159,10 @@ def _initialize_metrics() -> None:
         description="Number of active database connections",
         unit="1",
     )
+    _pool_active = _meter.create_up_down_counter(name="db_pool_active", description="Active pool connections", unit="1")
+    _pool_idle = _meter.create_up_down_counter(name="db_pool_idle", description="Idle pool connections", unit="1")
+    _pool_overflow = _meter.create_up_down_counter(name="db_pool_overflow", description="Pool overflow connections", unit="1")
+    _pool_checkout_waits = _meter.create_counter(name="db_pool_checkout_waits_total", description="Pool checkout saturation events", unit="1")
 
     # Business metrics
     _package_updates_counter = _meter.create_counter(
@@ -252,6 +271,25 @@ def record_db_connection_change(delta: int) -> None:
     """
     if _db_connections is not None:
         _db_connections.add(delta)
+
+
+def record_pool_observability(active: int, idle: int, overflow: int, waited: int = 0) -> None:
+    """Record pool state changes and checkout saturation without caller data."""
+    global _pool_last_active, _pool_last_idle, _pool_last_overflow, _pool_last_waited
+
+    if _pool_active is not None:
+        _pool_active.add(active - _pool_last_active)
+    if _pool_idle is not None:
+        _pool_idle.add(idle - _pool_last_idle)
+    if _pool_overflow is not None:
+        _pool_overflow.add(overflow - _pool_last_overflow)
+    _pool_last_active = active
+    _pool_last_idle = idle
+    _pool_last_overflow = overflow
+
+    if _pool_checkout_waits is not None and waited > _pool_last_waited:
+        _pool_checkout_waits.add(waited - _pool_last_waited)
+    _pool_last_waited = waited
 
 
 def shutdown_telemetry() -> None:

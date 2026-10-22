@@ -1,0 +1,307 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 137,
+  "branch": "ai-sdlc/issue-137",
+  "commitSha": "c9f7b2175ab3ad003179c0d89fdad85eab2950d1",
+  "round": 3,
+  "pipelineVersion": "9ce6923",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The round 4 changes improve the tests, but three previously reported acceptance-test gaps remain: the configured application pool is not exercised for checkout behavior, missing configuration is not tested through production startup, and the named existing-suite test runs only new tests.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 67,
+          "message": "Acceptance criterion 3 remains unverified for the configured application pool: exercise stale-connection recovery and saturation through a request that checks out from that pool.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test creates a separate SQLite QueuePool with a 0.01-second timeout and routes requests through it. The configured application engine created at line 62 is not used for checkout.",
+            "failureScenario": "If the configured application pool fails to replace a stale connection or does not return the required 503 when exhausted, this test still passes because only the separate SQLite pool is exercised."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 172,
+          "message": "Acceptance criterion 5 remains unverified through production startup. Run the application startup path with each required setting missing and assert that no database connection is created.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The missing-setting loop calls missing_settings.validate_pool_startup() directly; it never invokes the application's lifespan or startup path.",
+            "failureScenario": "If application startup performs database work before rejecting a missing setting, these assertions still pass because they only call the validator."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 182,
+          "message": "Acceptance criterion 7 remains unverified: this test reruns only the new configuration tests, not the existing pool or startup test suite.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The subprocess selects only tests from test_pool_configuration.py and the new test_pool_observability_contract; it does not run existing pool or startup tests.",
+            "failureScenario": "If an existing pool or startup test fails, test_existing_pool_configuration_suite still passes as long as the selected new tests pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The updated test now exercises a timed checkout through a request, and the checkin telemetry update addresses the prior stale snapshot finding. The stale-connection recovery, production startup failure, and existing pool/startup suite criteria remain unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 65,
+          "message": "Acceptance criterion 3 remains unverified for stale-connection recovery through the configured application pool. Exercise a stale checkout and assert that a subsequent valid request succeeds.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_pool_pre_ping_and_checkout_timeout exhausts a separate synchronous SQLite pool and sends a request to a test route. It does not check out a stale connection from the configured application engine.",
+            "failureScenario": "If pre-ping is enabled but fails to replace a stale connection from the application pool, the test still passes. The required stale-connection recovery behavior remains unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 149,
+          "message": "Acceptance criterion 5 remains unverified on the production startup path. Exercise application startup with missing settings and assert that it fails before any database work.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_missing_pool_configuration_fails calls connection.get_engine and then calls missing_settings.validate_pool_startup directly; it never invokes the application lifespan.",
+            "failureScenario": "If application startup performs database work before rejecting missing settings, this test still passes because it only checks the engine helper and validator."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 184,
+          "message": "Acceptance criterion 7 remains unverified: the named test does not run the existing pool or startup tests.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_existing_pool_configuration_suite launches pytest for the newly added pool configuration tests and the new telemetry test, but does not run existing pool or startup tests.",
+            "failureScenario": "If an existing pool or startup test fails or is contradicted by this change, this named test still passes as long as the selected new tests pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 4,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "No security vulnerability is evident in the reviewed delta. The listed acceptance-test gaps remain, including the three previously reported gaps and the still non-exact validation-message assertions.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 68,
+          "message": "Acceptance criterion 3 remains unverified through the production database path: the test exhausts a separate SQLite pool, so it cannot catch a failure in the configured engine's checkout timeout or request behavior.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test creates a separate SQLite pool with a 0.01-second timeout and a test-only route that checks out from that pool. It does not make a request that checks out from the configured application engine.",
+            "failureScenario": "If the production database checkout does not return the required 503 within its configured timeout, this test still passes because only the separate SQLite pool is exhausted."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 172,
+          "message": "Acceptance criterion 5 remains unverified on the production startup path: the test calls the validator directly instead of exercising lifespan startup and asserting zero database connections.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The missing-setting cases call validate_pool_startup directly; they do not invoke the application's lifespan or observe database work during startup.",
+            "failureScenario": "If application startup performs database work before rejecting a missing setting, these assertions still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 182,
+          "message": "Acceptance criterion 7 remains unverified: the named suite test runs only new tests, not the existing pool or startup tests.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The subprocess runs only the newly added pool configuration tests and the new telemetry test; it does not select existing pool or startup tests.",
+            "failureScenario": "If an existing pool or startup test fails or is contradicted by this change, this named test can still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_pool_configuration.py",
+          "line": 126,
+          "message": "The environment contract test still does not assert exact validation text; its regex can match a substring, and the non-integer case checks only the exception type.",
+          "confidence": 0.93,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "Negative-value cases use pytest.raises with an unanchored regex, and non-integer cases only assert that a ValueError occurs.",
+            "failureScenario": "If a negative environment value produces an error message with the expected phrase plus incorrect text, or a non-integer produces the wrong validation message, the test still passes despite criterion 6 requiring exact validation text."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_pool_configuration.py",
+      "backend/tests/test_telemetry.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

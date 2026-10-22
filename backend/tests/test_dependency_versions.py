@@ -14,6 +14,7 @@ DEPENDENCY_SNAPSHOT = {
     "sqlalchemy": {"version": "2.1.5", "prerelease": False, "requires_python": ">=3.11"},
     "alembic": {"version": "1.20.0", "prerelease": False, "requires_python": ">=3.10"},
     "asyncpg": {"version": "0.32.0", "prerelease": False, "requires_python": ">=3.9.0"},
+    "aiosqlite": {"version": "0.21.0", "prerelease": False, "requires_python": ">=3.9"},
     "psycopg2-binary": {"version": "2.9.13", "prerelease": False, "requires_python": ">=3.10"},
     "fastapi": {"version": "0.143.3", "prerelease": False, "requires_python": ">=3.10"},
     "uvicorn": {"version": "0.54.0", "prerelease": False, "requires_python": ">=3.10"},
