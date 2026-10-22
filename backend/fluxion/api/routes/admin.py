@@ -15,6 +15,8 @@ from fluxion.schemas.api_key import (
     CreateAPIKeyResponse,
     DeleteAPIKeyResponse,
     ListAPIKeysResponse,
+    UpdateAPIKeyRequest,
+    validate_allowed_host_list,
 )
 
 router = APIRouter()
@@ -161,6 +163,67 @@ async def list_api_keys(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list API keys",
+        ) from e
+
+
+@router.patch(
+    "/admin/api-keys/{key_id}",
+    response_model=APIKeyMetadata,
+    summary="Update an API key's host scope",
+)
+async def update_api_key_host_scope(
+    key_id: int,
+    key_data: UpdateAPIKeyRequest,
+    session: AsyncSession = Depends(get_session),
+) -> APIKeyMetadata:
+    try:
+        result = await session.execute(select(APIKey).where(APIKey.id == key_id))
+        api_key = result.scalar_one_or_none()
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"API key with ID {key_id} not found",
+            )
+
+        scope = key_data.host_scope if key_data.host_scope is not None else (api_key.host_scope or "listed")
+        if scope not in ("all", "listed"):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid host scope")
+
+        hosts = key_data.allowed_hosts if key_data.allowed_hosts is not None else (api_key.allowed_hosts or [])
+        if key_data.allowed_hosts is not None:
+            try:
+                hosts = validate_allowed_host_list(key_data.allowed_hosts) or []
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        if scope == "listed" and not hosts:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="A listed host scope requires at least one allowed host",
+            )
+
+        api_key.host_scope = scope
+        api_key.allowed_hosts = hosts
+        await session.commit()
+        await session.refresh(api_key)
+
+        return APIKeyMetadata(
+            id=api_key.id,
+            name=api_key.name,
+            role=api_key.role,
+            created_at=api_key.created_at,
+            last_used=api_key.last_used,
+            is_active=api_key.is_active,
+            allowed_hosts=api_key.allowed_hosts or [],
+            host_scope=api_key.host_scope or "listed",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Error updating API key {key_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update API key",
         ) from e
 
 

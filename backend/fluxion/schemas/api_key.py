@@ -7,6 +7,17 @@ import re
 from pydantic import BaseModel, Field, field_validator
 
 
+def validate_allowed_host_list(hosts: list[str] | None) -> list[str] | None:
+    if hosts is None:
+        return None
+    validated: list[str] = []
+    for host in hosts:
+        if not isinstance(host, str) or "*" in host or not re.fullmatch(r"[a-zA-Z0-9._-]+", host):
+            raise ValueError("Allowed hostnames may contain only alphanumeric characters, dots, hyphens, and underscores and no wildcard")
+        validated.append(host.lower())
+    return validated
+
+
 class CreateAPIKeyRequest(BaseModel):
     """Request schema for creating a new API key."""
 
@@ -20,13 +31,14 @@ class CreateAPIKeyRequest(BaseModel):
     @field_validator("allowed_hosts")
     @classmethod
     def validate_allowed_hosts(cls, hosts: list[str]) -> list[str]:
-        validated: list[str] = []
-        for host in hosts:
-            if "*" in host or not re.match(r"^[a-zA-Z0-9._-]+$", host):
-                raise ValueError("Allowed hostnames may contain only alphanumeric characters, dots, hyphens, and underscores and no wildcard")
-            validated.append(host.lower())
-        return validated
+        return validate_allowed_host_list(hosts) or []
 
+
+class UpdateAPIKeyRequest(BaseModel):
+    """Request schema for changing API key host authorization."""
+
+    host_scope: str | None = Field(default=None, description="Hostname authorization scope")
+    allowed_hosts: list[str] | None = Field(default=None, description="Exact hostnames allowed for batch ingest")
 
 
 class CreateAPIKeyResponse(BaseModel):
