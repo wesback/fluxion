@@ -1,0 +1,209 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 148,
+  "branch": "ai-sdlc/issue-148",
+  "commitSha": "993ac3edb76e8b0ced03c83447cd60179890d65f",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The authorization dependency and case-insensitive comparison address the requested behavior. The named tests leave the no-write requirement partially unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_single_update_host_authorization.py",
+          "line": 147,
+          "message": "The named tests do not prove the no-write requirement for refused requests. Assert zero rows for PackageUpdate, Host, DeliveryIdentity, and WebhookOutbox after each 403 case in both named tests.",
+          "confidence": 0.94,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The negative cases assert the 403 response; test_single_update_host_scope_contract checks row counts only for PackageUpdate and Host, while test_hostname_match_ignores_case_only does not check row counts.",
+            "failureScenario": "If a regression writes a DeliveryIdentity or WebhookOutbox row before returning 403, the named tests still pass, despite the acceptance criteria requiring refused requests to write no rows."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The implementation adds the host check to single-package ingest and makes listed-host comparison case-insensitive. The rejection tests do not fully verify the acceptance criteria’s no-write guarantee.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_single_update_host_authorization.py",
+          "line": 150,
+          "message": "The rejection tests do not verify that denied requests leave all four persisted row types unchanged. Assert zero rows for PackageUpdate, Host, DeliveryIdentity, and WebhookOutbox after each rejected request.",
+          "confidence": 0.96,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_hostname_match_ignores_case_only checks the 403 status and body for rejected hostnames but does not query persisted rows. In test_single_update_host_scope_contract, the row counts are collected for four models, but only PackageUpdate and Host are asserted at line 133.",
+            "failureScenario": "If either route writes a DeliveryIdentity or WebhookOutbox row before returning 403 for a suffix or prefix hostname, the tests still pass. The acceptance criteria require rejected requests to write no host, package, delivery-identity, or outbox rows."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The authorization changes appear to enforce case-insensitive listed-host matching. The hostname contract test does not check that forbidden requests leave storage unchanged.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_single_update_host_authorization.py",
+          "line": 142,
+          "message": "The test named for the case-insensitive hostname criterion does not verify its negative cases leave no rows written, as the criterion requires.",
+          "confidence": 0.94,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_hostname_match_ignores_case_only posts forbidden hostnames to both routes, then checks only the status and response body.",
+            "failureScenario": "If either route writes a host, package, delivery identity, or outbox row before returning 403 for a suffix or prefix hostname, this test still passes because it never checks row counts."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 3,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/tests/test_batch_host_authorization.py",
+      "backend/tests/test_single_update_host_authorization.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_batch_host_authorization.py",
+      "backend/tests/test_single_update_host_authorization.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
