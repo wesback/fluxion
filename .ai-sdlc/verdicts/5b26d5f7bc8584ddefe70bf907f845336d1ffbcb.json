@@ -1,0 +1,248 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 137,
+  "branch": "ai-sdlc/issue-137",
+  "commitSha": "5b26d5f7bc8584ddefe70bf907f845336d1ffbcb",
+  "round": 2,
+  "pipelineVersion": "9ce6923",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The previously reported telemetry test gap remains: the test manufactures observations through direct recorder calls instead of verifying measurements emitted by runtime pool activity and timeout handling.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_telemetry.py",
+          "line": 91,
+          "message": "The pool telemetry acceptance criterion remains unverified on the runtime path. Exercise get_engine() pool events and the application's timeout handler with an in-process metric reader, then assert the required measurements and attributes.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_pool_observability_contract calls record_pool_observability(), record_pool_checkout_wait(), and record_pool_state() directly with synthetic values; it does not collect measurements from get_engine() pool events or exercise the application's timeout handler.",
+            "failureScenario": "If runtime checkout, checkin, or timeout handling stops emitting the required measurements or emits incorrect values or attributes, this test still passes because it verifies only direct recorder calls."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The previously reported telemetry test gap remains: the test uses synthetic recorder calls instead of observing measurements from runtime pool activity and timeout handling.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_telemetry.py",
+          "line": 91,
+          "message": "The telemetry test still bypasses the runtime pool events and timeout handler required by the acceptance criterion. Exercise those production paths and assert measurements through an in-process metric reader.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "`test_pool_observability_contract` calls `record_pool_observability()` and `record_pool_state()` directly with synthetic values. It does not collect measurements through `get_engine()` pool events or the application's timeout handler.",
+            "failureScenario": "If runtime checkout, checkin, or timeout handling stops emitting the required measurements, reports incorrect values, or includes caller or secret data in metric attributes, this test still passes because it verifies only direct recorder calls."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The reported telemetry test gap remains: its assertions do not verify measurements emitted by runtime pool activity or timeout handling.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_telemetry.py",
+          "line": 91,
+          "message": "The telemetry test still bypasses the runtime pool events and timeout handler required by the acceptance criterion. Exercise those production paths and assert measurements through an in-process metric reader.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_pool_observability_contract uses fake instruments and directly calls record_pool_checkout_wait() and record_pool_state(); it does not collect measurements from get_engine() pool events or the application's timeout handler.",
+            "failureScenario": "If runtime checkout, checkin, or timeout handling stops emitting measurements or emits incorrect values or attributes, the test still passes because it verifies manually invoked recorder calls."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-green",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 0,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": false,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "assertion",
+    "greenExit": 1,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_pool_configuration.py",
+      "backend/tests/test_telemetry.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
