@@ -45,6 +45,18 @@ def test_outbox_schema_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         assert indexes["ix_webhook_outbox_next_attempt_at"]["column_names"] == ["next_attempt_at"]
         unique = {tuple(c["column_names"]) for c in inspector.get_unique_constraints("webhook_outbox")}
         assert ("delivery_id",) in unique
+        identity_columns = {c["name"] for c in inspector.get_columns("webhook_delivery_identities")}
+        assert identity_columns == {"delivery_id", "fingerprint", "created_at"}
+        identity_pk = inspector.get_pk_constraint("webhook_delivery_identities")
+        assert identity_pk["constrained_columns"] == ["delivery_id"]
+        assert models.WebhookOutbox.__table__.name == "webhook_outbox"
+        assert models.DeliveryIdentity.__table__.name == "webhook_delivery_identities"
+        assert set(models.WebhookOutbox.__table__.c.keys()) == columns | {"id"}
+        assert set(models.DeliveryIdentity.__table__.c.keys()) == identity_columns
+        assert models.DeliveryIdentity.__table__.primary_key.columns.keys() == ["delivery_id"]
+        assert {index.name for index in models.WebhookOutbox.__table__.indexes} >= {
+            "ix_webhook_outbox_status", "ix_webhook_outbox_next_attempt_at"
+        }
         connection.execute(sa.text("INSERT INTO webhook_outbox (delivery_id, webhook_config_id, event_type, payload, status, attempt_count, next_attempt_at, created_at, updated_at) VALUES ('same', 1, 'package_update', '{}', 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
         with pytest.raises(sa.exc.IntegrityError):
             connection.execute(sa.text("INSERT INTO webhook_outbox (delivery_id, webhook_config_id, event_type, payload, status, attempt_count, next_attempt_at, created_at, updated_at) VALUES ('same', 1, 'package_update', '{}', 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
@@ -143,7 +155,7 @@ async def _state(ingest) -> dict[str, int]:
     }
 
 
-async def test_package_commit_creates_exact_outbox_pairs(ingest) -> None:
+async def test_batch_commit_persists_exact_enabled_webhook_event_pairs(ingest) -> None:
     response = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "delivery-123"})
 
     assert response.status_code == 201
@@ -166,7 +178,7 @@ async def _webhook_names(ingest) -> list[tuple[int, str]]:
         return [(row.id, row.name) for row in session.execute(sa.select(models.WebhookConfig)).scalars().all()]
 
 
-async def test_outbox_insert_failure_rolls_back_transaction(ingest, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_outbox_insert_failure_returns_500_and_rolls_back(ingest, monkeypatch: pytest.MonkeyPatch) -> None:
     def failing_outbox(**_kwargs):
         raise RuntimeError("forced outbox insert failure")
 
@@ -207,7 +219,7 @@ async def test_transaction_identity_rolls_back_atomically(ingest, monkeypatch: p
     assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
 
 
-async def test_replayed_delivery_identity_is_unique(ingest) -> None:
+async def test_delivery_identity_replay_contract(ingest) -> None:
     headers = {"X-Delivery-ID": "delivery-A"}
 
     first = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers=headers)
@@ -228,31 +240,39 @@ async def test_replayed_delivery_identity_is_unique(ingest) -> None:
     assert len(delivery_ids) == len(set(delivery_ids)) == 2
 
 
-def test_outbox_migration_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_outbox_migration_round_trip_preserves_application_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     migration = _load_migration()
     engine = sa.create_engine(f"sqlite:///{tmp_path}/roundtrip.sqlite")
     with engine.begin() as connection:
         connection.execute(sa.text("CREATE TABLE hosts (id INTEGER PRIMARY KEY, hostname TEXT)"))
         connection.execute(sa.text("CREATE TABLE package_updates (id INTEGER PRIMARY KEY, package_name TEXT)"))
-        connection.execute(sa.text("CREATE TABLE webhook_configs (id INTEGER PRIMARY KEY)"))
-        connection.execute(sa.text("CREATE TABLE webhook_delivery_history (id INTEGER PRIMARY KEY)"))
-        connection.execute(sa.text("INSERT INTO hosts (hostname) VALUES ('host-a')"))
-        connection.execute(sa.text("INSERT INTO package_updates (package_name) VALUES ('openssl')"))
-        connection.execute(sa.text("INSERT INTO webhook_configs DEFAULT VALUES"))
-        connection.execute(sa.text("INSERT INTO webhook_delivery_history DEFAULT VALUES"))
+        connection.execute(sa.text("CREATE TABLE webhook_configs (id INTEGER PRIMARY KEY, name TEXT)"))
+        connection.execute(sa.text("CREATE TABLE webhook_delivery_history (id INTEGER PRIMARY KEY, event_type TEXT)"))
+        connection.execute(sa.text("INSERT INTO hosts (id, hostname) VALUES (41, 'host-a')"))
+        connection.execute(sa.text("INSERT INTO package_updates (id, package_name) VALUES (51, 'openssl')"))
+        connection.execute(sa.text("INSERT INTO webhook_configs (id, name) VALUES (11, 'primary')"))
+        connection.execute(sa.text("INSERT INTO webhook_delivery_history (id, event_type) VALUES (71, 'package_update')"))
         context = MigrationContext.configure(connection)
         monkeypatch.setattr(migration, "op", Operations(context))
         migration.upgrade()
         assert sa.inspect(connection).has_table("webhook_outbox")
         assert sa.inspect(connection).has_table("webhook_delivery_identities")
         connection.execute(sa.text("INSERT INTO webhook_delivery_identities (delivery_id, fingerprint, created_at) VALUES ('delivery-A', 'payload-A', CURRENT_TIMESTAMP)"))
+        connection.execute(sa.text("INSERT INTO webhook_outbox (delivery_id, webhook_config_id, event_type, payload, status, attempt_count, next_attempt_at, created_at, updated_at) VALUES ('delivery-A', 11, 'package_update', '{}', 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
         migration.downgrade()
         assert "webhook_outbox" not in sa.inspect(connection).get_table_names()
         assert "webhook_delivery_identities" not in sa.inspect(connection).get_table_names()
-        assert connection.execute(sa.text("SELECT COUNT(*) FROM hosts")).scalar_one() == 1
-        assert connection.execute(sa.text("SELECT COUNT(*) FROM package_updates")).scalar_one() == 1
-        assert connection.execute(sa.text("SELECT COUNT(*) FROM webhook_configs")).scalar_one() == 1
-        assert connection.execute(sa.text("SELECT COUNT(*) FROM webhook_delivery_history")).scalar_one() == 1
+        assert connection.execute(sa.text("SELECT id, hostname FROM hosts")).fetchall() == [(41, "host-a")]
+        assert connection.execute(sa.text("SELECT id, package_name FROM package_updates")).fetchall() == [(51, "openssl")]
+        assert connection.execute(sa.text("SELECT id, name FROM webhook_configs")).fetchall() == [(11, "primary")]
+        assert connection.execute(sa.text("SELECT id, event_type FROM webhook_delivery_history")).fetchall() == [(71, "package_update")]
+        remaining_indexes = {
+            index["name"]
+            for table_name in sa.inspect(connection).get_table_names()
+            for index in sa.inspect(connection).get_indexes(table_name)
+        }
+        assert "ix_webhook_outbox_status" not in remaining_indexes
+        assert "ix_webhook_outbox_next_attempt_at" not in remaining_indexes
     engine.dispose()
 
 
