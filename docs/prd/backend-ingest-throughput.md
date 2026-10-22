@@ -2,7 +2,7 @@
 prd_id: "PRD-BACKEND-INGEST-THROUGHPUT"
 title: "Backend Ingest Throughput and Webhook Reliability"
 status: "draft"
-version: "0.1.0"
+version: "0.2.0"
 owners: ["Wesley Backelant"]
 reviewers: ["Neo", "Trinity", "Tank", "Dozer"]
 created_date: "2026-10-22"
@@ -27,7 +27,7 @@ license: "CC-BY 4.0 (Microsoft HVE-Core)"
 
 # Backend Ingest Throughput and Webhook Reliability
 
-> **PRD-BACKEND-INGEST-THROUGHPUT** | Status: draft | Version: 0.1.0 | Last Updated: 2026-10-22
+> **PRD-BACKEND-INGEST-THROUGHPUT** | Status: draft | Version: 0.2.0 | Last Updated: 2026-10-22
 
 ## Executive Summary
 
@@ -389,3 +389,11 @@ This PRD defines implementation requirements for existing Fluxion architecture. 
 - Template Version: 1.0.0
 - Canonical Template: `docs/templates/prd-template.md`
 - License: CC-BY 4.0 (Microsoft HVE-Core)
+
+
+## Design Decisions
+
+| ID | Decision |
+| --- | --- |
+| DD-001 | Add an allowed-host list to each API key; user keys may submit a batch only for hostnames in the exact allowlist and admin keys may submit only when the existing admin role policy authorizes the target hostname. An API key that does not authorize a requested hostname returns HTTP 403 exactly and creates zero package and outbox rows. |
+| DD-002 | Treat PostgreSQL max_connections as 100. Reserve 20 connections for migrations, administrators, and maintenance, then allocate the remaining 80 connections across API and relay replicas. For up to 10 API replicas and one relay replica, each API replica uses pool_size plus max_overflow no greater than 8, and the relay worker pool uses no more than 8 connections; total application connections never exceed 80. Missing or aggregate-invalid configuration stops startup. |
