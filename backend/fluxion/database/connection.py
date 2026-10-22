@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.exc import TimeoutError as PoolTimeout
+from sqlalchemy import event
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -38,6 +38,9 @@ def get_engine() -> AsyncEngine:
             pool_recycle=settings.db_pool_recycle,
             pool_timeout=settings.db_pool_timeout,
         )
+        event.listen(_engine.sync_engine, "checkout", lambda *args: get_pool_status())
+        event.listen(_engine.sync_engine, "checkin", lambda *args: get_pool_status())
+        get_pool_status()
     return _engine
 
 

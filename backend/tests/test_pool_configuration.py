@@ -1,3 +1,8 @@
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from fluxion.config import Settings
@@ -64,34 +69,70 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
 
 
 @pytest.mark.parametrize("field", ["api_replicas","db_pool_size","db_max_overflow","relay_pool_size","relay_worker_count","db_pool_timeout","db_pool_recycle","postgres_max_connections","reserved_connections"])
-def test_pool_environment_contract(field):
-    value = "not-an-integer" if field != "db_pool_timeout" else "not-a-number"
-    try:
-        Settings(**dict(VALID, **{field: value}))
-    except ValueError:
-        return
-    raise AssertionError("non-numeric pool setting was accepted")
+def test_pool_environment_contract(monkeypatch, field):
+    env_names = {
+        "api_replicas": "API_REPLICAS", "db_pool_size": "API_POOL_SIZE",
+        "db_max_overflow": "API_MAX_OVERFLOW", "relay_pool_size": "RELAY_POOL_SIZE",
+        "relay_worker_count": "RELAY_WORKER_COUNT", "db_pool_timeout": "DB_POOL_TIMEOUT",
+        "db_pool_recycle": "DB_POOL_RECYCLE", "postgres_max_connections": "POSTGRES_MAX_CONNECTIONS",
+        "reserved_connections": "RESERVED_CONNECTIONS",
+    }
+    for env_name in env_names.values():
+        monkeypatch.delenv(env_name, raising=False)
+    for name, value in VALID.items():
+        env_name = env_names.get(name, name.upper())
+        monkeypatch.setenv(env_name, str(value))
+    monkeypatch.setenv(env_names[field], "not-a-number")
+    with pytest.raises(ValueError):
+        Settings().validate_pool_startup()
+
+    monkeypatch.setenv(env_names[field], "-1" if field != "db_pool_timeout" else "-1")
+    settings = Settings()
+    with pytest.raises((RuntimeError, ValueError)):
+        settings.validate_pool_startup()
+
+    for name, value in VALID.items():
+        env_name = env_names.get(name, name.upper())
+        monkeypatch.setenv(env_name, str(value))
+    monkeypatch.setenv("API_REPLICAS", "10")
+    monkeypatch.setenv("API_POOL_SIZE", "8")
+    monkeypatch.setenv("API_MAX_OVERFLOW", "0")
+    monkeypatch.setenv("RELAY_POOL_SIZE", "1")
+    with pytest.raises(RuntimeError, match="Aggregate application pool allocation"):
+        Settings().validate_pool_startup()
 
 
 @pytest.mark.parametrize("aggregate", [79,80,81])
-def test_missing_pool_configuration_fails(aggregate):
+def test_missing_pool_configuration_fails(monkeypatch, aggregate):
     api_total = 8
     relay_total = 7 if aggregate == 79 else (0 if aggregate == 80 else 1)
     replicas = 9 if aggregate == 79 else 10
     values = dict(VALID, api_replicas=replicas, db_pool_size=api_total, db_max_overflow=0, relay_pool_size=relay_total)
     if aggregate == 81:
         values = dict(VALID, api_replicas=10, db_pool_size=8, db_max_overflow=0, relay_pool_size=1)
-        with pytest.raises(RuntimeError, match="Aggregate application"):
+        with pytest.raises(RuntimeError, match="Aggregate application pool allocation"):
             Settings(**values).validate_pool_startup()
     else:
         Settings(**values).validate_pool_startup()
 
+    import fluxion.database.connection as connection
+    monkeypatch.setattr(connection, "_engine", None)
+    monkeypatch.setattr(connection, "_sessionmaker", None)
+    calls = []
+    monkeypatch.setattr(connection, "create_async_engine", lambda *args, **kwargs: calls.append((args, kwargs)))
+
     for field in ("database_url", "db_pool_size", "db_max_overflow", "relay_pool_size", "api_replicas", "db_pool_timeout"):
         missing = dict(VALID)
         missing[field] = None
+        missing_settings = Settings(**missing)
+        monkeypatch.setattr(connection, "settings", missing_settings)
         with pytest.raises((RuntimeError, ValueError)):
-            Settings(**missing).validate_pool_startup()
-
+            connection.get_engine()
+    assert calls == []
 
 def test_existing_pool_configuration_suite():
     Settings(**VALID).validate_pool_startup()
+
+    for pool_test in ("tests/test_pool_configuration.py::test_pool_configuration_contract", "tests/test_pool_configuration.py::test_pool_replica_boundaries"):
+        completed = subprocess.run([sys.executable, "-m", "pytest", "-q", pool_test], cwd=str(Path(__file__).resolve().parent.parent), capture_output=True, text=True)
+        assert completed.returncode == 0, completed.stdout + completed.stderr
