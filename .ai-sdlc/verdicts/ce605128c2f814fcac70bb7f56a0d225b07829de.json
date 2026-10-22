@@ -1,0 +1,277 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 129,
+  "branch": "ai-sdlc/issue-129",
+  "commitSha": "ce605128c2f814fcac70bb7f56a0d225b07829de",
+  "round": 3,
+  "pipelineVersion": "459fc5f",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The latest code change associates package rows with their delivery identity, addressing the prior unrelated-ID replay finding. The AC-2 and AC-3 tests still exercise only the single-update route and leave the required batch behaviors unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 159,
+          "message": "AC-2 remains unverified: its named tests do not exercise batch persistence or trigger-based rollback.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The tests named for AC-2 post to /api/v1/updates, the single-update route. They do not exercise /api/v1/updates/batch or install the required SQLite BEFORE INSERT failure trigger.",
+            "failureScenario": "If batch ingestion omits an expected webhook pair or a database outbox insert failure leaves batch rows committed, these tests still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 225,
+          "message": "AC-3 remains unverified: the replay contract test does not cover the required batch cases or assert the lookup query.",
+          "confidence": 1,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_delivery_identity_replay_contract submits requests only to /api/v1/updates. It does not exercise batch replay, capture the delivery-identity lookup SQL, or test a new identity when no webhook matches.",
+            "failureScenario": "If batch replay returns incorrect IDs, selects outbox payload rows, or fails to persist an identity without a matching webhook, this test still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The round-4 code change associates package rows with their delivery identity, addressing the prior replay-ID finding. The AC-2 and AC-3 tests still exercise only the single-update route and omit the specified batch failure and replay cases.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 159,
+          "message": "AC-2's required batch commit and database-trigger rollback cases remain untested.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The test named for batch persistence posts to `/api/v1/updates`, the single-update route. The rollback test also uses that route and replaces the outbox constructor instead of installing the required SQLite insert-failure trigger.",
+            "failureScenario": "If `/api/v1/updates/batch` omits an expected webhook/event pair or fails to roll back package, identity, diagnostic, and outbox rows after an insert error, these tests can still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 225,
+          "message": "AC-3's batch replay contract cases and captured-SQL assertions remain untested.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The replay contract test submits requests only to `/api/v1/updates`; it does not exercise batch replay, capture lookup SQL, or test a new delivery identity when no webhook matches.",
+            "failureScenario": "If batch replay returns incorrect IDs, selects outbox payload rows, or fails to persist an identity when no webhook matches, this test can still pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The latest code change associates package rows with their delivery identity, addressing the prior replay-ID defect. The previously reported AC-2 and AC-3 test gaps remain.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 159,
+          "message": "AC-2's batch transaction and trigger-based rollback behaviors remain untested.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The batch persistence and insert-failure tests still POST to /api/v1/updates. The failure test replaces the WebhookOutbox constructor; neither exercises the batch endpoint or installs the specified SQLite insert-failure trigger.",
+            "failureScenario": "If /api/v1/updates/batch omits an expected outbox pair, or an outbox insert failure leaves batch package, identity, or diagnostic rows committed, these tests still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 225,
+          "message": "AC-3's batch replay contract remains unverified.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The replay contract test submits requests only to /api/v1/updates. It does not exercise batch replay, capture the delivery-identity lookup SQL, or test a new identity when no webhook matches.",
+            "failureScenario": "If batch replay returns incorrect IDs, selects outbox payload rows during lookup, or fails to persist an identity without a matching webhook, this test still passes."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
