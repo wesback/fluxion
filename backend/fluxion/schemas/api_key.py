@@ -12,6 +12,7 @@ class CreateAPIKeyRequest(BaseModel):
         ..., min_length=1, max_length=255, description="Name/description for the API key"
     )
     role: str = Field(default="user", description="Role for the API key (user or admin)")
+    allowed_hosts: list[str] | None = Field(default=None, max_length=1000)
 
 
 class CreateAPIKeyResponse(BaseModel):
@@ -20,6 +21,7 @@ class CreateAPIKeyResponse(BaseModel):
     id: int = Field(..., description="ID of the created API key")
     name: str = Field(..., description="Name of the API key")
     role: str = Field(..., description="Role of the API key")
+    allowed_hosts: list[str] | None = None
     api_key: str = Field(..., description="The generated API key (only shown once)")
     message: str = Field(..., description="Success message")
 
@@ -33,7 +35,7 @@ class APIKeyMetadata(BaseModel):
     created_at: datetime = Field(..., description="When the key was created")
     last_used: datetime | None = Field(None, description="When the key was last used")
     is_active: bool = Field(..., description="Whether the key is active")
-
+    allowed_hosts: list[str] | None = Field(default=None, description="Allowed canonical hostnames")
 
 class ListAPIKeysResponse(BaseModel):
     """Response schema for listing API keys."""

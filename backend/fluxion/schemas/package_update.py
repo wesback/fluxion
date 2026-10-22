@@ -1,6 +1,7 @@
 """Pydantic schemas for package update endpoints."""
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -8,8 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class PackageUpdateItem(BaseModel):
     """Single package update item (without hostname)."""
 
-    model_config = ConfigDict(
-        json_schema_extra={
+    model_config = ConfigDict(extra="forbid", strict=True, json_schema_extra={
             "example": {
                 "package_name": "nginx",
                 "old_version": "1.18.0",
@@ -28,17 +28,15 @@ class PackageUpdateItem(BaseModel):
         default=False,
         description="Whether this package update comes from a security update channel",
     )
-    package_manager: str | None = Field(
-        None,
-        max_length=32,
-        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
+    package_manager: Literal["apt", "dnf", "yum", "apk", "zypper"] | None = Field(
+        None, description="Optional normalized package manager",
     )
 
 
 class PackageUpdateRequest(BaseModel):
     """Request schema for package update webhook."""
 
-    model_config = ConfigDict(
+    model_config = ConfigDict(extra="forbid", strict=True,
         json_schema_extra={
             "example": {
                 "hostname": "server01",
@@ -66,10 +64,8 @@ class PackageUpdateRequest(BaseModel):
         default=False,
         description="Whether this package update comes from a security update channel",
     )
-    package_manager: str | None = Field(
-        None,
-        max_length=32,
-        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
+    package_manager: Literal["apt", "dnf", "yum", "apk", "zypper"] | None = Field(
+        None, description="Optional normalized package manager",
     )
 
     @field_validator("hostname")
@@ -86,7 +82,7 @@ class PackageUpdateRequest(BaseModel):
 class PackageUpdateResponse(BaseModel):
     """Response schema for successful package update."""
 
-    model_config = ConfigDict(
+    model_config = ConfigDict(extra="forbid", strict=True,
         json_schema_extra={
             "example": {"id": 123, "message": "Package update recorded successfully"}
         }
@@ -107,7 +103,7 @@ class HealthResponse(BaseModel):
 class ReadinessResponse(BaseModel):
     """Response schema for readiness check endpoint."""
 
-    model_config = ConfigDict(
+    model_config = ConfigDict(extra="forbid", strict=True,
         json_schema_extra={"example": {"status": "ready", "database": "connected"}}
     )
 
@@ -118,7 +114,7 @@ class ReadinessResponse(BaseModel):
 class BatchPackageUpdateRequest(BaseModel):
     """Request schema for batch package updates."""
 
-    model_config = ConfigDict(
+    model_config = ConfigDict(extra="forbid", strict=True,
         json_schema_extra={
             "example": {
                 "hostname": "server01",
@@ -148,13 +144,11 @@ class BatchPackageUpdateRequest(BaseModel):
         max_length=500,
         description="Operating system information (auto-detected if not provided)",
     )
-    package_manager: str | None = Field(
-        None,
-        max_length=32,
-        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
+    package_manager: Literal["apt", "dnf", "yum", "apk", "zypper"] | None = Field(
+        None, description="Optional normalized package manager",
     )
     updates: list[PackageUpdateItem] = Field(
-        ..., min_length=1, description="List of package updates"
+        ..., min_length=1, max_length=100, description="List of package updates (maximum 100)"
     )
 
     @field_validator("hostname")
@@ -179,7 +173,7 @@ class BatchPackageUpdateRequest(BaseModel):
 class BatchPackageUpdateResponse(BaseModel):
     """Response schema for batch package update."""
 
-    model_config = ConfigDict(
+    model_config = ConfigDict(extra="forbid", strict=True,
         json_schema_extra={
             "example": {
                 "hostname": "server01",

@@ -6,6 +6,16 @@ from fluxion.schemas.package_update import BatchPackageUpdateRequest, PackageUpd
 from fluxion.schemas.webhook import WebhookConfigCreate, WebhookConfigUpdate
 
 
+def test_malformed_batch_contract():
+    """Batch contracts reject null identifiers and malformed package fields."""
+    with pytest.raises(ValueError):
+        BatchPackageUpdateRequest(hostname="node.example.com", updates=[{"package_name": None, "new_version": "2"}])
+    with pytest.raises(ValueError):
+        BatchPackageUpdateRequest(hostname="node.example.com", updates=[{"package_name": "x" * 256, "new_version": "2"}])
+    with pytest.raises(ValueError):
+        BatchPackageUpdateRequest(hostname="node.example.com", package_manager="rpm", updates=[{"package_name": "pkg", "new_version": "2"}])
+
+
 class TestHostnameValidation:
     """Tests for hostname validation."""
 

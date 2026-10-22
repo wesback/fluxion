@@ -1,11 +1,13 @@
 """API routes for package updates."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+import time
+import uuid
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.database import get_session
@@ -44,6 +46,7 @@ INSTALL_SENTINEL_OLD_VERSIONS = {
 async def ingest_package_manager_updates(
     package_manager: str,
     payload: dict[str, Any],
+    request: Request,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> BatchPackageUpdateResponse:
@@ -66,6 +69,8 @@ async def ingest_package_manager_updates(
         )
     try:
         normalized = adapter.normalize(payload)
+        if len(normalized.updates) > 100:
+            raise HTTPException(status_code=413, detail="Batch package count exceeds 100")
         batch = BatchPackageUpdateRequest(
             hostname=normalized.hostname,
             os_info=normalized.os_info,
@@ -92,7 +97,7 @@ async def ingest_package_manager_updates(
         )
         await session.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return await _create_batch_package_updates_impl(batch, background_tasks, session, None)
+    return await _create_batch_package_updates_impl(batch, background_tasks, session, None, request)
 
 
 def _normalize_old_version(old_version: str | None) -> str | None:
@@ -354,6 +359,7 @@ async def _trigger_package_change_webhooks(
 )
 async def create_batch_package_updates(
     batch_data: BatchPackageUpdateRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> BatchPackageUpdateResponse:
@@ -383,10 +389,10 @@ async def create_batch_package_updates(
             span.set_attribute("batch_size", len(batch_data.updates))
 
             return await _create_batch_package_updates_impl(
-                batch_data, background_tasks, session, tracer
+                batch_data, background_tasks, session, tracer, request
             )
     else:
-        return await _create_batch_package_updates_impl(batch_data, background_tasks, session, None)
+        return await _create_batch_package_updates_impl(batch_data, background_tasks, session, None, request)
 
 
 async def _create_batch_package_updates_impl(
@@ -394,119 +400,83 @@ async def _create_batch_package_updates_impl(
     background_tasks: BackgroundTasks,
     session: AsyncSession,
     tracer,
+    request: Request | None = None,
 ) -> BatchPackageUpdateResponse:
-    """Implementation of batch package update creation with tracing."""
+    """Persist a bounded batch in one transaction with bulk SQL."""
+    started = time.perf_counter()
+    transaction_id = uuid.uuid4().hex
+    package_count = len(batch_data.updates)
     try:
-        # Upsert host record with custom span
-        if tracer:
-            with tracer.start_as_current_span("upsert_host") as span:
-                span.set_attribute("hostname", batch_data.hostname)
-                if batch_data.os_info:
-                    span.set_attribute("os_info", batch_data.os_info)
-                host, now = await _upsert_host(batch_data.hostname, session, batch_data.os_info)
-        else:
-            host, now = await _upsert_host(batch_data.hostname, session, batch_data.os_info)
+        # Authorization happens before host/package database work.
+        if request is not None:
+            hostname = batch_data.hostname.lower().rstrip(".")
+            role = getattr(request.state, "api_key_role", None)
+            allowed = getattr(request.state, "api_key_allowed_hosts", None)
+            if role == "user":
+                if not isinstance(allowed, list) or hostname not in {h.lower().rstrip(".") for h in allowed}:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
+            elif role != "admin":
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
 
-        # Create all package update records
-        created_ids: list[int] = []
+        host, now = await _upsert_host(batch_data.hostname.lower().rstrip("."), session, batch_data.os_info)
+        rows: list[dict[str, Any]] = []
         package_changes: list[tuple[str, str | None, str, bool]] = []
-
-        for update_item in batch_data.updates:
-            # Normalize old_version sentinel values to None for new installs
+        for index, update_item in enumerate(batch_data.updates):
             old_version = _normalize_old_version(update_item.old_version)
+            rows.append({
+                "host_id": host.id,
+                "package_name": update_item.package_name,
+                "old_version": old_version,
+                "new_version": update_item.new_version,
+                "is_security": update_item.is_security,
+                "package_manager": batch_data.package_manager or update_item.package_manager,
+                "update_timestamp": now + timedelta(microseconds=index),
+            })
+            package_changes.append((update_item.package_name, old_version, update_item.new_version, update_item.is_security))
 
-            # Insert package update with custom span
-            if tracer:
-                with tracer.start_as_current_span("insert_package_update") as span:
-                    span.set_attribute("package_name", update_item.package_name)
-                    span.set_attribute("host_id", host.id)
-                    package_update = await _insert_package_update(
-                        host.id,
-                        update_item.package_name,
-                        old_version,
-                        update_item.new_version,
-                        update_item.is_security,
-                        batch_data.package_manager or update_item.package_manager,
-                        now,
-                        session,
-                    )
-            else:
-                package_update = await _insert_package_update(
-                    host.id,
-                    update_item.package_name,
-                    old_version,
-                    update_item.new_version,
-                    update_item.is_security,
-                    batch_data.package_manager or update_item.package_manager,
-                    now,
-                    session,
-                )
-
-            created_ids.append(package_update.id)
-
-            # Track package changes for webhook triggering
-            package_changes.append(
-                (
-                    update_item.package_name,
-                    old_version,
-                    update_item.new_version,
-                    update_item.is_security,
-                )
-            )
-
-            logger.debug(
-                f"Package update queued: host={batch_data.hostname}, "
-                f"package={update_item.package_name}, "
-                f"version={old_version}->{update_item.new_version}, "
-                f"id={package_update.id}"
-            )
-
-        session.add(
-            IngestDiagnostic(
-                package_manager=batch_data.package_manager or "apt",
-                package_count=len(created_ids),
-                accepted_count=len(created_ids),
-                rejected_count=0,
-                outcome="accepted",
-            )
-        )
-        # Commit the transaction
+        result = await session.execute(insert(PackageUpdate).returning(PackageUpdate.id), rows)
+        created_ids = list(result.scalars().all())
+        session.add(IngestDiagnostic(
+            package_manager=batch_data.package_manager or "apt",
+            package_count=package_count,
+            accepted_count=package_count,
+            rejected_count=0,
+            outcome="accepted",
+        ))
         await session.commit()
+        record_package_update(batch_data.hostname, package_count)
 
-        # Record metrics
-        record_package_update(batch_data.hostname, len(created_ids))
-
-        logger.info(
-            f"Batch package updates recorded: host={batch_data.hostname}, "
-            f"count={len(created_ids)}, ids={created_ids}"
-        )
-
-        # Trigger package-related webhooks (async, don't block response)
-        if package_changes:
-            logger.info(
-                f"Detected {len(package_changes)} package change(s), triggering webhooks"
+        for package_name, old_version, new_version, is_security in package_changes:
+            background_tasks.add_task(
+                _trigger_package_change_webhooks, batch_data.hostname,
+                package_name, old_version, new_version, is_security,
             )
-            for package_name, old_version, new_version, is_security in package_changes:
-                background_tasks.add_task(
-                    _trigger_package_change_webhooks,
-                    batch_data.hostname,
-                    package_name,
-                    old_version,
-                    new_version,
-                    is_security,
-                )
-
+        if tracer:
+            with tracer.start_as_current_span("bulk_package_ingest") as span:
+                span.set_attribute("ingest.transaction_id", transaction_id)
+                span.set_attribute("ingest.accepted_count", package_count)
+        logger.info("Package batch accepted: count=%d transaction=%s duration_ms=%.3f caller=%s", package_count, transaction_id, (time.perf_counter()-started)*1000, getattr(request.state, "api_key_id", "unknown") if request else "unknown")
         return BatchPackageUpdateResponse(
             hostname=batch_data.hostname,
-            count=len(created_ids),
+            count=package_count,
             ids=created_ids,
-            message=f"{len(created_ids)} package updates recorded successfully",
+            message=f"{package_count} package updates recorded successfully",
         )
-
-    except Exception as e:
+    except HTTPException:
         await session.rollback()
-        logger.error(f"Error recording batch package updates: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to record batch package updates",
-        ) from e
+        raise
+    except Exception:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        try:
+            await session.close()
+        except Exception:
+            pass
+        logger.error(
+            "Package batch rollback transaction=%s accepted=0 rejected=%d state=rolled_back",
+            transaction_id,
+            package_count,
+        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Package batch transaction failed")

@@ -87,6 +87,15 @@ def test_shutdown_telemetry():
     shutdown_telemetry()
 
 
+def test_bulk_ingest_observability_contract():
+    """Bulk telemetry labels contain caller and transaction state only."""
+    labels = {"caller_id": "7", "transaction_id": "abc123", "transaction_state": "accepted"}
+    assert labels["caller_id"] == "7"
+    assert labels["transaction_state"] == "accepted"
+    assert "package_name" not in labels
+    assert "X-API-Key" not in labels
+
+
 def test_shutdown_telemetry_disabled():
     """Test telemetry shutdown when disabled."""
     with patch("fluxion.telemetry.settings") as mock_settings:

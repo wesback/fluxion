@@ -65,6 +65,7 @@ async def create_api_key(
             name=key_data.name,
             key_hash=key_hash,
             role=key_data.role,
+            allowed_hosts=key_data.allowed_hosts,
             is_active=True,
         )
         session.add(api_key_obj)
@@ -80,6 +81,7 @@ async def create_api_key(
             id=api_key_obj.id,
             name=api_key_obj.name,
             role=api_key_obj.role,
+            allowed_hosts=api_key_obj.allowed_hosts,
             api_key=api_key,
             message=(
                 "API key created successfully. Save this key securely - "
@@ -134,6 +136,7 @@ async def list_api_keys(
                     created_at=key.created_at,
                     last_used=key.last_used,
                     is_active=key.is_active,
+                    allowed_hosts=key.allowed_hosts,
                 )
                 for key in api_keys
             ],

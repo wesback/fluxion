@@ -103,6 +103,15 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
+        # Reject oversized batch contracts before authentication/database work.
+        if request.url.path == "/api/v1/updates/batch" or request.url.path.startswith("/api/v1/updates/ingest/"):
+            try:
+                body = await request.json()
+                if isinstance(body, dict) and isinstance(body.get("updates"), list) and len(body["updates"]) > 100:
+                    return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content={"detail": "Batch package count exceeds 100"})
+            except Exception:
+                pass
+
         # Get API key from header
         api_key = request.headers.get("X-API-Key")
         if not api_key:
@@ -147,6 +156,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 request.state.api_key_id = key_obj.id
                 request.state.api_key_name = key_obj.name
                 request.state.api_key_role = key_obj.role
+                request.state.api_key_allowed_hosts = key_obj.allowed_hosts
 
                 # Add API key info to OpenTelemetry span if available
                 try:
