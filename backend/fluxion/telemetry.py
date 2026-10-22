@@ -146,7 +146,7 @@ def _initialize_metrics() -> None:
     )
 
     _http_request_duration = _meter.create_histogram(
-        name="http_request_duration_seconds",
+        name="http_request_duration",
         description="HTTP request duration in seconds",
         unit="s",
     )
@@ -265,15 +265,9 @@ def record_http_request(endpoint: str, method: str, status_code: int, duration: 
 
 
 def record_package_update(hostname: str, count: int = 1) -> None:
-    """
-    Record package update metrics.
-
-    Args:
-        hostname: Host that received the update
-        count: Number of packages updated (default: 1)
-    """
+    """Record package updates without request-derived metric attributes."""
     if _package_updates_counter is not None:
-        _package_updates_counter.add(count, attributes={"hostname": hostname})
+        _package_updates_counter.add(count)
 
 
 def record_package_batch_rows(result: str, count: int) -> None:

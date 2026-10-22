@@ -104,6 +104,9 @@ async def ingest_package_manager_updates(
         raw_updates = payload.get("updates") if payload.get("updates") else payload.get("packages")
         if not isinstance(raw_updates, list):
             raise ValueError("updates must be a list")
+        payload_manager = payload.get("package_manager")
+        if payload_manager is not None and payload_manager not in {"apt", "dnf", "yum", "apk", "zypper", "pacman"}:
+            raise ValueError("unsupported package_manager")
         for item in raw_updates:
             if not isinstance(item, dict):
                 raise ValueError("update item must be an object")
@@ -112,6 +115,9 @@ async def ingest_package_manager_updates(
                 raise ValueError("update contains unsupported fields")
             package_name = item.get("package_name") if "package_name" in item else item.get("name") or item.get("package")
             new_version = item.get("new_version") if "new_version" in item else item.get("new") or item.get("version")
+            item_manager = item.get("package_manager")
+            if item_manager is not None and item_manager not in {"apt", "dnf", "yum", "apk", "zypper", "pacman"}:
+                raise ValueError("unsupported package_manager")
             if not isinstance(package_name, str) or not package_name or len(package_name) > 255:
                 raise ValueError("invalid package_name")
             if not isinstance(new_version, str) or not new_version or len(new_version) > 255:
@@ -748,8 +754,8 @@ async def _create_batch_package_updates_impl(
 
         # Record metrics
         record_package_batch_rows("accepted", len(created_ids))
+        record_package_batch_rows("rejected", 0)
         record_package_batch_transaction("committed", time.perf_counter() - transaction_started)
-        record_package_update(batch_data.hostname, len(created_ids))
 
         logger.info(
             f"Batch package updates recorded: host={batch_data.hostname}, "
@@ -785,6 +791,7 @@ async def _create_batch_package_updates_impl(
         raise
     except Exception as e:
         await session.rollback()
+        record_package_batch_rows("accepted", 0)
         record_package_batch_rows("rejected", len(batch_data.updates))
         record_package_batch_transaction("rolled_back", time.perf_counter() - transaction_started)
         logger.error(f"Error recording batch package updates: {str(e)}", exc_info=True)
