@@ -3,6 +3,7 @@
 import json
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 STANDARD_PROFILE = {
     "client_count": 50,
@@ -42,6 +43,21 @@ def _metadata(parameters: Mapping[str, Any]) -> dict[str, Any]:
     return values
 
 
+def _target_url_is_safe(value: str) -> bool:
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in ("http", "https") or parsed.username is not None or parsed.password is not None:
+            return False
+        sensitive_names = {"access_token", "api_key", "apikey", "auth", "credential", "password", "secret", "token"}
+        for name, _ in parse_qsl(parsed.query, keep_blank_values=True):
+            normalized = name.lower().replace("-", "_")
+            if normalized in sensitive_names or normalized.endswith(("_token", "_key", "_secret", "_password", "_credential")):
+                return False
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def validate_load_report(report: Mapping[str, Any], parameters: Mapping[str, Any]) -> dict[str, Any]:
     """Validate all required evidence and exact runner metadata; never publish on error."""
     if not isinstance(report, Mapping):
@@ -51,9 +67,12 @@ def validate_load_report(report: Mapping[str, Any], parameters: Mapping[str, Any
     undeclared_fields = set(report) - set(REPORT_FIELDS)
     if undeclared_fields:
         raise LoadReportContractError()
-    for field in ("target_url", "data_set_version", "test_data_version"):
+    for field in ("data_set_version", "test_data_version"):
         if not isinstance(report.get(field), str) or not report[field].strip():
             raise LoadReportContractError()
+    target_url = report.get("target_url")
+    if not isinstance(target_url, str) or not target_url.strip() or not _target_url_is_safe(target_url):
+        raise LoadReportContractError()
 
     expected = _metadata(parameters)
     for field, expected_value in expected.items():
@@ -154,4 +173,19 @@ def generate_load_report(parameters: Mapping[str, Any], measurements: Mapping[st
 validate_report = validate_load_report
 build_report = build_load_report
 make_report = generate_load_report
-render_json_report = lambda report: json.dumps(report, sort_keys=True)
+
+
+def render_json_report(report: Mapping[str, Any], parameters: Mapping[str, Any] | None = None) -> str:
+    """Serialize only validated, declared report fields."""
+    if parameters is not None:
+        validated = validate_load_report(report, parameters)
+    else:
+        if not isinstance(report, Mapping) or set(report) - set(REPORT_FIELDS):
+            raise LoadReportContractError()
+        if any(field not in report or report.get(field) is None for field in REPORT_FIELDS):
+            raise LoadReportContractError()
+        target_url = report.get("target_url")
+        if not isinstance(target_url, str) or not _target_url_is_safe(target_url):
+            raise LoadReportContractError()
+        validated = dict(report)
+    return json.dumps(validated, sort_keys=True)

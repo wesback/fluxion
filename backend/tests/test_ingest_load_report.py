@@ -6,6 +6,7 @@ from scripts.ingest_load_report import (
     LoadReportContractError,
     compare_latency,
     publish_load_report,
+    render_json_report,
 )
 
 
@@ -116,6 +117,18 @@ def test_documented_standard_profile_and_report_fields():
     extra["runner_credential"] = "secret"
     with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
         publish_load_report(valid_parameters(), extra)
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        render_json_report(extra)
+
+    credential_url = valid_report()
+    credential_url["target_url"] = "https://user:secret@ingest.example/api/v1/updates"
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        publish_load_report(valid_parameters(), credential_url)
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        publish_load_report(valid_parameters(), {
+            **credential_url,
+            "target_url": "https://ingest.example/api/v1/updates?api_key=secret",
+        })
 
     for field in (
         "request_count", "package_count", "throughput", "http_error_count",
