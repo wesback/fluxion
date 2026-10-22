@@ -1,16 +1,12 @@
 from pathlib import Path
+import sys
 
 import pytest
 
-from scripts.ingest_load_report import (
-    LoadReportContractError,
-    compare_latency,
-    publish_load_report,
-    render_json_report,
-)
-
-
 ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 
 def valid_parameters():
@@ -41,6 +37,17 @@ def valid_report():
 
 
 def test_load_report_contract():
+    try:
+        from scripts.ingest_load_report import (
+            LoadReportContractError,
+            build_load_report,
+            publish_load_report,
+            render_human_report,
+            render_json_report,
+        )
+    except ModuleNotFoundError as exc:
+        pytest.fail(f"ingestion load report helper is unavailable: {exc}")
+
     json_output, text_output = publish_load_report(valid_parameters(), valid_report(), baseline=100.0)
     assert '"request_count": 1200' in json_output
     assert "request_count: 1200" in text_output
@@ -56,8 +63,44 @@ def test_load_report_contract():
     with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
         publish_load_report(valid_parameters(), mismatched)
 
+    url_cases = (
+        ("https://ingest.example/api/v1/updates", True),
+        ("https://user:secret@ingest.example/api/v1/updates", False),
+        ("https://ingest.example/api/v1/updates?authKey=secret", False),
+        ("https://ingest.example/api/v1/updates?jwt=secret", False),
+        ("https://ingest.example/api/v1/updates?authorization=secret", False),
+        ("https://ingest.example/api/v1/updates?key=secret", False),
+        ("https://ingest.example/api/v1/updates?sig=secret", False),
+        ("https://ingest.example/api/v1/updates#secret", False),
+    )
+    for target_url, accepted in url_cases:
+        report = {**valid_report(), "target_url": target_url}
+        parameters = {**valid_parameters(), "target_url": target_url}
+        if accepted:
+            assert target_url in render_json_report(report, parameters)
+            assert build_load_report(parameters, report, baseline=100.0)[0]
+            assert publish_load_report(parameters, report, baseline=100.0)[0]
+            assert target_url in render_human_report(report)
+        else:
+            for output in (
+                lambda: render_json_report(report, parameters),
+                lambda: render_human_report(report),
+                lambda: build_load_report(parameters, report, baseline=100.0),
+                lambda: publish_load_report(parameters, report, baseline=100.0),
+            ):
+                with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+                    output()
+
 
 def test_latency_improvement_or_waiver_contract():
+    try:
+        from scripts.ingest_load_report import (
+            LoadReportContractError,
+            compare_latency,
+            publish_load_report,
+        )
+    except ModuleNotFoundError as exc:
+        pytest.fail(f"ingestion load report helper is unavailable: {exc}")
     improved = compare_latency(baseline=100.0, report={"p95_latency": 69.0})
     assert improved["success_verdict"] == "p95 latency at least 30 percent lower"
     assert improved["before_p95_latency"] == 100.0
@@ -100,6 +143,15 @@ def test_latency_improvement_or_waiver_contract():
 
 
 def test_documented_standard_profile_and_report_fields():
+    try:
+        from scripts.ingest_load_report import (
+            LoadReportContractError,
+            publish_load_report,
+            render_json_report,
+        )
+    except ModuleNotFoundError as exc:
+        pytest.fail(f"ingestion load report helper is unavailable: {exc}")
+
     readme = (ROOT / "backend/scripts/README.md").read_text()
     evidence = (ROOT / "docs/evidence/backend-ingest-load-profile.md").read_text()
     script = (ROOT / "backend/scripts/ingest_load_report.py").read_text()

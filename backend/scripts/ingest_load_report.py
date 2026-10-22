@@ -3,7 +3,7 @@
 import json
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import urlsplit
 
 STANDARD_PROFILE = {
     "client_count": 50,
@@ -46,21 +46,16 @@ def _metadata(parameters: Mapping[str, Any]) -> dict[str, Any]:
 def _target_url_is_safe(value: str) -> bool:
     try:
         parsed = urlsplit(value)
-        if parsed.scheme not in ("http", "https") or parsed.username is not None or parsed.password is not None:
-            return False
-        sensitive_names = {
-            "access_key", "access_key_id", "access_token", "api_key", "apikey",
-            "auth", "authorization", "credential", "key", "password", "secret",
-            "sig", "signature", "token", "x_amz_credential", "x_amz_security_token",
-            "x_amz_signature",
-        }
-        for name, _ in parse_qsl(parsed.query, keep_blank_values=True):
-            normalized = name.lower().replace("-", "_")
-            if normalized in sensitive_names or normalized.endswith((
-                "_token", "_key", "_secret", "_password", "_credential", "_signature",
-            )):
-                return False
-        return True
+        return (
+            parsed.scheme in ("http", "https")
+            and parsed.netloc
+            and parsed.username is None
+            and parsed.password is None
+            and not parsed.query
+            and not parsed.fragment
+            and "?" not in value
+            and "#" not in value
+        )
     except (TypeError, ValueError):
         return False
 
@@ -89,6 +84,18 @@ def validate_load_report(report: Mapping[str, Any], parameters: Mapping[str, Any
 
 
 def render_human_report(report: Mapping[str, Any]) -> str:
+    if not isinstance(report, Mapping):
+        raise LoadReportContractError()
+    if any(field not in report or report.get(field) is None for field in REPORT_FIELDS):
+        raise LoadReportContractError()
+    if set(report) - set(REPORT_FIELDS) - {"latency_comparison"}:
+        raise LoadReportContractError()
+    for field in ("data_set_version", "test_data_version"):
+        if not isinstance(report.get(field), str) or not report[field].strip():
+            raise LoadReportContractError()
+    target_url = report.get("target_url")
+    if not isinstance(target_url, str) or not target_url.strip() or not _target_url_is_safe(target_url):
+        raise LoadReportContractError()
     lines = [f"{field}: {report[field]}" for field in REPORT_FIELDS]
     comparison = report.get("latency_comparison")
     if isinstance(comparison, Mapping):
@@ -191,8 +198,11 @@ def render_json_report(report: Mapping[str, Any], parameters: Mapping[str, Any] 
             raise LoadReportContractError()
         if any(field not in report or report.get(field) is None for field in REPORT_FIELDS):
             raise LoadReportContractError()
+        for field in ("data_set_version", "test_data_version"):
+            if not isinstance(report.get(field), str) or not report[field].strip():
+                raise LoadReportContractError()
         target_url = report.get("target_url")
-        if not isinstance(target_url, str) or not _target_url_is_safe(target_url):
+        if not isinstance(target_url, str) or not target_url.strip() or not _target_url_is_safe(target_url):
             raise LoadReportContractError()
         validated = dict(report)
     return json.dumps(validated, sort_keys=True)
