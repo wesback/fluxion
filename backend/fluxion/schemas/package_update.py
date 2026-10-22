@@ -31,7 +31,7 @@ class PackageUpdateItem(BaseModel):
     package_manager: str | None = Field(
         None,
         max_length=32,
-        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
+        description="Optional normalized package manager: apt, dnf, yum, apk, zypper, or pacman",
     )
 
 
@@ -69,7 +69,7 @@ class PackageUpdateRequest(BaseModel):
     package_manager: str | None = Field(
         None,
         max_length=32,
-        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
+        description="Optional normalized package manager: apt, dnf, yum, apk, zypper, or pacman",
     )
 
     @field_validator("hostname")
@@ -151,7 +151,7 @@ class BatchPackageUpdateRequest(BaseModel):
     package_manager: str | None = Field(
         None,
         max_length=32,
-        description="Optional normalized package manager: apt, dnf, yum, apk, or zypper",
+        description="Optional normalized package manager: apt, dnf, yum, apk, zypper, or pacman",
     )
     updates: list[PackageUpdateItem] = Field(
         ..., min_length=1, description="List of package updates"
