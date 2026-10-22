@@ -2,7 +2,9 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class CreateAPIKeyRequest(BaseModel):
@@ -12,6 +14,17 @@ class CreateAPIKeyRequest(BaseModel):
         ..., min_length=1, max_length=255, description="Name/description for the API key"
     )
     role: str = Field(default="user", description="Role for the API key (user or admin)")
+    allowed_hosts: list[str] = Field(default_factory=list, description="Exact hostnames allowed for batch ingest")
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def validate_allowed_hosts(cls, hosts: list[str]) -> list[str]:
+        validated: list[str] = []
+        for host in hosts:
+            if "*" in host or not re.match(r"^[a-zA-Z0-9._-]+$", host):
+                raise ValueError("Allowed hostnames may contain only alphanumeric characters, dots, hyphens, and underscores and no wildcard")
+            validated.append(host.lower())
+        return validated
 
 
 class CreateAPIKeyResponse(BaseModel):
@@ -33,6 +46,7 @@ class APIKeyMetadata(BaseModel):
     created_at: datetime = Field(..., description="When the key was created")
     last_used: datetime | None = Field(None, description="When the key was last used")
     is_active: bool = Field(..., description="Whether the key is active")
+    allowed_hosts: list[str] = Field(default_factory=list, description="Exact hostnames allowed for batch ingest")
 
 
 class ListAPIKeysResponse(BaseModel):

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from fluxion.models.base import Base
@@ -35,6 +35,7 @@ class APIKey(Base):
     role: Mapped[str] = mapped_column(
         String(50), nullable=False, default="user", index=True
     )
+    allowed_hosts: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
     def __repr__(self) -> str:
         """String representation of APIKey."""

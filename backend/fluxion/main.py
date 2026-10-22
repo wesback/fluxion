@@ -160,9 +160,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         JSONResponse with validation error details
     """
     logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
+    # A field validator's ValueError sits in "ctx" and is not JSON-serialisable; returning it made the response a 500.
+    errors = [{key: value for key, value in error.items() if key != "ctx"} for error in exc.errors()]
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": "Validation error", "errors": exc.errors()},
+        content={"detail": "Validation error", "errors": errors},
     )
 
 
