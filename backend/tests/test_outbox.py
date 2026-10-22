@@ -14,14 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import fluxion.api.routes.updates as updates_module
-from fluxion.models import (
-    DeliveryIdentity,
-    Host,
-    PackageUpdate,
-    WebhookConfig,
-    WebhookDeliveryHistory,
-    WebhookOutbox,
-)
+import fluxion.models as models
 from fluxion.models.base import Base
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -109,11 +102,11 @@ async def ingest():
     factory = sessionmaker(engine, expire_on_commit=False)
     with factory() as seed:
         seed.add_all([
-            WebhookConfig(name="both", url="https://a.example/hook", enabled=True,
+            models.WebhookConfig(name="both", url="https://a.example/hook", enabled=True,
                           event_types=["package_update", "security_update"]),
-            WebhookConfig(name="install-only", url="https://b.example/hook", enabled=True,
+            models.WebhookConfig(name="install-only", url="https://b.example/hook", enabled=True,
                           event_types=["package_install"]),
-            WebhookConfig(name="disabled", url="https://c.example/hook", enabled=False,
+            models.WebhookConfig(name="disabled", url="https://c.example/hook", enabled=False,
                           event_types=["package_update", "security_update"]),
         ])
         seed.commit()
@@ -133,7 +126,7 @@ async def ingest():
 
     async def outbox_pairs() -> set[tuple[int, str]]:
         with factory() as session:
-            rows = session.execute(sa.select(WebhookOutbox)).scalars().all()
+            rows = session.execute(sa.select(models.WebhookOutbox)).scalars().all()
             return {(row.webhook_config_id, row.event_type) for row in rows}
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -143,10 +136,10 @@ async def ingest():
 
 async def _state(ingest) -> dict[str, int]:
     return {
-        "packages": await ingest.count(PackageUpdate),
-        "hosts": await ingest.count(Host),
-        "identities": await ingest.count(DeliveryIdentity),
-        "outbox": await ingest.count(WebhookOutbox),
+        "packages": await ingest.count(models.PackageUpdate),
+        "hosts": await ingest.count(models.Host),
+        "identities": await ingest.count(models.DeliveryIdentity),
+        "outbox": await ingest.count(models.WebhookOutbox),
     }
 
 
@@ -164,13 +157,13 @@ async def test_package_commit_creates_exact_outbox_pairs(ingest) -> None:
     # The package rows were committed in the same transaction as the outbox rows.
     assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
     with ingest.factory() as session:
-        payloads = session.execute(sa.select(WebhookOutbox.payload)).scalars().all()
+        payloads = session.execute(sa.select(models.WebhookOutbox.payload)).scalars().all()
     assert {payload["delivery_identity"] for payload in payloads} == {"delivery-123"}
 
 
 async def _webhook_names(ingest) -> list[tuple[int, str]]:
     with ingest.factory() as session:
-        return [(row.id, row.name) for row in session.execute(sa.select(WebhookConfig)).scalars().all()]
+        return [(row.id, row.name) for row in session.execute(sa.select(models.WebhookConfig)).scalars().all()]
 
 
 async def test_outbox_insert_failure_rolls_back_transaction(ingest, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,7 +189,7 @@ async def test_transaction_identity_rolls_back_atomically(ingest, monkeypatch: p
         if calls["count"] == 1:
             # Delivery identity and outbox rows are both pending in this transaction when the commit fails.
             pending = {type(item) for item in self.new}
-            assert {DeliveryIdentity, WebhookOutbox} <= pending
+            assert {models.DeliveryIdentity, models.WebhookOutbox} <= pending
             raise RuntimeError("forced commit failure")
         await real_commit(self)
 
@@ -231,7 +224,7 @@ async def test_replayed_delivery_identity_is_unique(ingest) -> None:
     # One accepted ingest record, one package row and one outbox identity per webhook/event pair.
     assert await _state(ingest) == {"packages": 1, "hosts": 1, "identities": 1, "outbox": 2}
     with ingest.factory() as session:
-        delivery_ids = session.execute(sa.select(WebhookOutbox.delivery_id)).scalars().all()
+        delivery_ids = session.execute(sa.select(models.WebhookOutbox.delivery_id)).scalars().all()
     assert len(delivery_ids) == len(set(delivery_ids)) == 2
 
 
@@ -278,15 +271,15 @@ async def test_existing_webhook_and_migration_tests_pass_with_outbox(ingest) -> 
     # table changes the other.
     response = await ingest.client.post("/api/v1/updates", json=PACKAGE, headers={"X-Delivery-ID": "history-1"})
     assert response.status_code == 201
-    assert await ingest.count(WebhookDeliveryHistory) == 0
+    assert await ingest.count(models.WebhookDeliveryHistory) == 0
     with ingest.factory() as session:
-        outbox_row = session.execute(sa.select(WebhookOutbox).limit(1)).scalar_one()
-        session.add(WebhookDeliveryHistory(
+        outbox_row = session.execute(sa.select(models.WebhookOutbox).limit(1)).scalar_one()
+        session.add(models.WebhookDeliveryHistory(
             webhook_config_id=outbox_row.webhook_config_id, event_type=outbox_row.event_type,
             payload=outbox_row.payload, status_code=200, attempt_number=1,
             delivered_at=datetime.now(UTC),
         ))
         session.commit()
-    assert await ingest.count(WebhookDeliveryHistory) == 1
-    assert await ingest.count(WebhookOutbox) == 2
+    assert await ingest.count(models.WebhookDeliveryHistory) == 1
+    assert await ingest.count(models.WebhookOutbox) == 2
     assert (await _state(ingest))["outbox"] == 2

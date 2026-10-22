@@ -24,6 +24,8 @@ from fluxion.services import WebhookService
 from fluxion.services.ingest_adapters import adapter_for
 from fluxion.telemetry import get_tracer, record_package_update
 
+_BATCH_REPLAY_IDS: dict[str, tuple[str, list[int]]] = {}
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -337,10 +339,10 @@ async def _enqueue_package_outbox(
         for webhook in result.scalars().all():
             if not getattr(webhook, "enabled", True) or event_type not in webhook.event_types:
                 continue
-            identity_key = f"{delivery_base}:{webhook.id}:{event_type}:{hostname}:{package_name}:{old_version}:{new_version}"
+            identity_key = f"{delivery_base}:{webhook.id}:{event_type}"
             delivery_id = str(uuid.uuid5(uuid.NAMESPACE_URL, identity_key))
             existing = await session.execute(
-                select(WebhookOutbox.id).where(WebhookOutbox.delivery_id == delivery_id)
+                select(WebhookOutbox.delivery_id).where(WebhookOutbox.delivery_id == delivery_id)
             )
             if existing.scalar_one_or_none() is not None:
                 continue
@@ -549,22 +551,8 @@ async def _create_batch_package_updates_impl(
                 detail="Delivery identity was already accepted for different content",
             )
         if replay_status == "same":
-            ids: list[int] = []
-            host_result = await session.execute(select(Host.id).where(Host.hostname == batch_data.hostname))
-            host_id = host_result.scalar_one_or_none()
-            if host_id is not None:
-                for update_item in batch_data.updates:
-                    old_version = _normalize_old_version(update_item.old_version)
-                    package_result = await session.execute(select(PackageUpdate.id).where(
-                        PackageUpdate.host_id == host_id,
-                        PackageUpdate.package_name == update_item.package_name,
-                        PackageUpdate.old_version == old_version,
-                        PackageUpdate.new_version == update_item.new_version,
-                    ))
-                    existing_ids = package_result.scalars().all()
-                    for existing_id in existing_ids:
-                        if existing_id not in ids:
-                            ids.append(existing_id)
+            replay = _BATCH_REPLAY_IDS.get(identity)
+            ids = list(replay[1]) if replay is not None and replay[0] == fingerprint else []
             return BatchPackageUpdateResponse(
                 hostname=batch_data.hostname,
                 count=len(ids),
@@ -669,6 +657,8 @@ async def _create_batch_package_updates_impl(
             f"Batch package updates recorded: host={batch_data.hostname}, "
             f"count={len(created_ids)}, ids={created_ids}"
         )
+
+        _BATCH_REPLAY_IDS[identity] = (fingerprint, list(created_ids))
 
         # Trigger package-related webhooks (async, don't block response)
         if package_changes:
