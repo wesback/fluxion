@@ -1,0 +1,247 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 138,
+  "branch": "ai-sdlc/issue-138",
+  "commitSha": "701e816435c2a4c58967b12cc4c0238ba0412144",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The URL contract is not enforced consistently: query strings and fragments can reach output, and the human-readable renderer skips URL validation. The named contract test also does not meet the required on-main assertion behavior or cover all output paths and URL cases.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 51,
+          "message": "Reject any target URL with a query string or fragment, and validate the URL in render_human_report before emitting output. The current checks allow invalid URLs to appear in published reports.",
+          "confidence": 0.97,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_target_url_is_safe checks only selected query parameter names and never rejects a non-empty query or fragment. render_json_report uses this check, while render_human_report serializes target_url without validating it.",
+            "failureScenario": "A report with target_url `https://ingest.example/api/v1/updates#secret` passes render_json_report and includes the URL in its output; render_human_report also emits invalid target URLs. Query strings with unlisted names likewise pass the JSON path. The contract requires rejecting every query string and fragment on every public output path. OWASP A02:2025."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_ingest_load_report.py",
+          "line": 5,
+          "message": "Update test_load_report_contract to defer the helper import until the test runs, assert the module is available, and exercise all three output paths with the specified URL cases.",
+          "confidence": 0.95,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test module imports scripts.ingest_load_report during collection, before test_load_report_contract executes. The criterion requires deferring this import and asserting module availability inside that test.",
+            "failureScenario": "On main, where the new helper module is absent, pytest fails during collection at this import instead of running test_load_report_contract and failing as a test assertion. The named test also does not exercise render_human_report or the required query and fragment cases."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The URL contract is not enforced for all required inputs or public output paths. In particular, unlisted query parameters pass validation, and direct human-readable rendering does not validate the URL.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 52,
+          "message": "Reject any URL with a query string or fragment. The current name-based filter accepts unlisted query parameters, contrary to the URL contract.",
+          "confidence": 0.94,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_target_url_is_safe rejects only listed sensitive query names and suffixes; validate_load_report accepts other query strings, and build_load_report serializes the accepted URL.",
+            "failureScenario": "A complete report uses `https://ingest.example/api/v1/updates?region=west`. Validation accepts it and the JSON and human-readable outputs include it, although the criterion requires rejecting every URL with a query string."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 85,
+          "message": "Validate the URL in render_human_report before returning text. This public output path currently bypasses the required URL rejection.",
+          "confidence": 0.93,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "render_human_report reads report fields and returns text without calling validate_load_report or checking target_url.",
+            "failureScenario": "A caller passes a complete report containing user information or a fragment directly to render_human_report; the function returns text containing that invalid URL instead of raising `Load report contract incomplete`."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The target URL validation does not enforce the issue's URL contract across all public output paths, leaving a credential exposure path.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 42,
+          "message": "Reject any target URL with a query string or fragment, and validate the URL in every public output path. The current check permits credential-bearing query values and fragments to be published.",
+          "confidence": 0.97,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_target_url_is_safe checks the scheme and user information, then rejects only selected query parameter names. It does not reject query strings or fragments. render_json_report uses that check, while render_human_report emits the target URL without validating it.",
+            "failureScenario": "A caller passes a report whose target_url is https://ingest.example/api?jwt=secret or https://ingest.example/api#secret to a public output function. The URL passes render_json_report's check, and render_human_report emits it directly, exposing the value in published output instead of raising Load report contract incomplete. OWASP A04:2025."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_ingest_load_report.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
