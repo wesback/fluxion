@@ -1,0 +1,228 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 129,
+  "branch": "ai-sdlc/issue-129",
+  "commitSha": "09266795163c6310fff0057a4908b35e6339b8e8",
+  "round": 1,
+  "pipelineVersion": "459fc5f",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 4,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The previously reported acceptance-test gaps remain: the schema, batch transaction, replay contract, and migration preservation criteria are not fully verified by the tests in this change.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 39,
+          "message": "AC-1 remains uncovered for the delivery identity primary key and exported model contract.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_schema_contract inspects the migrated webhook_outbox table and duplicate delivery_id constraint, but does not inspect webhook_delivery_identities or the exported SQLAlchemy model definitions.",
+            "failureScenario": "If the identity table is missing or has the wrong primary key, or the exported models diverge from the migration, this test still passes, leaving AC-1 unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 153,
+          "message": "AC-2's required batch persistence test is missing, and the rollback test does not force a real database insert failure.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_package_commit_creates_exact_outbox_pairs posts to /api/v1/updates; the rollback test also posts to that single-update endpoint and replaces the WebhookOutbox constructor with a function that raises. Neither test exercises /api/v1/updates/batch or a real database insert failure.",
+            "failureScenario": "If batch ingestion omits or mis-pairs outbox rows, or a real outbox insert failure leaves package rows committed, these tests still pass, leaving AC-2 unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 217,
+          "message": "AC-3's required replay contract test is missing; the existing replay test does not verify its no-webhook or SQL lookup cases.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique covers repeated single-update submissions with matching enabled webhooks, but does not cover an accepted identity with no matching webhook or capture SQL for the replay lookup.",
+            "failureScenario": "If replay lookup scans outbox payloads, or an identity is not persisted when no webhook matches, this test still passes, leaving AC-3's lookup and no-webhook cases unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 238,
+          "message": "AC-4's migration test does not verify exact preservation of seeded rows or the required downgrade cleanup.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_migration_round_trip seeds one row in each preserved table and checks row counts, but does not compare original IDs and values, seed an outbox row before downgrade, or assert the named indexes are removed.",
+            "failureScenario": "If downgrade changes a preserved row's values or ID, fails to remove an outbox row, or leaves a named index behind, the current assertions can still pass."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The only reviewable change since the prior commit is two PRD design decisions; the remaining diff is pipeline evidence, which is out of scope. I found no qualifying defect in the changed content.",
+      "findingList": []
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The round-2 delta contains pipeline evidence files and PRD text changes, with no changed code introducing a concrete security vulnerability.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 1,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
