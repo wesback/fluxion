@@ -112,7 +112,7 @@ All SQLAlchemy pool tuning is required at startup and is read only from environm
 |----------|----------------|
 | `DATABASE_URL` | PostgreSQL connection URL with credentials |
 | `API_REPLICAS` | Integer from 1 through 10 |
-| `API_POOL_SIZE` | Non-negative base API pool size |
+| `API_POOL_SIZE` | Positive base API pool size, because zero creates an unbounded SQLAlchemy pool |
 | `API_MAX_OVERFLOW` | Non-negative API overflow |
 | `RELAY_POOL_SIZE` | Non-negative relay pool size, at most 8 |
 | `RELAY_WORKER_COUNT` | Integer relay worker count |
@@ -300,7 +300,7 @@ backend/
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | Required |
 | `API_REPLICAS` | Number of API replicas (1-10) | Required |
-| `API_POOL_SIZE` | API pool base size | Required |
+| `API_POOL_SIZE` | Positive API pool base size | Required |
 | `API_MAX_OVERFLOW` | API pool overflow | Required |
 | `RELAY_POOL_SIZE` | Relay pool size (maximum 8) | Required |
 | `RELAY_WORKER_COUNT` | Number of relay workers | Required |

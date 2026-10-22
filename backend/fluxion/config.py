@@ -127,6 +127,8 @@ class Settings(BaseSettings):
             raise RuntimeError("API_REPLICAS must be between 1 and 10")
         if self.db_pool_size < 0:
             raise RuntimeError("API_POOL_SIZE must be non-negative")
+        if self.db_pool_size == 0:
+            raise RuntimeError("API_POOL_SIZE must be positive")
         if self.db_max_overflow < 0:
             raise RuntimeError("API_MAX_OVERFLOW must be non-negative")
         if self.relay_pool_size < 0:

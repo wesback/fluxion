@@ -42,8 +42,18 @@ def test_pool_replica_boundaries(replicas, api_total, relay_total, aggregate, va
     if valid:
         settings.validate_pool_startup()
     else:
-        with pytest.raises(RuntimeError):
+        expected = None
+        if replicas in (-1, 0, 11):
+            expected = "API_REPLICAS must be between 1 and 10"
+        elif api_total > 8:
+            expected = "API pool total must be less than or equal to 8"
+        elif relay_total > 8:
+            expected = "Relay pool total must be less than or equal to 8"
+        elif aggregate == 81:
+            expected = "Aggregate application pool allocation must be less than or equal to 80"
+        with pytest.raises(RuntimeError) as exc_info:
             settings.validate_pool_startup()
+        assert str(exc_info.value) == expected
 
 
 @pytest.mark.asyncio
@@ -51,7 +61,6 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     import fluxion.database.connection as connection
     import time
     from sqlalchemy import create_engine
-    from sqlalchemy.exc import TimeoutError
     from sqlalchemy.pool import QueuePool
     from httpx import ASGITransport, AsyncClient
     from fluxion.main import app
@@ -64,30 +73,43 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     settings = Settings(**values)
     monkeypatch.setattr(connection, "settings", settings)
 
-    configured_sync_engine = create_engine("sqlite:///:memory:", poolclass=QueuePool, **{
-        "pool_size": 1, "max_overflow": 0, "pool_timeout": 0.05,
-        "pool_recycle": 3600, "pool_pre_ping": True,
-    })
+    import tempfile
+    from sqlalchemy.ext.asyncio import create_async_engine as sqlalchemy_create_async_engine
 
-    class AsyncEngineWrapper:
-        sync_engine = configured_sync_engine
-        pool = configured_sync_engine.pool
-        async def dispose(self):
-            configured_sync_engine.dispose()
-
-    monkeypatch.setattr(connection, "create_async_engine", lambda *args, **kwargs: AsyncEngineWrapper())
+    db_path = tempfile.mktemp(suffix=".db")
+    factory_calls = []
+    def async_engine_factory(*args, **kwargs):
+        factory_calls.append((args, kwargs))
+        return sqlalchemy_create_async_engine(
+            "sqlite+aiosqlite:///" + db_path,
+            pool_size=kwargs["pool_size"], max_overflow=kwargs["max_overflow"],
+            pool_pre_ping=kwargs["pool_pre_ping"], pool_recycle=kwargs["pool_recycle"],
+            pool_timeout=kwargs["pool_timeout"],
+        )
+    monkeypatch.setattr(connection, "create_async_engine", async_engine_factory)
     engine = get_engine()
-    assert engine.pool._pre_ping is True
-    assert engine.pool._recycle == 3600
-    assert engine.pool._timeout == 0.05
+    assert len(factory_calls) == 1
+    factory_args, factory_kwargs = factory_calls[0]
+    assert len(factory_args) == 1
+    assert factory_kwargs["pool_size"] == 1
+    assert factory_kwargs["max_overflow"] == 0
+    assert factory_kwargs["pool_pre_ping"] is True
+    assert factory_kwargs["pool_recycle"] == 3600
+    assert factory_kwargs["pool_timeout"] == 0.05
+    assert engine.sync_engine.pool._pre_ping is True
+    assert engine.sync_engine.pool._recycle == 3600
+    assert engine.sync_engine.pool._timeout == 0.05
 
-    held = engine.sync_engine.connect()
+    held = await engine.connect()
+
+    from fastapi import Depends
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from fluxion.database.connection import get_session
 
     @app.post("/docs", include_in_schema=False)
-    async def pool_saturation_test():
-        from sqlalchemy import text
-        with engine.sync_engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+    async def pool_saturation_test(session: AsyncSession = Depends(get_session)):
+        await session.execute(text("SELECT 1"))
         return {"ok": True}
 
     started = time.monotonic()
@@ -98,8 +120,8 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     assert response.content == b'{"detail":"Database connection pool exhausted"}'
     assert elapsed < 1.05
 
-    held.connection.dbapi_connection.close()
-    held.close()
+    await held.invalidate()
+    await held.close()
     async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as client:
         recovery = await client.post("/docs")
     assert recovery.status_code == 200
@@ -166,8 +188,9 @@ def test_pool_environment_contract(monkeypatch, field):
     monkeypatch.setenv("API_POOL_SIZE", "8")
     monkeypatch.setenv("API_MAX_OVERFLOW", "0")
     monkeypatch.setenv("RELAY_POOL_SIZE", "1")
-    with pytest.raises(RuntimeError, match="Aggregate application pool allocation"):
+    with pytest.raises(RuntimeError) as exc_info:
         Settings().validate_pool_startup()
+    assert str(exc_info.value) == "Aggregate application pool allocation must be less than or equal to 80"
 
 
 @pytest.mark.parametrize("aggregate", [79,80,81])
@@ -178,8 +201,9 @@ def test_missing_pool_configuration_fails(monkeypatch, aggregate):
     values = dict(VALID, api_replicas=replicas, db_pool_size=api_total, db_max_overflow=0, relay_pool_size=relay_total)
     if aggregate == 81:
         values = dict(VALID, api_replicas=10, db_pool_size=8, db_max_overflow=0, relay_pool_size=1)
-        with pytest.raises(RuntimeError, match="Aggregate application pool allocation"):
+        with pytest.raises(RuntimeError) as exc_info:
             Settings(**values).validate_pool_startup()
+        assert str(exc_info.value) == "Aggregate application pool allocation must be less than or equal to 80"
     else:
         Settings(**values).validate_pool_startup()
 

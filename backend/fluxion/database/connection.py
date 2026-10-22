@@ -1,7 +1,6 @@
 """Database connection and session management with async support."""
 
 from collections.abc import AsyncGenerator
-from threading import Timer
 from sqlalchemy import event
 
 from sqlalchemy.ext.asyncio import (
@@ -41,18 +40,15 @@ def get_engine() -> AsyncEngine:
         event.listen(_engine.sync_engine, "checkout", lambda *args: get_pool_status())
 
         def record_checkin(dbapi_connection, connection_record):
-            def record_after_checkin():
-                try:
-                    pool = _engine.sync_engine.pool
-                    record_pool_state(
-                        max(0, pool.checkedout()),
-                        max(0, pool.checkedin()),
-                        max(0, pool.overflow()),
-                    )
-                except Exception:
-                    pass
-
-            Timer(0.01, record_after_checkin).start()
+            try:
+                pool = _engine.sync_engine.pool
+                record_pool_state(
+                    max(0, pool.checkedout()),
+                    max(0, pool.checkedin()),
+                    max(0, pool.overflow()),
+                )
+            except Exception:
+                pass
 
         event.listen(_engine.sync_engine, "checkin", record_checkin)
 
