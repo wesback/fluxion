@@ -395,5 +395,5 @@ This PRD defines implementation requirements for existing Fluxion architecture. 
 
 | ID | Decision |
 | --- | --- |
-| DD-001 | Add an allowed-host list to each API key; user keys may submit a batch only for hostnames in the exact allowlist and admin keys may submit only when the existing admin role policy authorizes the target hostname. An API key that does not authorize a requested hostname returns HTTP 403 exactly and creates zero package and outbox rows. |
+| DD-001 | Each API key has a host scope: `all` authorizes every hostname, while `listed` authorizes only exact hostnames in the key's allow-list. Admin keys authorize every hostname. Keys that existed before host scope was added get `all` when their allowed-host list is empty. An API key that does not authorize a requested hostname returns HTTP 403 exactly and creates zero package and outbox rows. |
 | DD-002 | Treat PostgreSQL max_connections as 100. Reserve 20 connections for migrations, administrators, and maintenance, then allocate the remaining 80 connections across API and relay replicas. For up to 10 API replicas and one relay replica, each API replica uses pool_size plus max_overflow no greater than 8, and the relay worker pool uses no more than 8 connections; total application connections never exceed 80. Missing or aggregate-invalid configuration stops startup. |

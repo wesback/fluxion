@@ -56,6 +56,18 @@ async def create_api_key(
                 detail="Invalid role. Must be 'user' or 'admin'",
             )
 
+        if key_data.host_scope is None:
+            host_scope = "listed" if key_data.allowed_hosts else "all"
+        elif key_data.host_scope in ["all", "listed"]:
+            host_scope = key_data.host_scope
+        else:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid host scope")
+        if host_scope == "listed" and not key_data.allowed_hosts:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="A listed host scope requires at least one allowed host",
+            )
+
         # Generate API key
         api_key = generate_api_key()
         key_hash = hash_api_key(api_key)
@@ -67,6 +79,7 @@ async def create_api_key(
             role=key_data.role,
             is_active=True,
             allowed_hosts=key_data.allowed_hosts,
+            host_scope=host_scope,
         )
         session.add(api_key_obj)
         await session.commit()
@@ -136,6 +149,7 @@ async def list_api_keys(
                     last_used=key.last_used,
                     is_active=key.is_active,
                     allowed_hosts=key.allowed_hosts or [],
+                    host_scope=key.host_scope or "listed",
                 )
                 for key in api_keys
             ],
