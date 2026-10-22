@@ -147,6 +147,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 request.state.api_key_id = key_obj.id
                 request.state.api_key_name = key_obj.name
                 request.state.api_key_role = key_obj.role
+                request.state.api_key_allowed_hosts = key_obj.allowed_hosts or []
 
                 # Add API key info to OpenTelemetry span if available
                 try:

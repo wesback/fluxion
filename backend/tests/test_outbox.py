@@ -158,6 +158,7 @@ async def ingest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             yield AsyncOverSync(session)
 
     app.dependency_overrides[updates_module.get_session] = get_test_session
+    app.dependency_overrides[updates_module.authorize_batch_hostname] = lambda: {"role": "admin", "allowed_hosts": []}
 
     statements: list[tuple[str, object]] = []
 

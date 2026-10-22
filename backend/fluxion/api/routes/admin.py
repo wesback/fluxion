@@ -66,6 +66,7 @@ async def create_api_key(
             key_hash=key_hash,
             role=key_data.role,
             is_active=True,
+            allowed_hosts=key_data.allowed_hosts,
         )
         session.add(api_key_obj)
         await session.commit()
@@ -134,6 +135,7 @@ async def list_api_keys(
                     created_at=key.created_at,
                     last_used=key.last_used,
                     is_active=key.is_active,
+                    allowed_hosts=key.allowed_hosts or [],
                 )
                 for key in api_keys
             ],

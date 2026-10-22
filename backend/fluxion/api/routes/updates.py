@@ -27,6 +27,35 @@ from fluxion.telemetry import get_tracer, record_package_update
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+async def authorize_batch_hostname(request: Request) -> dict[str, Any]:
+    """Fail closed and enforce exact per-key hostname authorization."""
+    role = getattr(request.state, "api_key_role", None)
+    allowed_hosts = getattr(request.state, "api_key_allowed_hosts", None)
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
+
+    hostname = payload.get("hostname") if isinstance(payload, dict) else None
+    if hostname is None and "/updates/ingest/" in request.url.path:
+        manager = request.url.path.rsplit("/", 1)[-1]
+        adapter = adapter_for(manager)
+        if adapter is not None:
+            try:
+                hostname = adapter.normalize(payload).hostname
+            except (KeyError, TypeError, ValueError):
+                hostname = None
+
+    if role == "admin":
+        return {"role": role, "allowed_hosts": allowed_hosts or []}
+    if not isinstance(hostname, str) or hostname not in (allowed_hosts or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
+    return {"role": role, "allowed_hosts": allowed_hosts or []}
+
+
 INSTALL_SENTINEL_OLD_VERSIONS = {
     "-",
     "n/a",
@@ -50,6 +79,7 @@ async def ingest_package_manager_updates(
     payload: dict[str, Any],
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
+    _authorized: dict[str, Any] = Depends(authorize_batch_hostname),
 ) -> BatchPackageUpdateResponse:
     """Adapt dnf/yum, apk, or zypper payloads into the canonical batch contract."""
     adapter = adapter_for(package_manager)
@@ -530,6 +560,7 @@ async def create_batch_package_updates(
     background_tasks: BackgroundTasks,
     request: Request,
     session: AsyncSession = Depends(get_session),
+    _authorized: dict[str, Any] = Depends(authorize_batch_hostname),
 ) -> BatchPackageUpdateResponse:
     """
     Create multiple package update records in a single transaction.
