@@ -1,5 +1,7 @@
 """API routes for package updates."""
 
+import hashlib
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -165,6 +167,39 @@ async def _create_package_update_impl(
     try:
         # Normalize old_version sentinel values to None for new installs
         old_version = _normalize_old_version(update_data.old_version)
+        request_payload = {
+            "hostname": update_data.hostname,
+            "package_name": update_data.package_name,
+            "old_version": old_version,
+            "new_version": update_data.new_version,
+            "is_security": update_data.is_security,
+            "package_manager": update_data.package_manager,
+        }
+        fingerprint = await _request_fingerprint(request_payload)
+        identity = _stable_delivery_identity(delivery_id, request_payload)
+        replay_status = await _delivery_replay_status(session, identity, fingerprint)
+        if replay_status == "conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Delivery identity was already accepted for different content",
+            )
+        if replay_status == "same":
+            host_result = await session.execute(select(Host.id).where(Host.hostname == update_data.hostname))
+            host_id = host_result.scalar_one_or_none()
+            result = await session.execute(
+                select(PackageUpdate).where(
+                    PackageUpdate.host_id == host_id,
+                    PackageUpdate.package_name == update_data.package_name,
+                    PackageUpdate.new_version == update_data.new_version,
+                    PackageUpdate.old_version == old_version,
+                )
+            )
+            existing = result.scalars().first()
+            if existing is not None:
+                return PackageUpdateResponse(
+                    id=existing.id,
+                    message="Package update already recorded",
+                )
 
         # Upsert host record with custom span
         if tracer:
@@ -205,13 +240,14 @@ async def _create_package_update_impl(
 
         await _enqueue_package_outbox(
             session,
-            delivery_id or str(uuid.uuid5(uuid.NAMESPACE_URL, repr((update_data.hostname, update_data.package_name, old_version, update_data.new_version, update_data.is_security, update_data.package_manager)))),
+            identity,
             update_data.hostname,
             update_data.package_name,
             old_version,
             update_data.new_version,
             update_data.is_security,
             update_data.package_manager,
+            fingerprint,
         )
         session.add(
             IngestDiagnostic(
@@ -239,6 +275,9 @@ async def _create_package_update_impl(
             id=package_update.id, message="Package update recorded successfully"
         )
 
+    except HTTPException:
+        await session.rollback()
+        raise
     except Exception as e:
         await session.rollback()
         logger.error(f"Error recording package update: {str(e)}", exc_info=True)
@@ -246,6 +285,30 @@ async def _create_package_update_impl(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to record package update",
         ) from e
+
+
+def _stable_delivery_identity(request_delivery_id: str | None, payload: dict[str, Any]) -> str:
+    """Bind replay detection to a caller ID, or derive it from the canonical request."""
+    if request_delivery_id:
+        return request_delivery_id
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+async def _delivery_replay_status(
+    session: AsyncSession, identity: str, fingerprint: str
+) -> str:
+    """Return 'new', 'same', or 'conflict' for a delivery identity."""
+    result = await session.execute(select(WebhookOutbox.payload))
+    for payload in result.scalars().all():
+        if isinstance(payload, dict) and payload.get("delivery_identity") == identity:
+            return "same" if payload.get("request_fingerprint") == fingerprint else "conflict"
+    return "new"
+
+
+async def _request_fingerprint(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 async def _enqueue_package_outbox(
@@ -257,6 +320,7 @@ async def _enqueue_package_outbox(
     new_version: str,
     is_security: bool,
     package_manager: str | None,
+    request_fingerprint: str | None = None,
 ) -> None:
     """Insert one durable intent for each exact enabled webhook/event pair."""
     service = WebhookService(session)
@@ -267,7 +331,7 @@ async def _enqueue_package_outbox(
             select(WebhookConfig).where(WebhookConfig.enabled.is_(True))
         )
         for webhook in result.scalars().all():
-            if event_type not in webhook.event_types:
+            if not getattr(webhook, "enabled", True) or event_type not in webhook.event_types:
                 continue
             identity_key = f"{delivery_base}:{webhook.id}:{event_type}:{hostname}:{package_name}:{old_version}:{new_version}"
             delivery_id = str(uuid.uuid5(uuid.NAMESPACE_URL, identity_key))
@@ -286,6 +350,8 @@ async def _enqueue_package_outbox(
                 "package_manager": package_manager,
                 "timestamp": now.isoformat(),
                 "is_security": is_security,
+                "delivery_identity": delivery_base,
+                "request_fingerprint": request_fingerprint,
             }
             session.add(WebhookOutbox(
                 delivery_id=delivery_id,
@@ -455,6 +521,53 @@ async def _create_batch_package_updates_impl(
 ) -> BatchPackageUpdateResponse:
     """Implementation of batch package update creation with tracing."""
     try:
+        request_payload = {
+            "hostname": batch_data.hostname,
+            "os_info": batch_data.os_info,
+            "package_manager": batch_data.package_manager,
+            "updates": [
+                {
+                    "package_name": update.package_name,
+                    "old_version": _normalize_old_version(update.old_version),
+                    "new_version": update.new_version,
+                    "is_security": update.is_security,
+                    "package_manager": update.package_manager,
+                }
+                for update in batch_data.updates
+            ],
+        }
+        fingerprint = await _request_fingerprint(request_payload)
+        identity = _stable_delivery_identity(delivery_id, request_payload)
+        replay_status = await _delivery_replay_status(session, identity, fingerprint)
+        if replay_status == "conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Delivery identity was already accepted for different content",
+            )
+        if replay_status == "same":
+            ids: list[int] = []
+            host_result = await session.execute(select(Host.id).where(Host.hostname == batch_data.hostname))
+            host_id = host_result.scalar_one_or_none()
+            if host_id is not None:
+                for update_item in batch_data.updates:
+                    old_version = _normalize_old_version(update_item.old_version)
+                    package_result = await session.execute(select(PackageUpdate.id).where(
+                        PackageUpdate.host_id == host_id,
+                        PackageUpdate.package_name == update_item.package_name,
+                        PackageUpdate.old_version == old_version,
+                        PackageUpdate.new_version == update_item.new_version,
+                    ))
+                    existing_ids = package_result.scalars().all()
+                    for existing_id in existing_ids:
+                        if existing_id not in ids:
+                            ids.append(existing_id)
+            return BatchPackageUpdateResponse(
+                hostname=batch_data.hostname,
+                count=len(ids),
+                ids=ids,
+                message=f"{len(ids)} package updates already recorded",
+            )
+
         # Upsert host record with custom span
         if tracer:
             with tracer.start_as_current_span("upsert_host") as span:
@@ -521,12 +634,14 @@ async def _create_batch_package_updates_impl(
 
             await _enqueue_package_outbox(
                 session,
-                delivery_id or str(uuid.uuid5(uuid.NAMESPACE_URL, repr((batch_data.hostname, batch_data.os_info, batch_data.package_manager, [(u.package_name, u.old_version, u.new_version, u.is_security, u.package_manager) for u in batch_data.updates])))),
+                identity,
+                batch_data.hostname,
                 update_item.package_name,
                 old_version,
                 update_item.new_version,
                 update_item.is_security,
                 batch_data.package_manager or update_item.package_manager,
+                fingerprint,
             )
 
         session.add(
@@ -571,6 +686,9 @@ async def _create_batch_package_updates_impl(
             message=f"{len(created_ids)} package updates recorded successfully",
         )
 
+    except HTTPException:
+        await session.rollback()
+        raise
     except Exception as e:
         await session.rollback()
         logger.error(f"Error recording batch package updates: {str(e)}", exc_info=True)
