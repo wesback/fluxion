@@ -83,6 +83,7 @@ async def test_update_host_scope_contract(ingest_authorization):
         ("listed", ["node1.example.test"], {"allowed_hosts": []}, 422, "listed", ["node1.example.test"]),
         ("listed", ["node1.example.test"], {"allowed_hosts": ["*.example.test"]}, 422, "listed", ["node1.example.test"]),
         ("all", [], {"host_scope": "some"}, 422, "all", []),
+        ("all", [], {"host_scope": "listed"}, 422, "all", []),
     )
     for scope, hosts, body, expected_status, expected_scope, expected_hosts in cases:
         key, key_id = seed_key(factory, scope=scope, hosts=list(hosts))
@@ -91,6 +92,13 @@ async def test_update_host_scope_contract(ingest_authorization):
             original_hash = session.query(models.APIKey).filter_by(id=key_id).one().key_hash
         response = await client.patch(f"/api/v1/admin/api-keys/{key_id}", json=body, headers=headers)
         assert response.status_code == expected_status
+        if expected_status == 200:
+            listed = await client.get("/api/v1/admin/api-keys", headers=headers)
+            assert listed.status_code == 200
+            item = next(value for value in listed.json()["items"] if value["id"] == key_id)
+            assert response.json() == item
+            assert response.json()["host_scope"] == expected_scope
+            assert response.json()["allowed_hosts"] == expected_hosts
         with factory() as session:
             stored = session.query(models.APIKey).filter_by(id=key_id).one()
             assert stored.host_scope == expected_scope
@@ -113,6 +121,18 @@ async def test_update_takes_effect_and_requires_admin(ingest_authorization):
     assert denied.status_code == 403
     assert denied.json() == {"detail": "Hostname not authorized for this API key"}
 
+    restricted_payload = dict(payload)
+    restricted_payload["hostname"] = "node1.example.test"
+    narrowed = await client.patch(f"/api/v1/admin/api-keys/{key_id}", json={"allowed_hosts": ["Node2.example.test"]}, headers=admin_headers)
+    assert narrowed.status_code == 200
+    assert narrowed.json()["host_scope"] == "listed"
+    assert narrowed.json()["allowed_hosts"] == ["node2.example.test"]
+    denied_after_update = await client.post("/api/v1/updates/batch", json=restricted_payload, headers={"X-API-Key": user_key})
+    assert denied_after_update.status_code == 403
+    assert denied_after_update.json() == {"detail": "Hostname not authorized for this API key"}
+    with factory() as session:
+        assert session.query(models.PackageUpdate).count() == 0
+
     updated = await client.patch(f"/api/v1/admin/api-keys/{key_id}", json={"host_scope": "all"}, headers=admin_headers)
     assert updated.status_code == 200
     assert updated.json()["host_scope"] == "all"
@@ -126,4 +146,4 @@ async def test_update_takes_effect_and_requires_admin(ingest_authorization):
     with factory() as session:
         stored = session.query(models.APIKey).filter_by(id=key_id).one()
         assert stored.host_scope == "all"
-        assert stored.allowed_hosts == ["node1.example.test"]
+        assert stored.allowed_hosts == ["node2.example.test"]
