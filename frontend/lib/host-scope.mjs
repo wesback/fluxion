@@ -17,9 +17,9 @@ export function parseAllowedHosts(text) {
 }
 
 export function buildHostScopeUpdate(scope, text) {
+  if (scope === "all") return { body: { host_scope: "all" } }
   const parsed = parseAllowedHosts(text)
   if (parsed.error) return { error: parsed.error }
-  if (scope === "all") return { body: { host_scope: "all" } }
   if (!parsed.hosts.length) return { error: "Add at least one hostname or choose All hosts" }
   return { body: { host_scope: "listed", allowed_hosts: parsed.hosts } }
 }

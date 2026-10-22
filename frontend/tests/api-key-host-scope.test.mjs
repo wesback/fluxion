@@ -1,32 +1,143 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
+import { createRequire } from "node:module"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { runInNewContext } from "node:vm"
+import ts from "typescript"
 import { parseAllowedHosts, buildHostScopeUpdate } from "../lib/host-scope.mjs"
+
+const require = createRequire(import.meta.url)
+const React = require("react")
+const { renderToStaticMarkup } = require("react-dom/server")
+const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 
 test("parsesAndValidatesHostScopeInput", () => {
   assert.deepEqual(parseAllowedHosts("Node1.example.test\nnode2.example.test, node1.example.test"), { hosts: ["node1.example.test", "node2.example.test"], error: null })
   assert.deepEqual(parseAllowedHosts("  \n "), { hosts: [], error: null })
   assert.deepEqual(parseAllowedHosts("bad host"), { hosts: [], error: "Invalid hostname: bad host" })
   assert.deepEqual(buildHostScopeUpdate("all", "node1.example.test"), { body: { host_scope: "all" } })
+  assert.deepEqual(buildHostScopeUpdate("all", "*.example.test"), { body: { host_scope: "all" } })
   assert.deepEqual(buildHostScopeUpdate("listed", "node1.example.test"), { body: { host_scope: "listed", allowed_hosts: ["node1.example.test"] } })
   assert.deepEqual(buildHostScopeUpdate("listed", ""), { error: "Add at least one hostname or choose All hosts" })
   assert.deepEqual(buildHostScopeUpdate("listed", "*.example.test"), { error: "Invalid hostname: *.example.test" })
 })
 
-test("patchProxyForwardsHostScopeUpdate", () => {
-  const source = readFileSync(new URL("../app/api/admin/api-keys/[keyId]/route.ts", import.meta.url), "utf8")
-  assert.match(source, /export async function PATCH/)
-  assert.match(source, /axios\.patch/)
-  assert.match(source, /X-API-Key/) 
-  assert.match(source, /Server configuration error/)
-  assert.match(source, /response\?\.data\?\.detail|detail/) 
+function loadRoute(axios, apiKey) {
+  if (apiKey === undefined) delete process.env.FLUXION_API_KEY
+  else process.env.FLUXION_API_KEY = apiKey
+  const mod = { exports: {} }
+  const source = readFileSync(join(root, "app/api/admin/api-keys/[keyId]/route.ts"), "utf8")
+  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
+  const NextResponse = { json: (body, init = {}) => ({ status: init.status ?? 200, body }) }
+  const axiosModule = { __esModule: true, default: axios }
+  axiosModule.default.isAxiosError = axios.isAxiosError
+  runInNewContext(output, { exports: mod.exports, module: mod, require: (name) => name === "axios" ? axiosModule : name === "next/server" ? { NextResponse } : null, process, console, URL })
+  return mod.exports
+}
+
+test("patchProxyForwardsHostScopeUpdate", async () => {
+  let calls = []
+  const axios = { patch: async (url, body, config) => { calls.push({ url, body, config }); return { data: { id: 7, host_scope: "listed", allowed_hosts: ["node1.example.test"] } } }, isAxiosError: () => false }
+  let route = loadRoute(axios, "secret")
+  let response = await route.PATCH({ json: async () => ({ host_scope: "listed", allowed_hosts: ["node1.example.test"] }), headers: { get: () => null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, { id: 7, host_scope: "listed", allowed_hosts: ["node1.example.test"] })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url.endsWith("/api/v1/admin/api-keys/7"), true)
+  assert.equal(calls[0].config.headers["X-API-Key"], "secret")
+
+  calls = []
+  axios.isAxiosError = () => true
+  axios.patch = async () => { throw { response: { status: 422, data: { detail: "Invalid hostname" } } } }
+  route = loadRoute(axios, "secret")
+  response = await route.PATCH({ json: async () => ({ host_scope: "listed" }), headers: { get: () => null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
+  assert.equal(response.status, 422)
+  assert.equal(JSON.stringify(response.body), JSON.stringify({ error: "Invalid hostname" }))
+
+  calls = []
+  route = loadRoute(axios, undefined)
+  response = await route.PATCH({ json: async () => ({}), headers: { get: () => null }, url: "http://localhost/api/admin/api-keys/7" }, { params: Promise.resolve({ keyId: "7" }) })
+  assert.equal(response.status, 500)
+  assert.equal(JSON.stringify(response.body), JSON.stringify({ error: "Server configuration error" }))
+  assert.equal(calls.length, 0)
 })
 
+function elementType(value) { return typeof value === "function" ? value.name : String(value) }
+
 test("apiKeysPageEditsHostScope", () => {
-  const source = readFileSync(new URL("../app/admin/api-keys/page.tsx", import.meta.url), "utf8")
+  const source = readFileSync(join(root, "app/admin/api-keys/page.tsx"), "utf8")
   assert.match(source, /<TableHead>Hosts<\/TableHead>/)
   assert.match(source, /Edit hosts for API key/)
   assert.match(source, /Only these hosts/) 
-  const helperSource = readFileSync(new URL("../lib/host-scope.mjs", import.meta.url), "utf8")
-  assert.match(helperSource, /Add at least one hostname or choose All hosts/)
+  assert.match(source, /buildHostScopeUpdate/)
+
+  let updateCalls = 0
+  let slots = []
+  let index = 0
+  const reactStub = {
+    useState(value) { const i = index++; if (!(i in slots)) slots[i] = value; return [slots[i], (next) => { slots[i] = typeof next === "function" ? next(slots[i]) : next }] },
+  }
+  const passthrough = (props) => React.createElement("div", props, props.children)
+  const mocks = {
+    react: reactStub,
+    "react/jsx-runtime": require("react/jsx-runtime"),
+    "@/components/ui/card": { Card: passthrough, CardContent: passthrough, CardHeader: passthrough, CardTitle: passthrough },
+    "@/components/ui/table": { Table: passthrough, TableBody: passthrough, TableCaption: passthrough, TableCell: passthrough, TableHead: passthrough, TableHeader: passthrough, TableRow: passthrough },
+    "@/components/ui/button": { Button: (props) => React.createElement("button", props, props.children) },
+    "@/components/ui/input": { Input: (props) => React.createElement("input", props) },
+    "@/components/ui/label": { Label: (props) => React.createElement("label", props, props.children) },
+    "@/components/ui/textarea": { Textarea: (props) => React.createElement("textarea", { ...props, children: undefined }) },
+    "@/components/ui/badge": { Badge: (props) => React.createElement("span", props, props.children) },
+    "@/components/ui/select": { Select: (props) => React.createElement("select", props, props.children) },
+    "@/components/ui/dialog": { Dialog: (props) => props.open ? React.createElement("div", { role: "dialog" }, props.children) : null, DialogContent: passthrough, DialogDescription: passthrough, DialogFooter: passthrough, DialogHeader: passthrough, DialogTitle: passthrough },
+    "@/components/ui/skeleton": { TableSkeleton: passthrough },
+    "@/components/error-boundary": { ErrorBoundary: passthrough },
+    "@/lib/hooks/use-admin": {
+      useAPIKeys: () => ({ data: { items: [{ id: 7, name: "shared", role: "user", host_scope: "listed", allowed_hosts: ["node1.example.test", "node2.example.test"], is_active: true, created_at: "2026-01-01T00:00:00Z", last_used: null }], total: 1 }, isLoading: false, error: null, refetch: () => {} }),
+      useCreateAPIKey: () => ({ mutateAsync: async () => ({ api_key: "new-key" }), isPending: false }),
+      useUpdateAPIKey: () => ({ mutateAsync: async () => { updateCalls++ }, isPending: false }),
+      useDeleteAPIKey: () => ({ mutateAsync: async () => {}, isPending: false }),
+    },
+    "@/lib/host-scope.mjs": { buildHostScopeUpdate },
+    "date-fns": { formatDistanceToNow: () => "recently" },
+    "lucide-react": { Plus: () => null, Trash2: () => null, Copy: () => null, RefreshCw: () => null, Key: () => null, AlertTriangle: () => null, Pencil: () => null },
+    "sonner": { toast: { success: () => {}, error: () => {}, promise: () => {} } },
+  }
+  const mod = { exports: {} }
+  const output = ts.transpileModule(source, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
+  runInNewContext(output, { exports: mod.exports, module: mod, require: (name) => { if (!(name in mocks)) throw new Error(`Unexpected dependency: ${name}`); return mocks[name] }, console, process, Date, navigator: { clipboard: { writeText: async () => {} } } })
+  index = 0
+  let tree = mod.exports.APIKeysContent()
+  const markup = renderToStaticMarkup(tree)
+  assert.match(markup, /Hosts<\/.*?>/)
+  assert.match(markup, /2 hosts/) 
+  assert.match(markup, /title="node1\.example\.test\nnode2\.example\.test"/) 
+
+  function walk(node, visit) {
+    if (Array.isArray(node)) return node.forEach((child) => walk(child, visit))
+    if (React.isValidElement(node)) { visit(node); walk(node.props.children, visit) }
+  }
+  function find(predicate) { let found; walk(tree, (node) => { if (!found && predicate(node)) found = node }); return found }
+  function render() { index = 0; tree = mod.exports.APIKeysContent(); return tree }
+
+  const editButton = find((node) => node.props["aria-label"] === "Edit hosts for API key shared")
+  assert.ok(editButton)
+  editButton.props.onClick()
+  render()
+  assert.match(renderToStaticMarkup(tree), /Edit host scope/) 
+  const scopeSelect = find((node) => node.props.id === "edit-key-host-scope")
+  assert.ok(scopeSelect)
+  scopeSelect.props.onChange({ target: { value: "listed" } })
+  render()
+  const hostsTextarea = find((node) => node.props.id === "edit-key-hosts")
+  hostsTextarea.props.onChange({ target: { value: "" } })
+  render()
+  const saveButton = find((node) => node.props.children === "Save Changes")
+  assert.ok(saveButton)
+  saveButton.props.onClick()
+  render()
+  assert.equal(renderToStaticMarkup(tree).includes("Add at least one hostname or choose All hosts"), true)
+  assert.equal(updateCalls, 0)
 })

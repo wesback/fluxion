@@ -25,7 +25,7 @@ import { Plus, Trash2, Copy, RefreshCw, Key, AlertTriangle, Pencil } from "lucid
 import { toast } from "sonner"
 import { buildHostScopeUpdate } from "@/lib/host-scope.mjs"
 
-function APIKeysContent() {
+export function APIKeysContent() {
   const { data, isLoading, error, refetch } = useAPIKeys()
   const createMutation = useCreateAPIKey()
   const updateMutation = useUpdateAPIKey()
