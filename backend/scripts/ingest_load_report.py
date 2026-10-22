@@ -48,10 +48,17 @@ def _target_url_is_safe(value: str) -> bool:
         parsed = urlsplit(value)
         if parsed.scheme not in ("http", "https") or parsed.username is not None or parsed.password is not None:
             return False
-        sensitive_names = {"access_token", "api_key", "apikey", "auth", "credential", "password", "secret", "token"}
+        sensitive_names = {
+            "access_key", "access_key_id", "access_token", "api_key", "apikey",
+            "auth", "authorization", "credential", "key", "password", "secret",
+            "sig", "signature", "token", "x_amz_credential", "x_amz_security_token",
+            "x_amz_signature",
+        }
         for name, _ in parse_qsl(parsed.query, keep_blank_values=True):
             normalized = name.lower().replace("-", "_")
-            if normalized in sensitive_names or normalized.endswith(("_token", "_key", "_secret", "_password", "_credential")):
+            if normalized in sensitive_names or normalized.endswith((
+                "_token", "_key", "_secret", "_password", "_credential", "_signature",
+            )):
                 return False
         return True
     except (TypeError, ValueError):

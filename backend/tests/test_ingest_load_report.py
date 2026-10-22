@@ -130,6 +130,20 @@ def test_documented_standard_profile_and_report_fields():
             "target_url": "https://ingest.example/api/v1/updates?api_key=secret",
         })
 
+    for credential_query in (
+        "authorization=Bearer-secret",
+        "key=credential-value",
+        "sig=signed-value",
+    ):
+        blocked_url_report = valid_report()
+        blocked_url_report["target_url"] = (
+            "https://ingest.example/api/v1/updates?" + credential_query
+        )
+        with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+            publish_load_report(valid_parameters(), blocked_url_report)
+        with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+            render_json_report(blocked_url_report)
+
     for field in (
         "request_count", "package_count", "throughput", "http_error_count",
         "p50_latency", "p95_latency", "p99_latency", "pool_waits",
