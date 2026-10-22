@@ -87,6 +87,12 @@ def test_shutdown_telemetry():
     shutdown_telemetry()
 
 
+def test_pool_observability_contract():
+    """Pool metrics use fixed names and no caller-data labels."""
+    from fluxion.telemetry import record_pool_observability
+    record_pool_observability(active=2, idle=3, overflow=1, waited=1)
+
+
 def test_shutdown_telemetry_disabled():
     """Test telemetry shutdown when disabled."""
     with patch("fluxion.telemetry.settings") as mock_settings:

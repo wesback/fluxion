@@ -279,9 +279,16 @@ backend/
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://fluxion:fluxion@localhost:5432/fluxion` |
-| `DB_POOL_SIZE` | Connection pool size | `10` |
-| `DB_MAX_OVERFLOW` | Max overflow connections | `20` |
+| `DATABASE_URL` | PostgreSQL connection string | Required |
+| `API_REPLICAS` | Number of API replicas (1-10) | Required |
+| `API_POOL_SIZE` | API pool base size | Required |
+| `API_MAX_OVERFLOW` | API pool overflow | Required |
+| `RELAY_POOL_SIZE` | Relay pool size (maximum 8) | Required |
+| `RELAY_WORKER_COUNT` | Number of relay workers | Required |
+| `DB_POOL_TIMEOUT` | Bounded checkout timeout in seconds | Required |
+| `DB_POOL_RECYCLE` | Connection recycle interval in seconds | Required |
+| `POSTGRES_MAX_CONNECTIONS` | PostgreSQL maximum connections (100) | Required |
+| `RESERVED_CONNECTIONS` | Reserved database connections (20) | Required |
 | `SQL_ECHO` | Enable SQL query logging | `false` |
 | `OTEL_ENABLED` | Enable OpenTelemetry | `true` |
 | `OTEL_EXPORTER_TYPE` | Exporter type | `console` |

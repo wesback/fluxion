@@ -21,6 +21,8 @@ from fluxion.api.routes import (
     updates,
     webhooks,
 )
+from sqlalchemy.exc import TimeoutError as PoolTimeout
+
 from fluxion.config import settings
 from fluxion.database import close_db, get_engine
 from fluxion.middleware import APIKeyAuthMiddleware
@@ -93,7 +95,8 @@ async def lifespan(app: FastAPI):
     Args:
         app: FastAPI application instance
     """
-    # Startup
+    # Startup: validate all pool allocation before any database work or telemetry/database creation.
+    settings.validate_pool_startup()
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Database URL: {settings.database_url.split('@')[-1]}")  # Log without credentials
 
@@ -158,6 +161,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": "Validation error", "errors": exc.errors()},
+    )
+
+
+@app.exception_handler(PoolTimeout)
+async def pool_timeout_exception_handler(request: Request, exc: PoolTimeout):
+    from fluxion.database import record_pool_checkout_wait
+    record_pool_checkout_wait()
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "Database connection pool exhausted"},
     )
 
 

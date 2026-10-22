@@ -36,6 +36,10 @@ _http_request_duration: metrics.Histogram | None = None
 _db_query_duration: metrics.Histogram | None = None
 _package_updates_counter: metrics.Counter | None = None
 _db_connections: metrics.UpDownCounter | None = None
+_pool_active: metrics.UpDownCounter | None = None
+_pool_idle: metrics.UpDownCounter | None = None
+_pool_overflow: metrics.UpDownCounter | None = None
+_pool_checkout_waits: metrics.Counter | None = None
 
 
 def setup_telemetry() -> None:
@@ -115,6 +119,7 @@ def _initialize_metrics() -> None:
     """Initialize metric instruments."""
     global _http_request_counter, _http_request_duration
     global _db_query_duration, _package_updates_counter, _db_connections
+    global _pool_active, _pool_idle, _pool_overflow, _pool_checkout_waits
 
     if _meter is None:
         return
@@ -144,6 +149,10 @@ def _initialize_metrics() -> None:
         description="Number of active database connections",
         unit="1",
     )
+    _pool_active = _meter.create_up_down_counter(name="db_pool_active", description="Active pool connections", unit="1")
+    _pool_idle = _meter.create_up_down_counter(name="db_pool_idle", description="Idle pool connections", unit="1")
+    _pool_overflow = _meter.create_up_down_counter(name="db_pool_overflow", description="Pool overflow connections", unit="1")
+    _pool_checkout_waits = _meter.create_counter(name="db_pool_checkout_waits_total", description="Pool checkout saturation events", unit="1")
 
     # Business metrics
     _package_updates_counter = _meter.create_counter(
@@ -252,6 +261,18 @@ def record_db_connection_change(delta: int) -> None:
     """
     if _db_connections is not None:
         _db_connections.add(delta)
+
+
+def record_pool_observability(active: int, idle: int, overflow: int, waited: int = 0) -> None:
+    """Record pool gauges and checkout waits without labels or caller data."""
+    if _pool_active is not None:
+        _pool_active.add(active)
+    if _pool_idle is not None:
+        _pool_idle.add(idle)
+    if _pool_overflow is not None:
+        _pool_overflow.add(overflow)
+    if _pool_checkout_waits is not None and waited > 0:
+        _pool_checkout_waits.add(1)
 
 
 def shutdown_telemetry() -> None:
