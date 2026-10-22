@@ -167,7 +167,7 @@ async def test_exact_hostname_authorization_contract(ingest_authorization) -> No
         ("/api/v1/updates/batch", BATCH),
         ("/api/v1/updates/ingest/apk", APK_BATCH),
     )
-    rows = (models.PackageUpdate, models.Host, models.WebhookOutbox)
+    rows = (models.PackageUpdate, models.Host, models.DeliveryIdentity, models.WebhookOutbox)
 
     cases = (
         (user_key, "node1.example.test", 201),
