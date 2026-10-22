@@ -1,0 +1,218 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 138,
+  "branch": "ai-sdlc/issue-138",
+  "commitSha": "73cb1db0dc81166999e510df7276031b78834c64",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The report contract and latency comparison are implemented, but an unmet comparison can be published without the required waiver details.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 104,
+          "message": "An incomplete waiver does not prevent publication or otherwise fail validation. Require both a non-empty owner and reason before publishing an unmet or baseline-missing comparison.",
+          "confidence": 0.9,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "When the p95 target is unmet or the baseline is missing, compare_latency sets risk_status and then returns a result regardless of whether waiver_owner and waiver_reason are present. build_load_report publishes that result.",
+            "failureScenario": "With an unmet target and no waiver, build_load_report still returns JSON and text with risk_status set but without a waiver owner or reason, despite the criterion requiring a complete waiver."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The report can be emitted without the waiver details required for an unmet latency target, and the standard-profile test can pass with an incorrect batch size.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 120,
+          "message": "An unmet latency target can produce a published report without the required complete waiver owner and reason.",
+          "confidence": 0.88,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "When the latency target is unmet or the baseline is missing, compare_latency sets risk_status and returns even if waiver_owner or waiver_reason is absent. build_load_report then serializes and returns the report.",
+            "failureScenario": "With an unmet target and no waiver, the helper publishes a report without a complete waiver owner and reason, contrary to the acceptance criterion."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_ingest_load_report.py",
+          "line": 76,
+          "message": "The standard-profile test does not reliably catch a changed batch-size default; assert the exact documented value.",
+          "confidence": 0.94,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_documented_standard_profile_and_report_fields accepts any occurrence of \"100\" in each document as evidence for 100 package items.",
+            "failureScenario": "If either document changes the batch default to 1000 package items, the test still passes because \"100\" remains a substring."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The report contract can serialize undeclared runner data, creating a credential exposure path when callers publish its output.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 60,
+          "message": "The report accepts and emits arbitrary extra fields, so credentials or other sensitive runner data can leak into published evidence. Restrict output to the declared report fields, or explicitly reject sensitive extra fields. OWASP A02:2025.",
+          "confidence": 0.86,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "validate_load_report copies every supplied mapping key with dict(report), and build_load_report serializes that entire dictionary with json.dumps.",
+            "failureScenario": "A runner passes an extra field such as an Authorization header or credential captured alongside measurements. Validation succeeds, and the returned JSON and human-readable report include the secret; a caller publishing the report exposes it."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-green",
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 0,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": false,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "assertion",
+    "greenExit": 1,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_ingest_load_report.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
