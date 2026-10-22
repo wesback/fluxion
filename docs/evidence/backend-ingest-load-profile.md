@@ -14,7 +14,7 @@ The test database data set and package rows are cleaned after the run. Repeated 
 
 ## Report contract
 
-Every report contains request count, package count, throughput, HTTP error count, p50 latency, p95 latency, p99 latency, pool waits, database utilization, target URL, client count, batch size, duration, data-set version, and test data version. A report is published only when every field is present and its runner metadata matches the supplied parameters exactly.
+Every report contains request count, package count, throughput, HTTP error count, p50 latency, p95 latency, p99 latency, pool waits, database utilization, target URL, client count, batch size, duration, data-set version, and test data version. Machine-readable field names: `request_count`, `package_count`, `throughput`, `http_error_count`, `p50_latency`, `p95_latency`, `p99_latency`, `pool_waits`, `database_utilization`, `target_url`, `client_count`, `batch_size`, `duration`, `data_set_version`, and `test_data_version`. A report is published only when every field is present and its runner metadata matches the supplied parameters exactly.
 
 ## Latency comparison
 

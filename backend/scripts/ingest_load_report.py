@@ -46,7 +46,10 @@ def validate_load_report(report: Mapping[str, Any], parameters: Mapping[str, Any
     """Validate all required evidence and exact runner metadata; never publish on error."""
     if not isinstance(report, Mapping):
         raise LoadReportContractError()
-    if any(report.get(field) is None for field in REPORT_FIELDS):
+    if any(field not in report or report.get(field) is None for field in REPORT_FIELDS):
+        raise LoadReportContractError()
+    undeclared_fields = set(report) - set(REPORT_FIELDS)
+    if undeclared_fields:
         raise LoadReportContractError()
     for field in ("target_url", "data_set_version", "test_data_version"):
         if not isinstance(report.get(field), str) or not report[field].strip():
@@ -123,9 +126,14 @@ def compare_latency(p95_before: Any = None, report: Mapping[str, Any] | None = N
 
 def build_load_report(parameters: Mapping[str, Any], report: Mapping[str, Any],
                       baseline: Any = None, waiver: Mapping[str, Any] | None = None):
-    """Return JSON and human text only when the report contract is complete."""
+    """Return JSON and human text only when the report and waiver contracts are complete."""
     report = validate_load_report(report, parameters)
     latency = compare_latency(report=report, baseline=baseline, waiver=waiver)
+    if latency["risk_status"] == "risk waiver required":
+        owner = latency.get("waiver_owner")
+        reason = latency.get("waiver_reason")
+        if not isinstance(owner, str) or not owner.strip() or not isinstance(reason, str) or not reason.strip():
+            raise LoadReportContractError()
     report["latency_comparison"] = latency
     return json.dumps(report, sort_keys=True), render_human_report(report)
 

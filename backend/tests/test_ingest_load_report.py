@@ -40,7 +40,7 @@ def valid_report():
 
 
 def test_load_report_contract():
-    json_output, text_output = publish_load_report(valid_parameters(), valid_report())
+    json_output, text_output = publish_load_report(valid_parameters(), valid_report(), baseline=100.0)
     assert '"request_count": 1200' in json_output
     assert "request_count: 1200" in text_output
     assert "test_data_version: test-data-v1" in text_output
@@ -79,6 +79,24 @@ def test_latency_improvement_or_waiver_contract():
     assert incomplete_waiver["risk_status"] == "risk waiver required"
     assert incomplete_waiver["success_verdict"] is None
 
+    unmet = valid_report()
+    unmet["p95_latency"] = 80.0
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        publish_load_report(
+            valid_parameters(), unmet, baseline=100.0,
+            waiver={"owner": "", "reason": "Traffic anomaly"},
+        )
+
+    unmet["p95_latency"] = 80.0
+    complete_waiver = publish_load_report(
+        valid_parameters(), unmet, baseline=100.0,
+        waiver={"owner": "performance-owner", "reason": "Traffic anomaly"},
+    )
+    assert complete_waiver[0].find('risk waiver required') >= 0
+
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        publish_load_report(valid_parameters(), valid_report(), baseline=None)
+
 
 def test_documented_standard_profile_and_report_fields():
     readme = (ROOT / "backend/scripts/README.md").read_text()
@@ -87,10 +105,17 @@ def test_documented_standard_profile_and_report_fields():
 
     for text in (readme, evidence):
         assert "50 clients" in text or "50 clients" in text.replace("**", "")
-        assert "100 package items" in text or "100" in text
+        assert "100 package items" in text
+        assert "100 package items per batch" in evidence
+        assert "batches of 100 package items" in readme
         assert "10 minutes" in text
         assert "1,000 hosts" in text
         assert "1,000,000 package" in text or "1,000,000 package-update" in text
+
+    extra = dict(valid_report())
+    extra["runner_credential"] = "secret"
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        publish_load_report(valid_parameters(), extra)
 
     for field in (
         "request_count", "package_count", "throughput", "http_error_count",
