@@ -174,16 +174,17 @@ async def validation_client(tmp_path, monkeypatch):
     sa.event.remove(engine, "before_cursor_execute", capture)
 
 
-@pytest.mark.parametrize("item,extra", [
-    ({"package_name": None, "new_version": "2"}, None),
-    ({"package_name": "p" * 256, "new_version": "2"}, None),
-    ({"package_name": "pkg", "new_version": 5}, None),
-    ({"package_name": "pkg", "new_version": "2", "source": "apt"}, None),
-    ({"package_name": "pkg", "new_version": "2", "package_manager": "freebsd"}, None),
+@pytest.mark.parametrize("item,batch_package_manager", [
+    ({"package_name": None, "new_version": "2"}, "apt"),
+    ({"package_name": "p" * 256, "new_version": "2"}, "apt"),
+    ({"package_name": "pkg", "new_version": 5}, "apt"),
+    ({"package_name": "pkg", "new_version": "2", "source": "apt"}, "apt"),
+    ({"package_name": "pkg", "new_version": "2", "package_manager": "freebsd"}, "apt"),
+    ({"package_name": "pkg", "new_version": "2"}, "freebsd"),
 ])
-async def test_malformed_batch_contract(validation_client, item, extra):
+async def test_malformed_batch_contract(validation_client, item, batch_package_manager):
     client, statements = validation_client
-    payload = {"hostname": "valid-host", "package_manager": "apt", "updates": [item]}
+    payload = {"hostname": "valid-host", "package_manager": batch_package_manager, "updates": [item]}
     response = await client.post("/api/v1/updates/batch", json=payload, headers={"X-API-Key": "secret"})
     assert response.status_code == 400
     assert response.json()["detail"] == "Validation error"

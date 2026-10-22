@@ -124,3 +124,31 @@ async def test_bulk_ingest_observability_contract(telemetry_ingest):
     assert "rollback-a" not in serialized
     assert "pkg-c" not in serialized
     assert "api-secret" not in serialized
+
+    ingest_payload = {
+        "hostname": "ingest-host",
+        "packages": [
+            {"name": "ingest-a", "version": "2", "security": False},
+            {"name": "ingest-b", "version": "2", "security": False},
+            {"name": "ingest-c", "version": "2", "security": False},
+        ],
+    }
+    response = await telemetry_ingest.client.post(
+        "/api/v1/updates/ingest/apk", json=ingest_payload,
+        headers={"X-API-Key": "api-secret", "X-Delivery-ID": "telemetry-ingest"},
+    )
+    assert response.status_code == 201
+
+    rows = metric_data(telemetry_ingest.reader, "package_batch_rows_total")
+    assert sum(point.value for point in rows if point.attributes.get("result") == "accepted") == 6
+    assert sum(point.value for point in rows if point.attributes.get("result") == "rejected") == 3
+    requests = metric_data(telemetry_ingest.reader, "http_request_duration")
+    request_attributes = {tuple(sorted(point.attributes.items())) for point in requests}
+    assert request_attributes == {
+        (("endpoint", "/api/v1/updates/batch"), ("method", "POST")),
+        (("endpoint", "/api/v1/updates/ingest/{package_manager}"), ("method", "POST")),
+    }
+    serialized = repr(telemetry_ingest.reader.get_metrics_data())
+    assert "ingest-host" not in serialized
+    assert "ingest-a" not in serialized
+    assert "api-secret" not in serialized
