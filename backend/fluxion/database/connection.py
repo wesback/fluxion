@@ -1,6 +1,7 @@
 """Database connection and session management with async support."""
 
 from collections.abc import AsyncGenerator
+from threading import Timer
 from sqlalchemy import event
 
 from sqlalchemy.ext.asyncio import (
@@ -38,7 +39,22 @@ def get_engine() -> AsyncEngine:
             pool_timeout=settings.db_pool_timeout,
         )
         event.listen(_engine.sync_engine, "checkout", lambda *args: get_pool_status())
-        event.listen(_engine.sync_engine, "checkin", lambda *args: get_pool_status())
+
+        def record_checkin(dbapi_connection, connection_record):
+            def record_after_checkin():
+                try:
+                    pool = _engine.sync_engine.pool
+                    record_pool_state(
+                        max(0, pool.checkedout()),
+                        max(0, pool.checkedin()),
+                        max(0, pool.overflow()),
+                    )
+                except Exception:
+                    pass
+
+            Timer(0.01, record_after_checkin).start()
+
+        event.listen(_engine.sync_engine, "checkin", record_checkin)
 
         pool = _engine.sync_engine.pool
         get_pool_status()
@@ -68,6 +84,21 @@ def get_pool_status() -> dict[str, int]:
 
 
 get_pool_status.wait_count = 0
+
+
+def record_pool_state(active: int, idle: int, overflow: int) -> dict[str, int]:
+    status = {
+        "active": active,
+        "idle": idle,
+        "overflow": overflow,
+        "waited": get_pool_status.wait_count,
+    }
+    try:
+        from fluxion.telemetry import record_pool_observability
+        record_pool_observability(active, idle, overflow, status["waited"])
+    except Exception:
+        pass
+    return status
 
 
 def record_pool_checkout_wait() -> None:

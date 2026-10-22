@@ -14,6 +14,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import ConsoleMetricExporter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -60,6 +61,12 @@ def setup_telemetry() -> None:
     global _tracer, _meter
 
     if not settings.otel_enabled:
+        _tracer = None
+        _meter = None
+        for name in ("_http_request_counter", "_http_request_duration", "_db_query_duration",
+                     "_package_updates_counter", "_db_connections", "_pool_active", "_pool_idle",
+                     "_pool_overflow", "_pool_checkout_waits"):
+            globals()[name] = None
         logger.info("OpenTelemetry is disabled")
         return
 
@@ -112,11 +119,10 @@ def _setup_tracing(resource: Resource) -> None:
 
 
 def _setup_metrics(resource: Resource) -> None:
-    """Configure metrics provider and exporters."""
-    # Metrics export disabled - Jaeger doesn't support OTLP metrics protocol
-    # For production, consider adding Prometheus or OpenTelemetry Collector
-    logger.info("Metrics export is disabled (not supported by Jaeger)")
-    return
+    """Configure an in-process metric provider with a console exporter."""
+    metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    metrics.set_meter_provider(meter_provider)
 
 
 def _initialize_metrics() -> None:

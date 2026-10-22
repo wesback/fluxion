@@ -2,7 +2,7 @@
 
 import math
 
-from pydantic import AliasChoices, Field, ValidationInfo, field_validator
+from pydantic import AliasChoices, Field, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -10,6 +10,31 @@ from sqlalchemy.exc import ArgumentError
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    def __init__(self, **values):
+        try:
+            super().__init__(**values)
+        except ValidationError as exc:
+            for error in exc.errors():
+                field = error.get("loc", (None,))[0]
+                message = error.get("msg", "")
+                clean_message = message.removeprefix("Value error, ")
+                if clean_message.startswith(("API_REPLICAS ", "API_POOL_SIZE ", "API_MAX_OVERFLOW ",
+                                            "RELAY_POOL_SIZE ", "RELAY_WORKER_COUNT ",
+                                            "DB_POOL_RECYCLE ", "DB_POOL_TIMEOUT ",
+                                            "POSTGRES_MAX_CONNECTIONS ", "RESERVED_CONNECTIONS ")):
+                    raise RuntimeError(clean_message) from None
+                env_names = {
+                    "api_replicas": "API_REPLICAS", "db_pool_size": "API_POOL_SIZE",
+                    "db_max_overflow": "API_MAX_OVERFLOW", "relay_pool_size": "RELAY_POOL_SIZE",
+                    "relay_worker_count": "RELAY_WORKER_COUNT", "db_pool_recycle": "DB_POOL_RECYCLE",
+                    "db_pool_timeout": "DB_POOL_TIMEOUT",
+                    "postgres_max_connections": "POSTGRES_MAX_CONNECTIONS",
+                    "reserved_connections": "RESERVED_CONNECTIONS",
+                }
+                if field in env_names:
+                    raise RuntimeError(f"{env_names[field]} must be an integer") from None
+            raise RuntimeError("Invalid configuration") from None
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore", populate_by_name=True

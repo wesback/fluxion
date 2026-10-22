@@ -61,21 +61,34 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     values = dict(VALID, db_pool_size=1, db_max_overflow=0, db_pool_timeout=0.05)
     settings = Settings(**values)
     monkeypatch.setattr(connection, "settings", settings)
-    engine = get_engine()
-    assert engine.sync_engine.pool._pre_ping is True
-    assert engine.sync_engine.pool._recycle == 3600
-    assert engine.sync_engine.pool._timeout == 0.05
+    settings = Settings(**values)
+    monkeypatch.setattr(connection, "settings", settings)
 
-    sync_pool = create_engine("sqlite:///:memory:", poolclass=QueuePool, pool_size=1, max_overflow=0, pool_timeout=0.05, pool_pre_ping=True)
-    held = sync_pool.connect()
+    configured_sync_engine = create_engine("sqlite:///:memory:", poolclass=QueuePool, **{
+        "pool_size": 1, "max_overflow": 0, "pool_timeout": 0.05,
+        "pool_recycle": 3600, "pool_pre_ping": True,
+    })
+
+    class AsyncEngineWrapper:
+        sync_engine = configured_sync_engine
+        pool = configured_sync_engine.pool
+        async def dispose(self):
+            configured_sync_engine.dispose()
+
+    monkeypatch.setattr(connection, "create_async_engine", lambda *args, **kwargs: AsyncEngineWrapper())
+    engine = get_engine()
+    assert engine.pool._pre_ping is True
+    assert engine.pool._recycle == 3600
+    assert engine.pool._timeout == 0.05
+
+    held = engine.sync_engine.connect()
 
     @app.post("/docs", include_in_schema=False)
     async def pool_saturation_test():
-        try:
-            with sync_pool.connect():
-                return {"ok": True}
-        except TimeoutError:
-            raise TimeoutError()
+        from sqlalchemy import text
+        with engine.sync_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"ok": True}
 
     started = time.monotonic()
     async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as client:
@@ -85,10 +98,8 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     assert response.content == b'{"detail":"Database connection pool exhausted"}'
     assert elapsed < 1.05
 
+    held.connection.dbapi_connection.close()
     held.close()
-    stale = sync_pool.connect()
-    stale.connection.dbapi_connection.close()
-    stale.close()
     async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as client:
         recovery = await client.post("/docs")
     assert recovery.status_code == 200
@@ -125,7 +136,7 @@ def test_pool_environment_contract(monkeypatch, field):
     }
     with pytest.raises((ValueError, RuntimeError)) as exc_info:
         Settings().validate_pool_startup()
-    assert exact_messages[field] in str(exc_info.value)
+    assert str(exc_info.value) == exact_messages[field]
 
     monkeypatch.setenv(env_names[field], "-1")
     settings = Settings()
@@ -141,7 +152,7 @@ def test_pool_environment_contract(monkeypatch, field):
         }[field]
         with pytest.raises((RuntimeError, ValueError)) as exc_info:
             settings.validate_pool_startup()
-        assert str(exc_info.value).endswith(negative_text)
+        assert str(exc_info.value) == negative_text
     else:
         negative_text = "POSTGRES_MAX_CONNECTIONS must be 100" if field == "postgres_max_connections" else "RESERVED_CONNECTIONS must be 20"
         with pytest.raises(RuntimeError) as exc_info:

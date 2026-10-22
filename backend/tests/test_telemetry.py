@@ -108,11 +108,21 @@ def test_pool_observability_contract():
 
     telemetry.record_pool_observability(2, 3, 1, waited=1)
     telemetry.record_pool_observability(2, 3, 1, waited=1)
+    calls = {"active": [], "idle": [], "overflow": [], "waits": []}
 
-    assert calls["active"] == [(2, None), (0, None)]
-    assert calls["idle"] == [(3, None), (0, None)]
-    assert calls["overflow"] == [(1, None), (0, None)]
+    from fluxion.database.connection import record_pool_state, record_pool_checkout_wait
+    telemetry._pool_last_waited = 0
+    import fluxion.database.connection as connection
+    connection.get_pool_status.wait_count = 0
+    record_pool_checkout_wait()
+    state = record_pool_state(1, 4, 0)
+
+    assert state == {"active": 1, "idle": 4, "overflow": 0, "waited": 1}
+    assert calls["active"][-1] == (-1, None)
+    assert calls["idle"][-1] == (1, None)
+    assert calls["overflow"][-1] == (-1, None)
     assert calls["waits"] == [(1, None)]
+    assert all(attributes in (None, {}) for values in calls.values() for _, attributes in values)
 
 
 def test_shutdown_telemetry_disabled():
