@@ -47,7 +47,9 @@ def _upgrade_indexes(database: Path) -> set[tuple[str, str, tuple[str, ...]]]:
     return names
 
 
-def test_ingest_query_migration_records_and_uses_indexes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ingest_query_migration_records_and_uses_indexes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC: migration indexes and evidence are an exact one-to-one contract."""
     migration = _load_migration()
     assert set(migration.MIGRATION_INDEXES) == set(migration.INDEX_EVIDENCE)
@@ -70,9 +72,7 @@ def test_ingest_query_migration_records_and_uses_indexes(monkeypatch: pytest.Mon
     for name in migration.MIGRATION_INDEXES:
         assert name in evidence
 
-    database = BACKEND_ROOT.parent / "migration_contract.sqlite"
-    if database.exists():
-        database.unlink()
+    database = tmp_path / "migration_contract.sqlite"
     engine = sa.create_engine(f"sqlite:///{database}")
     try:
         with engine.begin() as connection:
@@ -140,7 +140,7 @@ def test_ingest_query_migration_upgrade(tmp_path: Path, monkeypatch: pytest.Monk
         for name, (table, columns) in migration.MIGRATION_INDEXES.items()
     }
     assert migration_indexes <= package_indexes
-    assert {name for name, _, _ in package_indexes if name.startswith("ix_package_updates_")} == {
+    assert {name for name, _, _ in package_indexes} == {
         "ix_package_updates_package_name",
         "ix_package_updates_update_timestamp",
         "ix_package_updates_host_id_update_timestamp",
