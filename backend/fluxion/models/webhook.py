@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -37,6 +37,51 @@ class WebhookConfig(Base):
             f"<WebhookConfig(id={self.id}, name='{self.name}', "
             f"url='{self.url}', enabled={self.enabled})>"
         )
+
+
+class WebhookOutbox(Base):
+    """Durable webhook delivery intent committed with package transactions."""
+
+    __tablename__ = "webhook_outbox"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    webhook_config_id: Mapped[int] = mapped_column(
+        ForeignKey("webhook_configs.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        UniqueConstraint("delivery_id", name="uq_webhook_outbox_delivery_id"),
+        Index("ix_webhook_outbox_status", "status"),
+        Index("ix_webhook_outbox_next_attempt_at", "next_attempt_at"),
+    )
+
+
+class DeliveryIdentity(Base):
+    """Stable identity and content fingerprint for accepted package deliveries."""
+
+    __tablename__ = "webhook_delivery_identities"
+
+    delivery_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
 
 
 class WebhookDeliveryHistory(Base):

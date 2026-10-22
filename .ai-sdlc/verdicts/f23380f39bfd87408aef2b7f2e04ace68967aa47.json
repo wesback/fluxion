@@ -1,0 +1,331 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 129,
+  "branch": "ai-sdlc/issue-129",
+  "commitSha": "f23380f39bfd87408aef2b7f2e04ace68967aa47",
+  "round": 0,
+  "pipelineVersion": "459fc5f",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 5,
+        "minor": 1,
+        "suggestion": 0
+      },
+      "summary": "The migration and model changes are present, but several required tests are missing or do not verify their acceptance criteria. The test module also violates the requirement that it collect on the default branch, and the issue's file scope conflicts with updating the migration-head test.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 17,
+          "message": "AC-1 requires test_outbox.py to collect on the default branch, but its module-level imports of the new model names prevent collection there.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test module imports DeliveryIdentity and WebhookOutbox at module load, before pytest collects any tests.",
+            "failureScenario": "On the default branch, where those names are not exported yet, importing test_outbox.py raises ImportError during collection instead of collecting tests and reporting failures, contrary to AC-1."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 35,
+          "message": "AC-1's schema test does not verify the delivery identity schema or the exported SQLAlchemy model mappings.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_schema_contract inspects the migrated webhook_outbox table, but does not inspect webhook_delivery_identities or the exported models' table columns, keys, constraints, and indexes.",
+            "failureScenario": "If the identity table has the wrong schema or either exported model is missing or mapped incorrectly, this test can still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 145,
+          "message": "AC-2's required batch persistence and insert-failure tests are missing.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The added package commit and rollback tests post to /api/v1/updates. No test in this change posts to /api/v1/updates/batch or asserts the specified configuration IDs and event pairs.",
+            "failureScenario": "If batch ingestion omits an outbox pair or fails to roll back package, identity, and diagnostic rows after an outbox insert error, these single-update tests still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 217,
+          "message": "AC-3's named batch replay contract test is missing, including its no-webhook and captured-SQL cases.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique exercises repeated single-update requests with matching enabled webhooks; it does not capture SQL or test replay when no webhook matches.",
+            "failureScenario": "If batch replay lookup scans outbox payloads or fails to persist an identity when no webhook matches, this test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 243,
+          "message": "AC-4's required migration preservation and downgrade cleanup test is missing.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_outbox_migration_round_trip checks preserved table row counts, but does not assert exact seeded IDs and values, seed rows in both new tables, or verify that the named indexes are removed.",
+            "failureScenario": "If downgrade changes a preserved row's ID or value, leaves a named index behind, or fails to remove seeded new-table rows, the current assertions can still pass."
+          }
+        },
+        {
+          "severity": "minor",
+          "file": "backend/tests/test_migrations.py",
+          "line": 206,
+          "message": "NEEDS-PERSON: The issue excludes edits to test_migrations.py, but its existing head assertion must change for this migration to pass. Decide whether updating that test is permitted.",
+          "confidence": 0.95,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The issue says test_migrations.py is not edited, but this diff changes its expected migration head.",
+            "failureScenario": "Adding the new migration changes the actual head, so the old assertion cannot remain passing unchanged; the issue both excludes this file and requires the existing test to remain passing."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 5,
+        "minor": 1,
+        "suggestion": 0
+      },
+      "summary": "The delivered tests cover parts of the single-update path, but the required batch transaction and replay contracts are not exercised. The migration round-trip and model schema checks also leave explicit acceptance cases unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 16,
+          "message": "The module-level imports violate the collection requirement. Import the fluxion.models module without importing the new class names at module load.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The test module imports DeliveryIdentity, WebhookOutbox, and other new model names directly during collection.",
+            "failureScenario": "On the default branch, where those names are not exported yet, pytest raises ImportError while collecting test_outbox.py instead of collecting the tests and reporting failures."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 35,
+          "message": "AC-1 is not fully verified: the schema test does not assert the exported models' complete mapping or the delivery identity primary key.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_outbox_schema_contract inspects the migrated webhook_outbox table and duplicate delivery_id constraint, but does not inspect the exported models' mapped columns, keys, constraints, or indexes, or the delivery identity table's primary key.",
+            "failureScenario": "If an exported model omits a required column or index, or DeliveryIdentity lacks its delivery_id primary key, the test can pass while the model contract is broken."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 164,
+          "message": "AC-2's named batch commit and insert-failure tests are missing; the tests exercise only the single-update endpoint.",
+          "confidence": 1,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The added endpoint tests post to /api/v1/updates; none submits to /api/v1/updates/batch or installs the specified SQLite insert-failure trigger.",
+            "failureScenario": "If batch ingestion omits or mispairs outbox intents, or an outbox insert failure leaves package or diagnostic rows committed, the single-update tests still pass."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 217,
+          "message": "AC-3's named replay contract test is missing; the existing single-update replay test does not verify the required batch cases or lookup query.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_replayed_delivery_identity_is_unique submits requests to /api/v1/updates and checks row counts, but does not exercise the batch endpoint, capture SQL, or cover a new identity with no matching webhook.",
+            "failureScenario": "If batch replay accepts changed content, scans outbox payload rows, or fails to persist an identity when no webhook matches, this test still passes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_outbox.py",
+          "line": 239,
+          "message": "AC-4's named migration preservation test is missing; the existing round-trip test does not verify the required exact preservation and downgrade cleanup.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_outbox_migration_round_trip checks preserved-table row counts, but not seeded IDs and values, outbox row removal, or removal of the named indexes.",
+            "failureScenario": "If downgrade changes a preserved row's ID or value, leaves an outbox row or named index behind, the current assertions can still pass."
+          }
+        },
+        {
+          "severity": "minor",
+          "file": "backend/tests/test_migrations.py",
+          "line": 206,
+          "message": "NEEDS-PERSON: The issue excludes edits to test_migrations.py, but the new migration changes the expected head. Decide whether this test update is permitted.",
+          "confidence": 0.95,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The issue says the listed migration tests remain passing and are not edited, while this diff changes test_existing_migration_sequence_includes_new_head.",
+            "failureScenario": "The pull request includes an edit to a test the issue explicitly says not to edit."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "I found no concrete security vulnerability in the changed code. The delivery identity lookup uses a parameterized SQLAlchemy query, and changed-content replays return HTTP 409.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_migrations.py",
+      "backend/tests/test_outbox.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
