@@ -1,0 +1,102 @@
+from pathlib import Path
+
+import pytest
+
+from scripts.ingest_load_report import (
+    LoadReportContractError,
+    compare_latency,
+    publish_load_report,
+)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def valid_parameters():
+    return {
+        "target_url": "https://ingest.example/api/v1/updates",
+        "client_count": 50,
+        "batch_size": 100,
+        "duration": 600,
+        "data_set_version": "host-1000-package-1000000-v1",
+        "test_data_version": "test-data-v1",
+    }
+
+
+def valid_report():
+    report = {
+        "request_count": 1200,
+        "package_count": 120000,
+        "throughput": 200.0,
+        "http_error_count": 0,
+        "p50_latency": 40.0,
+        "p95_latency": 70.0,
+        "p99_latency": 90.0,
+        "pool_waits": 2,
+        "database_utilization": 0.65,
+        **valid_parameters(),
+    }
+    return report
+
+
+def test_load_report_contract():
+    json_output, text_output = publish_load_report(valid_parameters(), valid_report())
+    assert '"request_count": 1200' in json_output
+    assert "request_count: 1200" in text_output
+    assert "test_data_version: test-data-v1" in text_output
+
+    missing = valid_report()
+    missing.pop("p95_latency")
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        publish_load_report(valid_parameters(), missing)
+
+    mismatched = valid_report()
+    mismatched["client_count"] = 49
+    with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+        publish_load_report(valid_parameters(), mismatched)
+
+
+def test_latency_improvement_or_waiver_contract():
+    improved = compare_latency(baseline=100.0, report={"p95_latency": 69.0})
+    assert improved["success_verdict"] == "p95 latency at least 30 percent lower"
+    assert improved["before_p95_latency"] == 100.0
+    assert improved["post_p95_latency"] == 69.0
+
+    unmet = compare_latency(baseline=100.0, report={"p95_latency": 80.0})
+    assert unmet["risk_status"] == "risk waiver required"
+    assert unmet["success_verdict"] is None
+
+    missing = compare_latency(baseline=None, report={"p95_latency": 80.0})
+    assert missing["risk_status"] == "risk waiver required"
+    assert missing["before_p95_latency"] is None
+    assert missing["success_verdict"] is None
+
+    incomplete_waiver = compare_latency(
+        baseline=100.0,
+        report={"p95_latency": 80.0},
+        waiver={"owner": "", "reason": "Traffic anomaly"},
+    )
+    assert incomplete_waiver["risk_status"] == "risk waiver required"
+    assert incomplete_waiver["success_verdict"] is None
+
+
+def test_documented_standard_profile_and_report_fields():
+    readme = (ROOT / "backend/scripts/README.md").read_text()
+    evidence = (ROOT / "docs/evidence/backend-ingest-load-profile.md").read_text()
+    script = (ROOT / "backend/scripts/ingest_load_report.py").read_text()
+
+    for text in (readme, evidence):
+        assert "50 clients" in text or "50 clients" in text.replace("**", "")
+        assert "100 package items" in text or "100" in text
+        assert "10 minutes" in text
+        assert "1,000 hosts" in text
+        assert "1,000,000 package" in text or "1,000,000 package-update" in text
+
+    for field in (
+        "request_count", "package_count", "throughput", "http_error_count",
+        "p50_latency", "p95_latency", "p99_latency", "pool_waits",
+        "database_utilization", "target_url", "client_count", "batch_size",
+        "duration", "data_set_version", "test_data_version",
+    ):
+        assert field in script
+        assert field in readme or field in evidence
