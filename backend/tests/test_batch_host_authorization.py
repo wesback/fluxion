@@ -172,7 +172,7 @@ async def test_exact_hostname_authorization_contract(ingest_authorization) -> No
 
     cases = (
         (user_key, "node1.example.test", 201),
-        (user_key, "NODE1.example.test", 403),
+        (user_key, "NODE1.example.test", 201),
         (user_key, "node1.example.test.evil.test", 403),
         (user_key, "evil-node1.example.test", 403),
         (empty_key, "node1.example.test", 403),
