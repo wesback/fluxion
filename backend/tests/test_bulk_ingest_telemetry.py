@@ -142,13 +142,54 @@ async def test_bulk_ingest_observability_contract(telemetry_ingest):
     rows = metric_data(telemetry_ingest.reader, "package_batch_rows_total")
     assert sum(point.value for point in rows if point.attributes.get("result") == "accepted") == 6
     assert sum(point.value for point in rows if point.attributes.get("result") == "rejected") == 3
+    transactions = metric_data(telemetry_ingest.reader, "package_batch_transaction_seconds")
+    committed = [point for point in transactions if point.attributes == {"outcome": "committed"}]
+    assert len(committed) == 1
+    assert committed[0].count == 2
     requests = metric_data(telemetry_ingest.reader, "http_request_duration")
-    request_attributes = {tuple(sorted(point.attributes.items())) for point in requests}
-    assert request_attributes == {
-        (("endpoint", "/api/v1/updates/batch"), ("method", "POST")),
-        (("endpoint", "/api/v1/updates/ingest/{package_manager}"), ("method", "POST")),
-    }
+    batch_requests = [point for point in requests if point.attributes == {"endpoint": "/api/v1/updates/batch", "method": "POST"}]
+    ingest_requests = [point for point in requests if point.attributes == {"endpoint": "/api/v1/updates/ingest/{package_manager}", "method": "POST"}]
+    assert len(batch_requests) == 1
+    assert batch_requests[0].count == 2
+    assert len(ingest_requests) == 1
+    assert ingest_requests[0].count == 1
     serialized = repr(telemetry_ingest.reader.get_metrics_data())
     assert "ingest-host" not in serialized
     assert "ingest-a" not in serialized
+    assert "api-secret" not in serialized
+
+    with telemetry_ingest.engine.begin() as connection:
+        connection.execute(sa.text(
+            "CREATE TRIGGER fail_ingest_insert BEFORE INSERT ON package_updates "
+            "WHEN NEW.package_name = 'ingest-c' "
+            "BEGIN SELECT RAISE(ABORT, 'ingest rollback secret'); END"
+        ))
+    ingest_payload["packages"] = [
+        {"name": "ingest-roll-a", "version": "2", "security": False},
+        {"name": "ingest-roll-b", "version": "2", "security": False},
+        {"name": "ingest-c", "version": "2", "security": False},
+    ]
+    response = await telemetry_ingest.client.post(
+        "/api/v1/updates/ingest/apk", json=ingest_payload,
+        headers={"X-API-Key": "api-secret", "X-Delivery-ID": "telemetry-ingest-roll"},
+    )
+    assert response.status_code == 500
+
+    rows = metric_data(telemetry_ingest.reader, "package_batch_rows_total")
+    assert sum(point.value for point in rows if point.attributes.get("result") == "accepted") == 6
+    assert sum(point.value for point in rows if point.attributes.get("result") == "rejected") == 6
+    transactions = metric_data(telemetry_ingest.reader, "package_batch_transaction_seconds")
+    committed = [point for point in transactions if point.attributes == {"outcome": "committed"}]
+    rolled_back = [point for point in transactions if point.attributes == {"outcome": "rolled_back"}]
+    assert len(committed) == 1
+    assert committed[0].count == 2
+    assert len(rolled_back) == 1
+    assert rolled_back[0].count == 2
+    requests = metric_data(telemetry_ingest.reader, "http_request_duration")
+    ingest_requests = [point for point in requests if point.attributes == {"endpoint": "/api/v1/updates/ingest/{package_manager}", "method": "POST"}]
+    assert len(ingest_requests) == 1
+    assert ingest_requests[0].count == 2
+    serialized = repr(telemetry_ingest.reader.get_metrics_data())
+    assert "ingest-roll-a" not in serialized
+    assert "ingest-c" not in serialized
     assert "api-secret" not in serialized

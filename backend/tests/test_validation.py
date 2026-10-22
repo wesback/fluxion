@@ -174,21 +174,40 @@ async def validation_client(tmp_path, monkeypatch):
     sa.event.remove(engine, "before_cursor_execute", capture)
 
 
-@pytest.mark.parametrize("item,batch_package_manager", [
-    ({"package_name": None, "new_version": "2"}, "apt"),
-    ({"package_name": "p" * 256, "new_version": "2"}, "apt"),
-    ({"package_name": "pkg", "new_version": 5}, "apt"),
-    ({"package_name": "pkg", "new_version": "2", "source": "apt"}, "apt"),
-    ({"package_name": "pkg", "new_version": "2", "package_manager": "freebsd"}, "apt"),
-    ({"package_name": "pkg", "new_version": "2"}, "freebsd"),
+@pytest.mark.parametrize("item,batch_package_manager,expected_status,expect_sql", [
+    ({"package_name": None, "new_version": "2"}, "apt", 400, False),
+    ({"package_name": "", "new_version": "2"}, "apt", 400, False),
+    ({"package_name": "p" * 256, "new_version": "2"}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": None}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": ""}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": None}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": ""}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": "v" * 256}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": 5}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": "2", "source": "apt"}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": "2", "package_manager": "freebsd"}, "apt", 400, False),
+    ({"package_name": "pkg", "new_version": "2"}, "cargo", 400, False),
+    ({"package_name": "pkg", "new_version": "2"}, "apt", 201, True),
+    ({"package_name": "pkg", "new_version": "2"}, "pacman", 201, True),
+    ({"package_name": "pkg", "new_version": "2", "package_manager": "apt"}, None, 201, True),
+    ({"package_name": "pkg", "new_version": "2", "package_manager": "pacman"}, None, 201, True),
 ])
-async def test_malformed_batch_contract(validation_client, item, batch_package_manager):
+async def test_malformed_batch_contract(validation_client, item, batch_package_manager, expected_status, expect_sql):
     client, statements = validation_client
+    statements.clear()
     payload = {"hostname": "valid-host", "package_manager": batch_package_manager, "updates": [item]}
     response = await client.post("/api/v1/updates/batch", json=payload, headers={"X-API-Key": "secret"})
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Validation error"
-    assert statements == []
+    assert response.status_code == expected_status
+    if expected_status == 400:
+        assert response.json()["detail"] == "Validation error"
+        assert statements == []
+        if isinstance(item.get("package_name"), str) and len(item["package_name"]) == 256:
+            assert any(error["loc"][-1] == "package_name" for error in response.json()["errors"])
+    if not expect_sql:
+        assert statements == []
+    if expected_status == 201:
+        assert response.json()["count"] == 1
+        assert statements
 
 
 class TestSqlWildcardEscaping:
