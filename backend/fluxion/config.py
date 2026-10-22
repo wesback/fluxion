@@ -2,7 +2,7 @@
 
 import math
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,19 +45,27 @@ class Settings(BaseSettings):
         "reserved_connections", mode="before",
     )
     @classmethod
-    def validate_whole_number(cls, value):
+    def validate_whole_number(cls, value, info: ValidationInfo):
         if value is None:
             return value
+        env_names = {
+            "api_replicas": "API_REPLICAS", "db_pool_size": "API_POOL_SIZE",
+            "db_max_overflow": "API_MAX_OVERFLOW", "relay_pool_size": "RELAY_POOL_SIZE",
+            "relay_worker_count": "RELAY_WORKER_COUNT", "db_pool_recycle": "DB_POOL_RECYCLE",
+            "postgres_max_connections": "POSTGRES_MAX_CONNECTIONS",
+            "reserved_connections": "RESERVED_CONNECTIONS",
+        }
+        name = env_names[info.field_name]
         if isinstance(value, bool):
-            raise ValueError("Pool environment values must be integers")
+            raise ValueError(f"{name} must be an integer")
         try:
             parsed = int(value)
         except (TypeError, ValueError):
-            raise ValueError("Pool environment values must be integers") from None
+            raise ValueError(f"{name} must be an integer") from None
         if isinstance(value, str) and value.strip() != str(parsed):
-            raise ValueError("Pool environment values must be integers")
+            raise ValueError(f"{name} must be an integer")
         if isinstance(value, float) and not value.is_integer():
-            raise ValueError("Pool environment values must be integers")
+            raise ValueError(f"{name} must be an integer")
         return parsed
 
     def validate_pool_startup(self) -> None:
@@ -80,10 +88,14 @@ class Settings(BaseSettings):
             raise RuntimeError("Missing required pool setting: DATABASE_URL")
         if self.api_replicas < 1 or self.api_replicas > 10:
             raise RuntimeError("API_REPLICAS must be between 1 and 10")
-        if self.db_pool_size < 0 or self.db_max_overflow < 0:
-            raise RuntimeError("API pool values must be non-negative")
-        if self.relay_pool_size < 0 or self.relay_worker_count < 0:
-            raise RuntimeError("Relay pool values must be non-negative")
+        if self.db_pool_size < 0:
+            raise RuntimeError("API_POOL_SIZE must be non-negative")
+        if self.db_max_overflow < 0:
+            raise RuntimeError("API_MAX_OVERFLOW must be non-negative")
+        if self.relay_pool_size < 0:
+            raise RuntimeError("RELAY_POOL_SIZE must be non-negative")
+        if self.relay_worker_count < 0:
+            raise RuntimeError("RELAY_WORKER_COUNT must be non-negative")
         api_total = self.db_pool_size + self.db_max_overflow
         relay_total = self.relay_pool_size
         aggregate = self.api_replicas * api_total + relay_total

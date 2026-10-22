@@ -1,6 +1,7 @@
 """Database connection and session management with async support."""
 
 from collections.abc import AsyncGenerator
+from types import MethodType
 
 from sqlalchemy import event
 
@@ -39,7 +40,15 @@ def get_engine() -> AsyncEngine:
             pool_timeout=settings.db_pool_timeout,
         )
         event.listen(_engine.sync_engine, "checkout", lambda *args: get_pool_status())
-        event.listen(_engine.sync_engine, "checkin", lambda *args: get_pool_status())
+
+        pool = _engine.sync_engine.pool
+        original_return_conn = pool._return_conn
+
+        def return_conn_after_record(pool_self, record) -> None:
+            original_return_conn(record)
+            get_pool_status()
+
+        pool._return_conn = MethodType(return_conn_after_record, pool)
         get_pool_status()
     return _engine
 
@@ -147,3 +156,4 @@ async def close_db() -> None:
         await _engine.dispose()
         _engine = None
         _sessionmaker = None
+        get_pool_status.wait_count = 0

@@ -28,7 +28,7 @@ def test_pool_configuration_contract():
     settings.validate_pool_startup()
     assert settings.db_pool_size + settings.db_max_overflow == 8
 
-    for field in ("database_url", "api_replicas", "db_pool_size", "db_max_overflow", "relay_pool_size", "relay_worker_count", "db_pool_timeout"):
+    for field in ("database_url", "api_replicas", "db_pool_size", "db_max_overflow", "relay_pool_size", "relay_worker_count", "db_pool_timeout", "db_pool_recycle", "postgres_max_connections", "reserved_connections"):
         values = dict(VALID)
         values[field] = None
         with pytest.raises((RuntimeError, ValueError)):
@@ -49,6 +49,12 @@ def test_pool_replica_boundaries(replicas, api_total, relay_total, aggregate, va
 @pytest.mark.asyncio
 async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     import fluxion.database.connection as connection
+    import time
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import TimeoutError
+    from httpx import ASGITransport, AsyncClient
+    from fluxion.main import app
+
     await close_db()
     connection._engine = None
     settings = Settings(**VALID)
@@ -58,13 +64,32 @@ async def test_pool_pre_ping_and_checkout_timeout(monkeypatch):
     assert engine.sync_engine.pool._recycle == 3600
     assert engine.sync_engine.pool._timeout == 5.0
 
-    from starlette.requests import Request
-    from sqlalchemy.exc import TimeoutError
-    from fluxion.main import pool_timeout_exception_handler
+    from sqlalchemy.pool import QueuePool
+    sync_pool = create_engine("sqlite:///:memory:", poolclass=QueuePool, pool_size=1, max_overflow=0, pool_timeout=0.01, pool_pre_ping=True)
+    held = sync_pool.connect()
 
-    response = await pool_timeout_exception_handler(Request({"type": "http"}), TimeoutError())
+    @app.post("/docs", include_in_schema=False)
+    async def pool_saturation_test():
+        try:
+            with sync_pool.connect():
+                return {"ok": True}
+        except TimeoutError:
+            raise TimeoutError()
+
+    started = time.monotonic()
+    async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as client:
+        response = await client.post("/docs")
+    elapsed = time.monotonic() - started
     assert response.status_code == 503
-    assert response.body == b'{"detail":"Database connection pool exhausted"}'
+    assert response.content == b'{"detail":"Database connection pool exhausted"}'
+    assert elapsed < 1.0
+
+    held.close()
+    async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as client:
+        recovery = await client.post("/docs")
+    assert recovery.status_code == 200
+
+    app.router.routes[:] = [route for route in app.router.routes if getattr(route, "path", None) != "/docs" or getattr(route, "methods", None) == {"GET", "HEAD"}]
     await engine.dispose()
 
 
@@ -86,10 +111,23 @@ def test_pool_environment_contract(monkeypatch, field):
     with pytest.raises(ValueError):
         Settings().validate_pool_startup()
 
-    monkeypatch.setenv(env_names[field], "-1" if field != "db_pool_timeout" else "-1")
+    monkeypatch.setenv(env_names[field], "-1")
     settings = Settings()
-    with pytest.raises((RuntimeError, ValueError)):
-        settings.validate_pool_startup()
+    if field in ("api_replicas", "db_pool_size", "db_max_overflow", "relay_pool_size", "relay_worker_count", "db_pool_timeout", "db_pool_recycle"):
+        negative_text = {
+            "api_replicas": "API_REPLICAS must be between 1 and 10",
+            "db_pool_size": "API_POOL_SIZE must be non-negative",
+            "db_max_overflow": "API_MAX_OVERFLOW must be non-negative",
+            "relay_pool_size": "RELAY_POOL_SIZE must be non-negative",
+            "relay_worker_count": "RELAY_WORKER_COUNT must be non-negative",
+            "db_pool_timeout": "DB_POOL_TIMEOUT must be positive",
+            "db_pool_recycle": "DB_POOL_RECYCLE must be non-negative",
+        }[field]
+        with pytest.raises((RuntimeError, ValueError), match=negative_text.replace("-", "\\-")):
+            settings.validate_pool_startup()
+    else:
+        with pytest.raises(RuntimeError, match="must be 100|must be 20"):
+            settings.validate_pool_startup()
 
     for name, value in VALID.items():
         env_name = env_names.get(name, name.upper())
@@ -116,6 +154,7 @@ def test_missing_pool_configuration_fails(monkeypatch, aggregate):
         Settings(**values).validate_pool_startup()
 
     import fluxion.database.connection as connection
+    import fluxion.main as main
     monkeypatch.setattr(connection, "_engine", None)
     monkeypatch.setattr(connection, "_sessionmaker", None)
     calls = []
@@ -130,9 +169,22 @@ def test_missing_pool_configuration_fails(monkeypatch, aggregate):
             connection.get_engine()
     assert calls == []
 
+    for field, missing in ((field, None) for field in ("database_url", "db_pool_size", "db_max_overflow", "relay_pool_size", "api_replicas", "db_pool_timeout")):
+        missing_settings = Settings(**dict(VALID, **{field: missing}))
+        monkeypatch.setattr(main, "settings", missing_settings)
+        with pytest.raises((RuntimeError, ValueError)):
+            missing_settings.validate_pool_startup()
+    assert calls == []
+
 def test_existing_pool_configuration_suite():
     Settings(**VALID).validate_pool_startup()
 
-    for pool_test in ("tests/test_pool_configuration.py::test_pool_configuration_contract", "tests/test_pool_configuration.py::test_pool_replica_boundaries"):
-        completed = subprocess.run([sys.executable, "-m", "pytest", "-q", pool_test], cwd=str(Path(__file__).resolve().parent.parent), capture_output=True, text=True)
-        assert completed.returncode == 0, completed.stdout + completed.stderr
+    pool_tests = (
+        "tests/test_pool_configuration.py::test_pool_configuration_contract",
+        "tests/test_pool_configuration.py::test_pool_replica_boundaries",
+        "tests/test_pool_configuration.py::test_pool_pre_ping_and_checkout_timeout",
+        "tests/test_pool_configuration.py::test_pool_environment_contract",
+        "tests/test_pool_configuration.py::test_missing_pool_configuration_fails",
+    )
+    completed = subprocess.run([sys.executable, "-m", "pytest", "-q", *pool_tests, "tests/test_telemetry.py::test_pool_observability_contract"], cwd=str(Path(__file__).resolve().parent.parent), capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
