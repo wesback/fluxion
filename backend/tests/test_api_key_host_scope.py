@@ -91,8 +91,35 @@ async def test_host_scope_create_and_list_contract(ingest_authorization) -> None
             item = next(value for value in items if value["name"] == body["name"])
             assert item["host_scope"] == scope
             assert item["allowed_hosts"] == hosts
-    with ingest_authorization["factory"]() as session:
+    factory = ingest_authorization["factory"]
+    with factory() as session:
         assert session.query(models.APIKey).count() == before + 3
+
+        orm_key = generate_api_key()
+        orm_api_key = models.APIKey(
+            name="ORM default listed",
+            key_hash=hash_api_key(orm_key),
+            role="user",
+            is_active=True,
+            allowed_hosts=["node1.example.test"],
+        )
+        session.add(orm_api_key)
+        session.commit()
+        session.refresh(orm_api_key)
+        assert orm_api_key.host_scope == "listed"
+
+        for model in (models.WebhookOutbox, models.DeliveryIdentity, models.PackageUpdate, models.Host):
+            session.query(model).delete()
+        session.commit()
+
+    payload = dict(BATCH)
+    payload["hostname"] = "node9.example.test"
+    response = await client.post("/api/v1/updates/batch", json=payload, headers={"X-API-Key": orm_key})
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Hostname not authorized for this API key"}
+    with factory() as session:
+        assert session.query(models.PackageUpdate).count() == 0
+        assert session.query(models.Host).count() == 0
 
 
 BATCH = {
