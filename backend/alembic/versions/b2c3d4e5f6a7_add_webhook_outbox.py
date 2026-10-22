@@ -22,6 +22,12 @@ OUTBOX_COLUMNS = {
 
 
 def upgrade() -> None:
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("package_updates"):
+        package_columns = {column["name"] for column in inspector.get_columns("package_updates")}
+        if "delivery_id" not in package_columns:
+            op.add_column("package_updates", sa.Column("delivery_id", sa.String(length=255), nullable=True))
+
     op.create_table(
         "webhook_delivery_identities",
         sa.Column("delivery_id", sa.String(length=255), nullable=False),
@@ -52,6 +58,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("package_updates"):
+        package_columns = {column["name"] for column in inspector.get_columns("package_updates")}
+        if "delivery_id" in package_columns:
+            op.drop_column("package_updates", "delivery_id")
     op.drop_index("ix_webhook_outbox_next_attempt_at", table_name="webhook_outbox")
     op.drop_index("ix_webhook_outbox_status", table_name="webhook_outbox")
     op.drop_table("webhook_outbox")

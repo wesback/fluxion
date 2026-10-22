@@ -30,6 +30,7 @@ class PackageUpdate(Base):
     is_security: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    delivery_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     update_timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

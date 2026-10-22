@@ -189,6 +189,7 @@ async def _create_package_update_impl(
             result = await session.execute(
                 select(PackageUpdate).where(
                     PackageUpdate.host_id == host_id,
+                    PackageUpdate.delivery_id == identity,
                     PackageUpdate.package_name == update_data.package_name,
                     PackageUpdate.new_version == update_data.new_version,
                     PackageUpdate.old_version == old_version,
@@ -227,6 +228,7 @@ async def _create_package_update_impl(
                     update_data.package_manager,
                     now,
                     session,
+                    identity,
                 )
         else:
             package_update = await _insert_package_update(
@@ -238,6 +240,7 @@ async def _create_package_update_impl(
                 update_data.package_manager,
                 now,
                 session,
+                identity,
             )
 
         await _enqueue_package_outbox(
@@ -336,6 +339,7 @@ async def _batch_original_package_ids(
         result = await session.execute(
             select(PackageUpdate.id).where(
                 PackageUpdate.host_id == host_id,
+                PackageUpdate.delivery_id == identity,
                 PackageUpdate.package_name == update_item.package_name,
                 PackageUpdate.old_version == old_version,
                 PackageUpdate.new_version == update_item.new_version,
@@ -459,6 +463,7 @@ async def _insert_package_update(
     package_manager: str | None,
     update_timestamp: datetime,
     session: AsyncSession,
+    delivery_id: str | None = None,
 ) -> PackageUpdate:
     """Insert a new package update record."""
     package_update = PackageUpdate(
@@ -469,6 +474,7 @@ async def _insert_package_update(
         is_security=is_security,
         package_manager=package_manager,
         update_timestamp=update_timestamp,
+        delivery_id=delivery_id,
     )
     session.add(package_update)
     await session.flush()  # Flush to get package_update.id
@@ -632,6 +638,7 @@ async def _create_batch_package_updates_impl(
                         batch_data.package_manager or update_item.package_manager,
                         now,
                         session,
+                        identity,
                     )
             else:
                 package_update = await _insert_package_update(
@@ -643,6 +650,7 @@ async def _create_batch_package_updates_impl(
                     batch_data.package_manager or update_item.package_manager,
                     now,
                     session,
+                    identity,
                 )
 
             created_ids.append(package_update.id)
