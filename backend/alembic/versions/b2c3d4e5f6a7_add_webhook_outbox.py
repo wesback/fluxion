@@ -23,6 +23,13 @@ OUTBOX_COLUMNS = {
 
 def upgrade() -> None:
     op.create_table(
+        "webhook_delivery_identities",
+        sa.Column("delivery_id", sa.String(length=255), nullable=False),
+        sa.Column("fingerprint", sa.String(length=64), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("delivery_id"),
+    )
+    op.create_table(
         "webhook_outbox",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("delivery_id", sa.String(length=255), nullable=False),
@@ -48,3 +55,4 @@ def downgrade() -> None:
     op.drop_index("ix_webhook_outbox_next_attempt_at", table_name="webhook_outbox")
     op.drop_index("ix_webhook_outbox_status", table_name="webhook_outbox")
     op.drop_table("webhook_outbox")
+    op.drop_table("webhook_delivery_identities")

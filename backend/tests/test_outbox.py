@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from fluxion.models import WebhookDeliveryHistory, WebhookOutbox
+from fluxion.models import DeliveryIdentity, WebhookDeliveryHistory, WebhookOutbox
 import fluxion.api.routes.updates as updates_module
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -74,31 +74,50 @@ async def test_package_commit_creates_exact_outbox_pairs() -> None:
 @pytest.mark.asyncio
 async def test_outbox_insert_failure_rolls_back_transaction(tmp_path: Path) -> None:
     class FailingSession:
-        def __init__(self): self.commits = 0
-        async def rollback(self): return None
-        def add(self, value): raise RuntimeError("forced outbox insert failure")
+        def __init__(self):
+            self.commits = 0
+            self.package_rows = []
+            self.outbox_rows = []
+            self.identity_rows = []
+        async def rollback(self):
+            self.package_rows.clear()
+            self.outbox_rows.clear()
+            self.identity_rows.clear()
+        async def commit(self):
+            self.commits += 1
+        def add(self, value):
+            if isinstance(value, WebhookOutbox):
+                raise RuntimeError("forced outbox insert failure")
+            self.package_rows.append(value)
 
-    assert MIGRATION.exists()
     session = FailingSession()
+    session.package_rows.append("package")
     try:
         session.add(WebhookOutbox(delivery_id="failed", webhook_config_id=1, event_type="package_update", payload={}, next_attempt_at="2026-01-01T00:00:00Z"))
     except RuntimeError:
         await session.rollback()
     assert session.commits == 0
+    assert session.package_rows == []
+    assert session.outbox_rows == []
+    assert session.identity_rows == []
 
 
 @pytest.mark.asyncio
 async def test_transaction_identity_rolls_back_atomically(tmp_path: Path) -> None:
     class TransactionSession:
-        def __init__(self): self.package_rows = []; self.outbox_rows = []; self.rolled_back = False
+        def __init__(self):
+            self.package_rows = ["package"]
+            self.outbox_rows = ["outbox"]
+            self.transaction_id = "tx-129"
+            self.rolled_back = False
         async def rollback(self):
             self.rolled_back = True
-            self.package_rows.clear(); self.outbox_rows.clear()
+            self.package_rows.clear()
+            self.outbox_rows.clear()
 
     session = TransactionSession()
-    session.package_rows.append("package")
-    session.outbox_rows.append("outbox")
     await session.rollback()
+    assert session.transaction_id == "tx-129"
     assert session.package_rows == []
     assert session.outbox_rows == []
     assert session.rolled_back is True
@@ -106,19 +125,20 @@ async def test_transaction_identity_rolls_back_atomically(tmp_path: Path) -> Non
 
 @pytest.mark.asyncio
 async def test_replayed_delivery_identity_is_unique(tmp_path: Path) -> None:
-    class FakeScalars:
-        def __init__(self, values): self.values = values
-        def all(self): return self.values
     class FakeResult:
-        def __init__(self, values): self.values = values
-        def scalars(self): return FakeScalars(self.values)
+        def __init__(self, fingerprint): self.fingerprint = fingerprint
+        def scalar_one_or_none(self): return self.fingerprint
     class FakeSession:
+        def __init__(self):
+            self.results = ["payload-A", "payload-A", None]
         async def execute(self, statement):
-            return FakeResult([{"delivery_identity": "delivery-A", "request_fingerprint": "payload-A"}])
+            return FakeResult(self.results.pop(0))
 
     session = FakeSession()
     assert await updates_module._delivery_replay_status(session, "delivery-A", "payload-A") == "same"
     assert await updates_module._delivery_replay_status(session, "delivery-A", "changed-payload") == "conflict"
+    assert await updates_module._delivery_replay_status(session, "delivery-B", "payload-B") == "new"
+    assert session.results == []
 
 
 def test_outbox_migration_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,8 +157,11 @@ def test_outbox_migration_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyP
         monkeypatch.setattr(migration, "op", Operations(context))
         migration.upgrade()
         assert sa.inspect(connection).has_table("webhook_outbox")
+        assert sa.inspect(connection).has_table("webhook_delivery_identities")
+        connection.execute(sa.text("INSERT INTO webhook_delivery_identities (delivery_id, fingerprint, created_at) VALUES ('delivery-A', 'payload-A', CURRENT_TIMESTAMP)"))
         migration.downgrade()
         assert "webhook_outbox" not in sa.inspect(connection).get_table_names()
+        assert "webhook_delivery_identities" not in sa.inspect(connection).get_table_names()
         assert connection.execute(sa.text("SELECT COUNT(*) FROM hosts")).scalar_one() == 1
         assert connection.execute(sa.text("SELECT COUNT(*) FROM package_updates")).scalar_one() == 1
         assert connection.execute(sa.text("SELECT COUNT(*) FROM webhook_configs")).scalar_one() == 1

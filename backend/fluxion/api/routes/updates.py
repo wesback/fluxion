@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.database import get_session
-from fluxion.models import Host, IngestDiagnostic, PackageUpdate, WebhookConfig, WebhookOutbox
+from fluxion.models import DeliveryIdentity, Host, IngestDiagnostic, PackageUpdate, WebhookConfig, WebhookOutbox
 from fluxion.schemas.package_update import (
     BatchPackageUpdateRequest,
     BatchPackageUpdateResponse,
@@ -201,6 +201,8 @@ async def _create_package_update_impl(
                     message="Package update already recorded",
                 )
 
+        session.add(DeliveryIdentity(delivery_id=identity, fingerprint=fingerprint))
+
         # Upsert host record with custom span
         if tracer:
             with tracer.start_as_current_span("upsert_host") as span:
@@ -299,11 +301,13 @@ async def _delivery_replay_status(
     session: AsyncSession, identity: str, fingerprint: str
 ) -> str:
     """Return 'new', 'same', or 'conflict' for a delivery identity."""
-    result = await session.execute(select(WebhookOutbox.payload))
-    for payload in result.scalars().all():
-        if isinstance(payload, dict) and payload.get("delivery_identity") == identity:
-            return "same" if payload.get("request_fingerprint") == fingerprint else "conflict"
-    return "new"
+    result = await session.execute(
+        select(DeliveryIdentity.fingerprint).where(DeliveryIdentity.delivery_id == identity)
+    )
+    existing = result.scalar_one_or_none()
+    if existing is None:
+        return "new"
+    return "same" if existing == fingerprint else "conflict"
 
 
 async def _request_fingerprint(payload: dict[str, Any]) -> str:
@@ -567,6 +571,8 @@ async def _create_batch_package_updates_impl(
                 ids=ids,
                 message=f"{len(ids)} package updates already recorded",
             )
+
+        session.add(DeliveryIdentity(delivery_id=identity, fingerprint=fingerprint))
 
         # Upsert host record with custom span
         if tracer:

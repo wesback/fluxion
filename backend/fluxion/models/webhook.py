@@ -72,6 +72,18 @@ class WebhookOutbox(Base):
     )
 
 
+class DeliveryIdentity(Base):
+    """Stable identity and content fingerprint for accepted package deliveries."""
+
+    __tablename__ = "webhook_delivery_identities"
+
+    delivery_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
 class WebhookDeliveryHistory(Base):
     """Model for tracking webhook delivery attempts."""
 
