@@ -175,6 +175,7 @@ async def validation_client(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("item,batch_package_manager,expected_status,expect_sql", [
+    ({"package_name": 123, "new_version": "2"}, "apt", 400, False),
     ({"package_name": None, "new_version": "2"}, "apt", 400, False),
     ({"package_name": "", "new_version": "2"}, "apt", 400, False),
     ({"package_name": "p" * 256, "new_version": "2"}, "apt", 400, False),
