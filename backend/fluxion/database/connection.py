@@ -43,8 +43,8 @@ def get_engine() -> AsyncEngine:
             try:
                 pool = _engine.sync_engine.pool
                 record_pool_state(
-                    max(0, pool.checkedout()),
-                    max(0, pool.checkedin()),
+                    max(0, pool.checkedout() - 1),
+                    max(0, pool.checkedin() + 1),
                     max(0, pool.overflow()),
                 )
             except Exception:
