@@ -133,6 +133,9 @@ async def test_single_update_host_scope_contract(ingest_authorization):
         assert counts[:2] == package_host
         if expected == 403:
             assert response.json() == {"detail": "Hostname not authorized for this API key"}
+            assert counts == (0, 0, 0, 0)
+        elif expected == 401:
+            assert counts == (0, 0, 0, 0)
 
 
 @pytest.mark.asyncio
@@ -149,6 +152,8 @@ async def test_hostname_match_ignores_case_only(ingest_authorization):
             assert response.status_code == expected
             if expected == 403:
                 assert response.json() == {"detail": "Hostname not authorized for this API key"}
+                rows = (models.PackageUpdate, models.Host, models.DeliveryIdentity, models.WebhookOutbox)
+                assert await ingest_authorization["count_many"](*rows) == (0, 0, 0, 0)
             else:
                 with factory() as session:
                     host = session.execute(sa.select(models.Host).where(models.Host.hostname == hostname)).scalar_one()
