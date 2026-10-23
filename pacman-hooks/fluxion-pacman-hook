@@ -1,0 +1,131 @@
+#!/bin/bash
+
+set +e
+
+FLUXION_API_URL="${FLUXION_API_URL:-}"
+FLUXION_API_KEY="${FLUXION_API_KEY:-}"
+FLUXION_TIMEOUT="${FLUXION_TIMEOUT:-}"
+FLUXION_LOG_FILE="${FLUXION_LOG_FILE:-}"
+FLUXION_STATE_DIR="${FLUXION_STATE_DIR:-}"
+CONFIG_FILE="${FLUXION_CONFIG_FILE:-/etc/fluxion/config}"
+
+for name in FLUXION_API_URL FLUXION_API_KEY FLUXION_TIMEOUT FLUXION_LOG_FILE FLUXION_STATE_DIR; do
+    if [[ -z "${!name:-}" && -f "$CONFIG_FILE" ]]; then
+        while IFS='=' read -r key value; do
+            [[ "$key" == "$name" ]] && printf -v "$name" '%s' "$value"
+        done < "$CONFIG_FILE"
+    fi
+done
+FLUXION_TIMEOUT="${FLUXION_TIMEOUT:-5}"
+FLUXION_LOG_FILE="${FLUXION_LOG_FILE:-/var/log/fluxion-hook.log}"
+FLUXION_STATE_DIR="${FLUXION_STATE_DIR:-/var/lib/fluxion}"
+
+log_message() {
+    local level="$1"
+    local message="$2"
+    [[ -n "$FLUXION_LOG_FILE" ]] && echo "[$(date -Iseconds)] [$level] $message" >> "$FLUXION_LOG_FILE" 2>/dev/null
+}
+
+json_escape() {
+    local value="$1"
+    value=${value//\/\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf '%s' "$value"
+}
+
+detect_os_info() {
+    local os_info="Arch Linux"
+    if [[ -r /etc/os-release ]]; then
+        local line
+        while IFS='=' read -r key line; do
+            if [[ "$key" == "PRETTY_NAME" ]]; then
+                os_info="${line#\"}"; os_info="${os_info%\"}"; break
+            fi
+        done < /etc/os-release
+    fi
+    printf '%s' "$os_info"
+}
+
+main() {
+    local command_name="${1:-}"
+    local before_file="$FLUXION_STATE_DIR/pacman-before.list"
+
+    if [[ "$command_name" == "stage" ]]; then
+        [[ -n "$FLUXION_API_URL" ]] || return 0
+        mkdir -p "$FLUXION_STATE_DIR" 2>/dev/null || return 0
+        pacman -Q > "$before_file" 2>/dev/null
+        [[ -r "$before_file" ]] || return 0
+        return 0
+    fi
+
+    [[ "$command_name" == "report" ]] || return 0
+    [[ -f "$before_file" ]] || return 0
+
+    trap 'rm -f "${FLUXION_STATE_DIR}/pacman-before.list" 2>/dev/null' EXIT
+    [[ -n "$FLUXION_API_URL" ]] || { rm -f "$before_file" 2>/dev/null; return 0; }
+    FLUXION_API_URL="${FLUXION_API_URL%/}"
+    local listing
+    listing=$(pacman -Q 2>/dev/null)
+    [[ -n "$listing" ]] || listing=""
+
+    declare -A before=() after=()
+    local name version
+    while read -r name version; do [[ -n "$name" ]] && before["$name"]="$version"; done < "$before_file"
+    while read -r name version; do [[ -n "$name" ]] && after["$name"]="$version"; done <<< "$listing"
+
+    local package_names=""
+    for name in "${!before[@]}" "${!after[@]}"; do
+        [[ -z "$name" ]] && continue
+        if [[ -n "${before[$name]+x}" && -n "${after[$name]+x}" ]]; then
+            [[ "${before[$name]}" != "${after[$name]}" ]] && package_names+="$name
+"
+        else
+            package_names+="$name
+"
+        fi
+    done
+    package_names=$(printf '%s' "$package_names" | sort -u)
+    [[ -n "$package_names" ]] || return 0
+
+    local hostname_value os_info
+    hostname_value=$(hostname -f 2>/dev/null) || hostname_value=$(hostname 2>/dev/null)
+    os_info=$(detect_os_info)
+    local names=($package_names)
+    local index=0 count=${#names[@]}
+    while (( index < count)); do
+        local end=$((index + 100)); (( end > count )) && end=$count
+        local json_updates="[" first="true"
+        local i name old new
+        for ((i=index;i<end;i++)); do
+            name="${names[$i]}"
+            if [[ -n "${before[$name]+x}" && -n "${after[$name]+x}" ]]; then
+                old="${before[$name]}"; new="${after[$name]}"
+            elif [[ -n "${before[$name]+x}" ]]; then
+                old="${before[$name]}"; new="removed"
+            else
+                old="null"; new="${after[$name]}"
+            fi
+            [[ "$first" == true ]] || json_updates+=,
+            first=false
+            if [[ "$old" == "null" ]]; then old_json="null"; else old_json="\"$(json_escape "$old")\""; fi
+            json_updates+="{\"package_name\":\"$(json_escape "$name")\",\"old_version\":$old_json,\"new_version\":\"$(json_escape "$new")\",\"is_security\":false}"
+        done
+        json_updates+="]"
+        local payload="{\"hostname\":\"$(json_escape "$hostname_value")\",\"os_info\":\"$(json_escape "$os_info")\",\"updates\":$json_updates}"
+        local args=(-X POST -H "Content-Type: application/json" --max-time "${FLUXION_TIMEOUT:-5}" --silent --show-error --fail -d "$payload")
+        [[ -n "$FLUXION_API_KEY" ]] && args+=(-H "X-API-Key: $FLUXION_API_KEY")
+        if curl "${args[@]}" "$FLUXION_API_URL/updates/ingest/pacman" >/dev/null 2>&1; then
+            log_message "INFO" "Sent $((end-index)) package changes"
+        else
+            log_message "ERROR" "Failed to send package changes"
+        fi
+        index=$end
+    done
+    return 0
+}
+
+main "$@"
+exit 0

@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Recording package versions for Fluxion
+When = PreTransaction
+Exec = /usr/local/lib/fluxion/fluxion-pacman-hook stage
