@@ -24,6 +24,9 @@ load_config() {
             FLUXION_LOG_FILE)
                 [[ -n "${FLUXION_LOG_FILE:-}" ]] || FLUXION_LOG_FILE="$config_value"
                 ;;
+            FLUXION_ALLOW_HTTP)
+                [[ -n "${FLUXION_ALLOW_HTTP:-}" ]] || FLUXION_ALLOW_HTTP="$config_value"
+                ;;
         esac
     done < "$CONFIG_FILE" 2>/dev/null || true
 }
@@ -31,6 +34,7 @@ load_config() {
 load_config
 FLUXION_API_URL="${FLUXION_API_URL:-}"
 FLUXION_API_KEY="${FLUXION_API_KEY:-}"
+FLUXION_ALLOW_HTTP="${FLUXION_ALLOW_HTTP:-}"
 FLUXION_TIMEOUT="${FLUXION_TIMEOUT:-5}"
 FLUXION_LOG_FILE="${FLUXION_LOG_FILE:-/var/log/fluxion-hook.log}"
 
@@ -74,8 +78,8 @@ report_packages() {
         [[ -n "$os_info" ]] || os_info='Unknown'
     fi
 
-    if [[ -n "$FLUXION_API_KEY" && ! "$FLUXION_API_URL" =~ ^https:// ]]; then
-        log_message ERROR "Refusing to send API key over plaintext HTTP"
+    if [[ -n "$FLUXION_API_KEY" && "$FLUXION_API_URL" =~ ^http:// && "$FLUXION_ALLOW_HTTP" != "true" ]]; then
+        log_message ERROR "ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
         rm -f "$updates_file" 2>/dev/null || true
         return 0
     fi

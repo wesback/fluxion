@@ -7,7 +7,7 @@ PASS=0; FAIL=0
 setup() {
   export FLUXION_STATE_DIR="$TMP/state" FLUXION_CONFIG_FILE="$TMP/config" FLUXION_LOG_FILE="$TMP/fluxion.log" CURL_LOG="$TMP/curl.log"
   mkdir -p "$FLUXION_STATE_DIR" "$TMP/bin" "$TMP/rpm"
-  unset FLUXION_API_URL FLUXION_API_KEY FLUXION_TIMEOUT
+  unset FLUXION_API_URL FLUXION_API_KEY FLUXION_TIMEOUT FLUXION_ALLOW_HTTP
   rm -f "$FLUXION_CONFIG_FILE" "$FLUXION_LOG_FILE" "$CURL_LOG"
   cat > "$TMP/bin/rpm" <<'SH'
 #!/bin/bash
@@ -91,6 +91,25 @@ test_hook_fail_safe() {
   rm -f "$CURL_LOG"
   export RPM_PHASE=report; "$HOOK" report || return 1
   [[ ! -s "$CURL_LOG" ]] || return 1
+  grep -Fq 'ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network' "$FLUXION_LOG_FILE" || return 1
+
+  setup
+  printf 'FLUXION_API_URL=http://fluxion.test/api/v1\nFLUXION_API_KEY=k1\n' > "$FLUXION_CONFIG_FILE"
+  printf 'x.x86_64 x 1\n' > "$TMP/rpm/stage"
+  printf 'x.x86_64 x 2\n' > "$TMP/rpm/report"
+  export RPM_PHASE=stage FLUXION_ALLOW_HTTP=true; "$HOOK" stage || return 1
+  export RPM_PHASE=report; "$HOOK" report || return 1
+  grep -Fxq 'http://fluxion.test/api/v1/updates/ingest/dnf' "$CURL_LOG" || return 1
+  [[ ! -f "$FLUXION_STATE_DIR/dnf-before.list" ]] || return 1
+
+  setup
+  printf 'FLUXION_API_URL=http://fluxion.test/api/v1\nFLUXION_API_KEY=k1\nFLUXION_ALLOW_HTTP=true\n' > "$FLUXION_CONFIG_FILE"
+  printf 'x.x86_64 x 1\n' > "$TMP/rpm/stage"
+  printf 'x.x86_64 x 2\n' > "$TMP/rpm/report"
+  export RPM_PHASE=stage; "$HOOK" stage || return 1
+  export RPM_PHASE=report; "$HOOK" report || return 1
+  grep -Fxq 'http://fluxion.test/api/v1/updates/ingest/dnf' "$CURL_LOG" || return 1
+
   printf 'FLUXION_API_URL=$(touch %s/pwned)\n' "$TMP" > "$FLUXION_CONFIG_FILE"
   export RPM_PHASE=stage; "$HOOK" stage || return 1
   export RPM_PHASE=report FAKE_CURL_FAIL=1
