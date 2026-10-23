@@ -1,11 +1,14 @@
 """Tests for bounded durable webhook relay behavior."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import subprocess
 import sys
 
 import pytest
+
+REAL_ASYNCIO_SLEEP = asyncio.sleep
 
 from fluxion.models.webhook import WebhookConfig, WebhookOutbox
 from fluxion.services import webhook_service
@@ -46,6 +49,7 @@ class RelaySession:
         text = str(statement)
         if text.lstrip().upper().startswith("SELECT"):
             self.claim_attempts += 1
+            await REAL_ASYNCIO_SLEEP(0)
             now = datetime.now(UTC)
             recoverable = [
                 row for row in self.rows
@@ -64,19 +68,34 @@ class RelaySession:
             self.mutate_owner = False
             return ExecuteResult(0)
 
-        candidates = [row for row in self.rows if row.status == WebhookOutbox.STATUS_CLAIMED]
-        if not candidates and "status" in params and params["status"] == WebhookOutbox.STATUS_CLAIMED:
-            candidates = [row for row in self.rows
-                          if row.status in (WebhookOutbox.STATUS_PENDING, WebhookOutbox.STATUS_RETRYABLE)]
-        if not candidates:
-            candidates = [row for row in self.rows if row.status == WebhookOutbox.STATUS_PENDING]
+        row_id = params.get("id_1")
+        row = next((item for item in self.rows if item.id == row_id), None) if row_id is not None else None
+        if row is None:
+            return ExecuteResult(0)
 
-        for row in candidates[:1]:
-            for key in ("status", "attempt_count", "lease_owner", "lease_expires_at",
-                        "updated_at", "next_attempt_at"):
-                if key in params:
-                    setattr(row, key, params[key])
-        return ExecuteResult(1 if candidates else 0)
+        expected_revision = params.get("updated_at_1")
+        if expected_revision is not None and row.updated_at != expected_revision:
+            return ExecuteResult(0)
+
+        expected_statuses = params.get("status_1")
+        if expected_statuses is not None and row.status not in expected_statuses:
+            return ExecuteResult(0)
+
+        expected_owner = params.get("lease_owner_1")
+        if expected_owner is not None and row.lease_owner != expected_owner:
+            return ExecuteResult(0)
+
+        if params.get("status") == WebhookOutbox.STATUS_CLAIMED:
+            if row.status not in (WebhookOutbox.STATUS_PENDING,
+                                  WebhookOutbox.STATUS_RETRYABLE,
+                                  WebhookOutbox.STATUS_CLAIMED):
+                return ExecuteResult(0)
+
+        for key in ("status", "attempt_count", "lease_owner", "lease_expires_at",
+                    "updated_at", "next_attempt_at"):
+            if key in params:
+                setattr(row, key, params[key])
+        return ExecuteResult(1)
 
     async def commit(self):
         self.commits += 1
@@ -125,8 +144,10 @@ async def test_bounded_claim_and_single_inflight_delivery(monkeypatch):
     monkeypatch.setattr(first_service, "_log_delivery", log_delivery)
     monkeypatch.setattr(second_service, "_log_delivery", log_delivery)
 
-    first = await first_service.relay_once(limit=100, lease_seconds=30)
-    second = await second_service.relay_once(limit=100, lease_seconds=30)
+    first, second = await asyncio.gather(
+        first_service.relay_once(limit=100, lease_seconds=30),
+        second_service.relay_once(limit=100, lease_seconds=30),
+    )
 
     assert RELAY_CLAIM_LIMIT == 100
     assert RELAY_LEASE_SECONDS == 30
