@@ -20,4 +20,4 @@ Every report contains request count, package count, throughput, HTTP error count
 
 Post-change p95 latency must be at least 30 percent lower than the recorded pre-change baseline. Both exact before and post latency fields are retained in the comparison. If baseline evidence is missing or the target is unmet, the report status is `risk waiver required` and a complete waiver owner and reason are required. No success verdict is emitted unless the comparison is satisfied.
 
-Load-test credentials are supplied through environment variables or secrets and are not committed to the repository.
+Load-test credentials are supplied through environment variables or secrets and are not committed to the repository. Run parameters and environment credentials are passed to the repeatable runner; reports include configuration only, never API-key values. Cleanup restores package, host, API-key, and webhook fixture counts and removes every test-created package row and API key. A target connection failure, absent fixed data set, interrupted cleanup, or fixture count mismatch records an exact failure and emits no success report.
