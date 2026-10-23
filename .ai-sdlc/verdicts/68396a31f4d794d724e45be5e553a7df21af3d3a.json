@@ -1,0 +1,239 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 169,
+  "branch": "ai-sdlc/issue-169",
+  "commitSha": "68396a31f4d794d724e45be5e553a7df21af3d3a",
+  "round": 0,
+  "pipelineVersion": "8a97d37",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The runner can leave partially created fixtures behind and does not execute the stated 10-minute standard profile. The repeatability test also omits the configuration-field comparison required by its criterion.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 59,
+          "message": "Partial fixture creation failures bypass cleanup, so the runner can leave fixture rows in the database.",
+          "confidence": 0.96,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "run_ingest_load calls _create before entering the try/finally that invokes _cleanup.",
+            "failureScenario": "If create_fixtures inserts some fixture rows and then raises, execution never reaches the cleanup block, leaving test-created rows behind."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 66,
+          "message": "The standard profile does not run for its configured duration; duration only changes the reported throughput.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "Without a batches parameter, the runner defaults to one batch per client; duration is used only later as the throughput denominator.",
+            "failureScenario": "With standard settings, the runner sends 50 requests and exits after they complete, regardless of the configured 600-second duration. It therefore does not run the stated 10-minute standard profile, and the reported throughput is calculated as if that duration had elapsed."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_ingest_load_profile.py",
+          "line": 87,
+          "message": "The named repeatability test does not assert that configuration fields match between runs, so it cannot prove that part of the criterion.",
+          "confidence": 0.95,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_load_repeatability_and_cleanup compares only data_set_version and test_data_version between runs.",
+            "failureScenario": "If a regression changes the target URL, client count, batch size, or duration between runs while preserving both version fields, this named test still passes despite the criterion requiring identical configuration fields."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The runner reports a standard profile without generating its concurrent, duration-based workload. Its cleanup check can miss leaked fixture rows, and it can publish reports before discovering cleanup failure.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 69,
+          "message": "The runner does not execute the stated standard load profile: requests are serial, and it does not run for the configured duration.",
+          "confidence": 0.98,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "run_ingest_load iterates over clients and batches and waits for each client.post or client.request call to return before starting the next request; duration_seconds is only used later as the throughput denominator.",
+            "failureScenario": "With the standard configuration of 50 clients and 600 seconds, the runner sends 50 serial requests and can finish immediately. The report still describes a 50-client, 10-minute run, so it does not represent the standard profile required by the criterion."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 120,
+          "message": "Count equality does not verify the criterion that every test-created key and package row is removed and the pre-run fixture state is restored exactly.",
+          "confidence": 0.91,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_snapshot records only table counts, and the final check compares only those counts after fixtures.cleanup().",
+            "failureScenario": "If cleanup leaves a test-created package row but deletes a pre-existing row, the package_updates count returns to its original value and the runner returns successfully despite leaked test data."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 110,
+          "message": "Reports are published before cleanup succeeds, so a failed cleanup can leave success evidence for an unsuccessful run.",
+          "confidence": 0.95,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "The runner generates and writes both report files before entering the finally block's fixture cleanup and post-cleanup count check.",
+            "failureScenario": "A run produces a success report, then fixture cleanup fails; the runner raises LoadCleanupError but leaves the report files published, even though cleanup did not complete."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "No concrete, reachable security vulnerability found in the changed code. The runner sends its configured API key to the configured target and does not include response bodies in reports.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_ingest_load_profile.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
