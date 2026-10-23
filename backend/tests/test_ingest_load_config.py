@@ -115,6 +115,13 @@ def test_load_credentials_and_secret_contract():
     with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
         build_load_run_config(equivalent_production_url, equivalent_environment)
 
+    encoded_slash_target = {
+        **valid_parameters(),
+        "target_url": "https://ingest.example/api%2fv1",
+    }
+    with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
+        build_load_run_config(encoded_slash_target, {"FLUXION_LOAD_API_KEY": "test-key"})
+
     unconfigured_production_url = {
         **valid_parameters(),
         "target_url": "https://api.company-internal.example/api/v1",

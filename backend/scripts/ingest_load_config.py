@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 import posixpath
 
 from scripts.ingest_load_report import STANDARD_PROFILE
@@ -71,7 +71,7 @@ def _normalized_target_url(value: str) -> str | None:
     else:
         authority = hostname
 
-    path = unquote(parsed.path or "/")
+    path = parsed.path or "/"
     normalized_path = posixpath.normpath(path)
     if normalized_path == ".":
         normalized_path = "/"
