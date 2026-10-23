@@ -1,0 +1,2 @@
+pre_transaction::::/usr/local/lib/fluxion/fluxion-dnf-hook stage
+post_transaction::::/usr/local/lib/fluxion/fluxion-dnf-hook report
