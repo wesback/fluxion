@@ -229,6 +229,30 @@ $'500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages\n     release v
     PATH="$old_path"
     [[ "$actual" == false ]] || fail "no apt-cache: expected false"
 
+    cat > "$TMP/package.policy" <<'EOF'
+Package: openssl
+Installed: -
+Candidate: 3.0.2-0ubuntu1.20
+Version table:
+ *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+EOF
+    cat > "$TMP/releases.policy" <<'EOF'
+500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64
+EOF
+    mkdir -p "$TMP/lists"
+    printf 'Origin: Ubuntu\nSuite: noble-security\n' > "$TMP/lists/security.ubuntu.com_ubuntu_dists_noble-security_InRelease"
+    mkdir -p "$TMP/nogpgv"
+    ln -sf "$TMP/bin/apt-cache" "$TMP/nogpgv/apt-cache"
+    ln -sf /usr/bin/cat "$TMP/nogpgv/cat"
+    ln -sf /usr/bin/tr "$TMP/nogpgv/tr"
+    ln -sf /usr/bin/awk "$TMP/nogpgv/awk"
+    PATH="$TMP/nogpgv"
+    actual=$(detect_security_update openssl 3.0.2-0ubuntu1.20)
+    PATH="$old_path"
+    [[ "$actual" == false ]] || fail "no gpgv: expected false, got $actual"
+
     export FAKE_APT_CACHE_FAIL=1
     actual=$(detect_security_update nginx 1.2.3)
     unset FAKE_APT_CACHE_FAIL
