@@ -155,6 +155,36 @@ def test_load_repeatability_and_cleanup(tmp_path):
         run_ingest_load(params(tmp_path), environment, FakeClient(), failed)
 
 
+def test_standard_profile_failure_does_not_publish_report(tmp_path):
+    from scripts.run_ingest_load import run_ingest_load
+
+    unavailable = FakeClient()
+    unavailable.post = lambda url, **kwargs: (_ for _ in ()).throw(ConnectionError("target offline"))
+    with pytest.raises(RuntimeError, match="Load target unavailable: target offline"):
+        run_ingest_load(params(tmp_path, client_count=50, batch_size=100, duration=10),
+                        {"FLUXION_LOAD_API_KEY": "secret", "FLUXION_LOAD_ISOLATION_APPROVED": "true"},
+                        unavailable, FakeFixtures())
+    assert not (tmp_path / "ingest-load-report.json").exists()
+    assert not (tmp_path / "ingest-load-report.txt").exists()
+
+    with pytest.raises(ValueError, match="Invalid load parameter: data_set_version"):
+        run_ingest_load(params(tmp_path, client_count=50, batch_size=100, duration=10,
+                           data_set_version=""),
+                        {"FLUXION_LOAD_API_KEY": "secret"}, FakeClient(), FakeFixtures())
+    assert not (tmp_path / "ingest-load-report.json").exists()
+
+    class ReachedClient(FakeClient):
+        def post(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return FakeResponse(status=500, body="offline")
+
+    with pytest.raises(RuntimeError, match=r"fewer than 50 clients reached"):
+        run_ingest_load(params(tmp_path, client_count=50, batch_size=100, duration=10,
+                           batches_per_client=1),
+                        {"FLUXION_LOAD_API_KEY": "secret"}, ReachedClient(), FakeFixtures())
+    assert not (tmp_path / "ingest-load-report.json").exists()
+
+
 def test_load_results_hold_no_secret(tmp_path):
     from scripts.run_ingest_load import run_ingest_load
     key = "very-secret-load-key"

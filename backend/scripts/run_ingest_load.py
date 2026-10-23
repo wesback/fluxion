@@ -1,6 +1,7 @@
 """Repeatable authenticated ingestion load runner."""
 import inspect
 import copy
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -25,8 +26,22 @@ def _snapshot(store: Any) -> dict[str, int]:
     if inspect.isawaitable(value):
         raise LoadExecutionError("Load target unavailable")
     if isinstance(value, Mapping):
-        return {name: int(value.get(name, value.get(name.removesuffix("s"), 0))) for name in TABLES}
-    return {name: int(getattr(value, name, 0)) for name in TABLES}
+        counts = {}
+        for name in TABLES:
+            raw = value.get(name, value.get(name.removesuffix("s"), 0))
+            try:
+                counts[name] = int(raw)
+            except (TypeError, ValueError):
+                counts[name] = 0
+        return counts
+    counts = {}
+    for name in TABLES:
+        raw = getattr(value, name, 0)
+        try:
+            counts[name] = int(raw)
+        except (TypeError, ValueError):
+            counts[name] = 0
+    return counts
 
 def _create(store: Any, config: Any) -> None:
     method = getattr(store, "create_fixtures", None) or getattr(store, "create", None)
@@ -49,19 +64,55 @@ def _state_method(store: Any) -> Any:
 def _read_state(store: Any) -> Any:
     method = _state_method(store)
     if method is None:
-        return _snapshot(store)
+        raise LoadCleanupError("Load cleanup incomplete: exact fixture state unavailable")
     value = method() if callable(method) else copy.deepcopy(method)
     if inspect.isawaitable(value):
         raise LoadExecutionError("Load target unavailable")
-    return copy.deepcopy(value) if value is not None else _snapshot(store)
+    canonical = _canonical_row_state(value)
+    if canonical is None:
+        raise LoadCleanupError("Load cleanup incomplete: exact fixture state unavailable")
+    return canonical
+
+def _canonical_row_state(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    missing = set(TABLES) - set(value.keys())
+    if missing:
+        return None
+    canonical: dict[str, Any] = {}
+    for table in TABLES:
+        rows = value[table]
+        if isinstance(rows, (str, bytes, int, float, bool)) or rows is None:
+            return None
+        if isinstance(rows, Mapping):
+            normalized_rows = []
+            for identity, content in sorted(rows.items(), key=lambda item: str(item[0])):
+                normalized_rows.append([copy.deepcopy(identity), copy.deepcopy(content)])
+        elif isinstance(rows, (list, tuple, set, frozenset)):
+            normalized_rows = list(copy.deepcopy(rows))
+        else:
+            return None
+        try:
+            canonical[table] = sorted(normalized_rows, key=lambda row: json.dumps(row, sort_keys=True, default=str))
+        except (TypeError, ValueError):
+            return None
+    return canonical
+
 
 def _snapshot_state(store: Any) -> Any:
     state_method = _state_method(store)
-    if state_method is None and not getattr(store, "verify_cleanup", None):
-        raise LoadCleanupError("Load cleanup incomplete: exact fixture state unavailable")
     if state_method is None:
-        return _snapshot(store)
-    return _read_state(store)
+        raise LoadCleanupError("Load cleanup incomplete: exact fixture state unavailable")
+    if callable(state_method):
+        value = state_method()
+    else:
+        value = copy.deepcopy(state_method)
+    if inspect.isawaitable(value):
+        raise LoadExecutionError("Load target unavailable")
+    canonical = _canonical_row_state(value)
+    if canonical is None:
+        raise LoadCleanupError("Load cleanup incomplete: exact fixture state unavailable")
+    return canonical
 
 
 def _cleanup(store: Any) -> None:
