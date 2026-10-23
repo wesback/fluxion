@@ -78,7 +78,9 @@ report_packages() {
         [[ -n "$os_info" ]] || os_info='Unknown'
     fi
 
-    if [[ -n "$FLUXION_API_KEY" && "$FLUXION_API_URL" =~ ^http:// && "$FLUXION_ALLOW_HTTP" != "true" ]]; then
+    local api_url_lower
+    api_url_lower=$(printf '%s' "$FLUXION_API_URL" | tr '[:upper:]' '[:lower:]')
+    if [[ -n "$FLUXION_API_KEY" && "$FLUXION_ALLOW_HTTP" != "true" && "$api_url_lower" != https://* ]]; then
         log_message ERROR "ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
         rm -f "$updates_file" 2>/dev/null || true
         return 0
