@@ -19,6 +19,18 @@
 
 set -euo pipefail
 
+# Read FLUXION_* settings as data. Environment values, including empty values, win.
+fluxion_config_file="${FLUXION_CONFIG_FILE:-/etc/fluxion/config}"
+if [[ -r "$fluxion_config_file" ]]; then
+    while IFS= read -r fluxion_line || [[ -n "$fluxion_line" ]]; do
+        [[ "$fluxion_line" =~ ^(FLUXION_[A-Za-z0-9_]*)=(.*)$ ]] || continue
+        fluxion_key="${BASH_REMATCH[1]}"
+        fluxion_value="${BASH_REMATCH[2]}"
+        [[ -v "$fluxion_key" ]] || printf -v "$fluxion_key" '%s' "$fluxion_value"
+    done < "$fluxion_config_file"
+fi
+unset fluxion_config_file fluxion_line fluxion_key fluxion_value
+
 # Configuration with defaults
 FLUXION_API_URL="${FLUXION_API_URL:-}"
 FLUXION_API_KEY="${FLUXION_API_KEY:-}"
@@ -26,11 +38,8 @@ FLUXION_TIMEOUT="${FLUXION_TIMEOUT:-5}"
 FLUXION_LOG_FILE="${FLUXION_LOG_FILE:-/var/log/fluxion-hook.log}"
 FLUXION_BATCH_MODE="${FLUXION_BATCH_MODE:-true}"
 FLUXION_DETECT_SECURITY="${FLUXION_DETECT_SECURITY:-true}"
-
-# Exit early if API URL is not configured
-if [[ -z "$FLUXION_API_URL" ]]; then
-    exit 0
-fi
+FLUXION_STATE_DIR="${FLUXION_STATE_DIR:-/var/lib/fluxion}"
+FLUXION_ALLOW_HTTP="${FLUXION_ALLOW_HTTP:-false}"
 
 # Function to log messages
 log_message() {
@@ -238,6 +247,12 @@ EOF
 
 # Function to send batch updates to the API
 send_batch_updates() {
+    [[ -n "${FLUXION_API_URL:-}" ]] || return 0
+    if [[ "$FLUXION_API_URL" == http://* && -n "${FLUXION_API_KEY:-}" && "${FLUXION_ALLOW_HTTP:-false}" != "true" ]]; then
+        log_message "ERROR" "refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
+        return 0
+    fi
+
     local hostname="$1"
     local os_info="$2"
     shift 2
@@ -302,6 +317,85 @@ EOF
     fi
 }
 
+stage_apt_operations() {
+    [[ -n "${FLUXION_API_URL:-}" ]] || return 0
+    local state_dir="$FLUXION_STATE_DIR"
+    local data_file="$state_dir/apt-operation.data"
+
+    mkdir -p "$state_dir" 2>/dev/null || return 0
+    if [[ -n "${state_dir}" ]] && [[ "$(stat -c '%a' "$state_dir" 2>/dev/null || true)" =~ ^[0-7]+$ ]]; then
+        local state_mode
+        state_mode=$(stat -c '%a' "$state_dir")
+        state_mode=$((8#$state_mode))
+        (( (state_mode & 0222) != 0 )) || return 0
+    fi
+    local package old_version direction new_version action line
+    local in_header=true
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$in_header" == true ]]; then
+            [[ -z "$line" ]] && in_header=false
+            continue
+        fi
+        read -r package old_version direction new_version action _ <<< "$line"
+        [[ -n "${package:-}" && -n "${old_version:-}" && -n "${new_version:-}" && -n "${action:-}" ]] || continue
+        [[ "$action" == "**CONFIGURE**" ]] && continue
+        if [[ "$new_version" == "-" ]]; then
+            new_version="removed"
+        fi
+        printf '%s\t%s\t%s\n' "$package" "$old_version" "$new_version" >> "$data_file" 2>/dev/null || true
+    done
+    return 0
+}
+
+report_apt_operations() {
+    local state_dir="$FLUXION_STATE_DIR"
+    local data_file="$state_dir/apt-operation.data"
+    local moved_file="${data_file}.report.$$"
+    [[ -f "$data_file" ]] || return 0
+
+    mv -f "$data_file" "$moved_file" 2>/dev/null || return 0
+
+    [[ -n "${FLUXION_API_URL:-}" ]] || { rm -f "$moved_file" 2>/dev/null || true; return 0; }
+    if [[ "$FLUXION_API_URL" == http://* && -n "${FLUXION_API_KEY:-}" && "${FLUXION_ALLOW_HTTP:-false}" != "true" ]]; then
+        log_message "ERROR" "refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
+        rm -f "$moved_file" 2>/dev/null || true
+        return 0
+    fi
+
+    local hostname os_info
+    hostname=$(hostname -f 2>/dev/null || hostname)
+    os_info=$(detect_os_info)
+
+    local -a updates=()
+    local package old_version new_version is_security
+    while IFS=$'\t' read -r package old_version new_version || [[ -n "${package:-}" ]]; do
+        [[ -n "$package" ]] || continue
+        if [[ "$old_version" == "-" ]]; then
+            report_old="-"
+        else
+            report_old="$old_version"
+        fi
+        if [[ "$new_version" == "removed" ]]; then
+            is_security="false"
+        else
+            is_security=$(detect_security_update "${package%:*}" "$new_version")
+        fi
+        updates+=("${package%:*}|${report_old}|${new_version}|${is_security}")
+
+        if ((${#updates[@]} == 100)); then
+            send_batch_updates "$hostname" "$os_info" "${updates[@]}" || true
+            updates=()
+        fi
+    done < "$moved_file"
+
+    if ((${#updates[@]} > 0)); then
+        send_batch_updates "$hostname" "$os_info" "${updates[@]}" || true
+    fi
+
+    rm -f "$moved_file" 2>/dev/null || true
+    return 0
+}
+
 # Main execution
 main() {
     # Get hostname and OS info
@@ -347,15 +441,11 @@ main() {
     fi
 }
 
-# APT Configuration
-# This tells APT to pipe package information to this script
-: <<'APT_CONFIG_SNIPPET'
-DPkg::Post-Invoke {
-    "if [ -x /etc/apt/apt.conf.d/99fluxion ]; then apt-cache policy | grep -E '^  Installed: [0-9]' -B 2 | /etc/apt/apt.conf.d/99fluxion || true; fi";
-};
-APT_CONFIG_SNIPPET
-
 # Only run main if we're not being sourced (i.e., being executed directly)
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
+    case "${1:-}" in
+        stage) stage_apt_operations || true ;;
+        report) report_apt_operations || true ;;
+        *) main "$@" ;;
+    esac
 fi

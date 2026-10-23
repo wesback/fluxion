@@ -8,7 +8,7 @@ APT hooks are shell scripts placed in `/etc/apt/apt.conf.d/` on Linux hosts. The
 
 ## How It Works
 
-1. **Installation**: Deploy the hook script to `/etc/apt/apt.conf.d/99fluxion` on each host
+1. **Installation**: Deploy the executable to `/usr/local/lib/fluxion/99fluxion` and the configuration to `/etc/apt/apt.conf.d/99fluxion` on each host
 2. **Configuration**: Set the `FLUXION_API_URL` to point to your Fluxion API endpoint
 3. **Automatic Execution**: APT triggers the hook on package operations
 4. **Data Collection**: Hook gathers package information from APT variables
@@ -29,14 +29,14 @@ The `99fluxion` hook script:
 
 ### Quick Install
 
-```bash
-# Download the hook script
-sudo wget https://raw.githubusercontent.com/wesback/fluxion/main/apt-hooks/99fluxion \
-  -O /etc/apt/apt.conf.d/99fluxion
+Install the executable separately from the APT configuration:
 
-# Make it executable
-sudo chmod +x /etc/apt/apt.conf.d/99fluxion
+```bash
+sudo install -m 755 apt-hooks/99fluxion /usr/local/lib/fluxion/99fluxion
+sudo install -m 755 apt-hooks/99fluxion.conf /etc/apt/apt.conf.d/99fluxion
 ```
+
+`FLUXION_API_KEY` is required.
 
 ### Configuration
 
@@ -63,7 +63,7 @@ EOF
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `FLUXION_API_URL` | Fluxion API endpoint URL | - | Yes |
-| `FLUXION_API_KEY` | API authentication key | - | No |
+| `FLUXION_API_KEY` | API authentication key | - | Yes |
 | `FLUXION_BATCH_MODE` | Send updates in batch | `true` | No |
 | `FLUXION_TIMEOUT` | HTTP request timeout (seconds) | `5` | No |
 | `FLUXION_LOG_FILE` | Log file path | `/var/log/fluxion-hook.log` | No |
@@ -106,7 +106,7 @@ The hook script performs the following when APT operations occur:
 
 ```bash
 # 1. Test OS detection
-sudo /etc/apt/apt.conf.d/99fluxion <<< ""
+sudo /usr/local/lib/fluxion/99fluxion <<< ""
 # Check the log file to see detected OS
 
 # 2. Simulate package update
@@ -129,7 +129,7 @@ curl -H "X-API-Key: your-api-key" \
 ```bash
 # Create test input simulating APT output
 echo "nginx 1.18.0-6ubuntu14.4 1.18.0-6ubuntu14.5" | \
-  sudo /etc/apt/apt.conf.d/99fluxion
+  sudo /usr/local/lib/fluxion/99fluxion
 
 # Check if the update was sent
 tail /var/log/fluxion-hook.log
