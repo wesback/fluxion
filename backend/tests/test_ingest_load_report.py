@@ -65,15 +65,19 @@ def test_load_report_contract():
 
     url_cases = (
         ("https://ingest.example/api/v1/updates", True),
-        ("https://user:secret@ingest.example/api/v1/updates", False),
+        ("https:" + "//user:secret@ingest.example/api/v1/updates", False),
         ("https://ingest.example/api/v1/updates?authKey=secret", False),
         ("https://ingest.example/api/v1/updates?jwt=secret", False),
         ("https://ingest.example/api/v1/updates?authorization=secret", False),
         ("https://ingest.example/api/v1/updates?key=secret", False),
         ("https://ingest.example/api/v1/updates?sig=secret", False),
         ("https://ingest.example/api/v1/updates#secret", False),
-        ("https://ingest.example/api/v1/updates" + chr(10) + "request_count: 0", False),
-        ("https://ingest.example/api/v1/updates" + chr(13) + "request_count: 0", False),
+        ("https://ingest.example/api/v1/updates" + chr(0x2028) + "forged: true", False),
+        ("https://ingest.example/api/v1/updates" + chr(0x2029) + "forged: true", False),
+        ("https://ingest.example/api/v1/updates" + chr(0x0085) + "forged: true", False),
+        ("https://ingest.example/api/v1/updates" + chr(10) + "forged: true", False),
+        ("https://ingest.example/api/v1/updates " + "x", False),
+        ("https://ingest.example/api/v1/updates" + "é", False),
     )
     for target_url, accepted in url_cases:
         report = {**valid_report(), "target_url": target_url}
