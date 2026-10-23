@@ -1,0 +1,307 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+HOOK="$ROOT/apt-hooks/99fluxion"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/bin" "$TMP/requests" "$TMP/noapt" "$TMP/etc/apt/sources.list.d" "$TMP/lists"
+export FLUXION_APT_LISTS_DIR="$TMP/lists"
+: > "$TMP/ubuntu-archive-keyring.gpg"
+: > "$TMP/debian-archive-keyring.gpg"
+printf 'Ubuntu archive signing key fixture\n' > "$TMP/ubuntu-archive-keyring.gpg"
+printf 'Debian archive signing key fixture\n' > "$TMP/debian-archive-keyring.gpg"
+export FLUXION_APT_UBUNTU_KEYRING="$TMP/ubuntu-archive-keyring.gpg"
+export FLUXION_APT_DEBIAN_KEYRING="$TMP/debian-archive-keyring.gpg"
+export FLUXION_APT_SIGNING_KEY="Ubuntu archive signing key fixture"
+export FLUXION_APT_SOURCES_LIST="$TMP/sources.list"
+export FLUXION_APT_SOURCES_DIR="$TMP/etc/apt/sources.list.d"
+
+cat > "$TMP/bin/apt-cache" <<'APT'
+#!/bin/bash
+[[ "${FAKE_APT_CACHE_FAIL:-0}" == 1 ]] && exit 1
+if [[ "${1:-}" == policy && $# -eq 1 ]]; then
+    cat "$FLUXION_APT_RELEASES"
+elif [[ "${1:-}" == policy && $# -eq 2 ]]; then
+    cat "$FLUXION_APT_PACKAGE_POLICY"
+else
+    exit 1
+fi
+APT
+cat > "$TMP/bin/curl" <<'CURL'
+#!/bin/bash
+payload=""
+while (($#)); do
+    case "$1" in
+        -d) payload="$2"; shift 2;;
+        *) shift;;
+    esac
+done
+printf '%s' "$payload" > "$FLUXION_REQUEST_DIR/payload.json"
+CURL
+cat > "$TMP/bin/hostname" <<'HOST'
+#!/bin/bash
+printf 'apt.test\n'
+HOST
+cat > "$TMP/bin/gpgv" <<'GPGV'
+#!/bin/bash
+keyring=""
+file=""
+while (($#)); do
+    case "$1" in
+        --keyring) keyring="$2"; shift 2;;
+        --output) shift 2;;
+        *) file="$1"; shift;;
+    esac
+done
+printf '%s %s\n' "$keyring" "$file" >> "${FLUXION_REQUEST_DIR:-/tmp}/gpgv.calls"
+if [[ ! -s "$keyring" || ! -f "$file" || "${FAKE_GPGV_FAIL:-0}" == 1 ]]; then exit 1; fi
+if [[ "$keyring" == "${FLUXION_APT_UBUNTU_KEYRING}" && "$file" == *"_dists_"* ]]; then
+    cat "$file"
+elif [[ "$keyring" == "${FLUXION_APT_DEBIAN_KEYRING}" && "$file" == *"_dists_"* ]]; then
+    cat "$file"
+else
+    exit 1
+fi
+GPGV
+chmod 755 "$TMP/bin/apt-cache" "$TMP/bin/curl" "$TMP/bin/hostname" "$TMP/bin/gpgv"
+export PATH="$TMP/bin:$PATH" FLUXION_REQUEST_DIR="$TMP/requests"
+export FLUXION_API_URL="https://fluxion.test/api/v1" FLUXION_LOG_FILE="$TMP/fluxion.log"
+
+fail() { echo "FAIL: $1" >&2; exit 1; }
+source "$HOOK"
+
+run_case() {
+    local name="$1" package="$2" version="$3" package_block="$4" releases="$5" expected="$6"
+    cat > "$TMP/package.policy" <<EOF
+Package: $package
+Installed: -
+Candidate: $version
+Version table:
+$package_block
+EOF
+    printf '%s\n' "$releases" > "$TMP/releases.policy"
+    export FLUXION_APT_PACKAGE_POLICY="$TMP/package.policy" FLUXION_APT_RELEASES="$TMP/releases.policy"
+    rm -f "$TMP/lists"/*_InRelease 2>/dev/null || true
+    local description_line origin suite address saved
+    while IFS= read -r release_line; do
+        if [[ "$release_line" =~ ^[[:space:]]*[0-9]+[[:space:]]+(http:|https:)//([^[:space:]]+) ]]; then
+            description_line="$release_line"
+            address="$(awk '{print $2}' <<< "$release_line")"
+            address="${address#http://}"; address="${address#https://}"
+            suite="$(awk '{print $3}' <<< "$release_line")"
+            continue
+        fi
+        if [[ "$release_line" =~ o=(Ubuntu|Debian).*a=([^,[:space:]]+) ]]; then
+            origin="${BASH_REMATCH[1]}"
+            suite="${BASH_REMATCH[2]}"
+            saved=$(printf '%s' "$address" | tr '/' '_')
+            mkdir -p "$TMP/lists"
+            case "$address" in
+                security.ubuntu.com/*|archive.ubuntu.com/*|ports.ubuntu.com/*|security.debian.org/*|deb.debian.org/*)
+                    printf 'Origin: %s\nSuite: %s\n' "$origin" "$suite" > "$TMP/lists/${saved}_dists_${suite}_InRelease"
+                    ;;
+            esac
+        fi
+    done <<< "$releases"
+    case "$name" in
+        suite-mismatch)
+            printf 'Origin: Ubuntu\nSuite: noble-updates\n' > "$TMP/lists/security.ubuntu.com_ubuntu_dists_noble-security_InRelease"
+            ;;
+        absent-inrelease)
+            rm -f "$TMP/lists/security.ubuntu.com_ubuntu_dists_noble-security_InRelease"
+            ;;
+    esac
+    local actual
+    actual=$(detect_security_update "$package" "$version")
+    [[ "$actual" == "$expected" ]] || fail "$name: expected $expected, got $actual"
+}
+
+test_detect_security_update_matches_exact_security_version() {
+    run_case ubuntu-security openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+        100 http://archive.ubuntu.com/ubuntu noble-security/main amd64 Packages
+  *** 3.0.2-0ubuntu1.21 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' true
+
+    run_case archive-ubuntu openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://archive.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://archive.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' true
+
+    export FLUXION_APT_SIGNING_KEY="Debian archive signing key fixture"
+    run_case debian curl 3.0.14-1~deb12u2 \
+' *** 3.0.14-1~deb12u2 500
+        500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages' \
+$'500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages\n     release v=12,o=Debian,a=bookworm-security,n=bookworm,l=Debian-Security,c=main,b=amd64' true
+
+    export FLUXION_APT_SIGNING_KEY="Ubuntu archive signing key fixture"
+    run_case updates curl 8.5.0-2ubuntu10.6 \
+' *** 8.5.0-2ubuntu10.6 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages' \
+$'500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=main,b=amd64' false
+
+    run_case ppa tool 1.0-1 \
+' *** 1.0-1 500
+        500 https://ppa.launchpadcontent.net/x/y/ubuntu noble/main amd64 Packages' \
+$'500 https://ppa.launchpadcontent.net/x/y/ubuntu noble/main amd64 Packages\n     release v=24.04,o=LP-PPA-x-y,a=noble-security,n=noble,c=main' false
+
+    run_case exact-version-only openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.21 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+
+    run_case no-release openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble,n=noble,l=Ubuntu,c=main,b=amd64' false
+
+    run_case trusted-yes openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages trusted=yes' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages trusted=yes\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    : > "$TMP/sources.list"
+
+    cat > "$TMP/etc/apt/sources.list.d/security.sources" <<'EOF'
+Types: deb
+URIs: http://security.ubuntu.com/ubuntu
+Suites: noble-security
+Components: main
+Trusted: yes
+EOF
+    run_case trusted-deb822 openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages trusted=yes' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages trusted=yes\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    rm -f "$TMP/etc/apt/sources.list.d/security.sources"
+
+    run_case allow-insecure openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages allow-insecure=yes' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages allow-insecure=yes\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    : > "$TMP/sources.list"
+
+    run_case third-party-matching-metadata openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://packages.example.test/ubuntu noble-security/main amd64 Packages' \
+$'500 http://packages.example.test/ubuntu noble-security/main amd64 Packages
+     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+
+    export FLUXION_APT_SIGNING_KEY="Debian archive signing key fixture"
+    export FLUXION_APT_DEBIAN_KEYRING="$TMP/missing-debian-keyring.gpg"
+    run_case missing-debian-keyring curl 3.0.14-1~deb12u2 \
+' *** 3.0.14-1~deb12u2 500
+        500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages' \
+$'500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages\n     release v=12,o=Debian,a=bookworm-security,n=bookworm,l=Debian-Security,c=main,b=amd64' false
+    export FLUXION_APT_DEBIAN_KEYRING="$TMP/debian-archive-keyring.gpg"
+    export FLUXION_APT_SIGNING_KEY="Ubuntu archive signing key fixture"
+
+    run_case absent-inrelease openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+
+    export FAKE_GPGV_FAIL=1
+    run_case gpgv-failure openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    unset FAKE_GPGV_FAIL
+    run_case suite-mismatch openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+}
+
+# Function-named tests accept both exact matching and fail-safe cases.
+test_detect_security_update_falls_back_to_false() {
+    run_case no-entry nginx 1.2.3 \
+' *** 1.2.3-1ubuntu1 500
+        500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages' \
+$'500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble,n=noble,l=Ubuntu,c=main,b=amd64' false
+
+    export FLUXION_APT_PACKAGE_POLICY="$TMP/package.policy" FLUXION_APT_RELEASES="$TMP/releases.policy"
+    local old_path="$PATH" actual
+    PATH="$TMP/noapt"
+    actual=$(detect_security_update openssl 3.0.2-0ubuntu1.20)
+    PATH="$old_path"
+    [[ "$actual" == false ]] || fail "no apt-cache: expected false"
+
+    cat > "$TMP/package.policy" <<'EOF'
+Package: openssl
+Installed: -
+Candidate: 3.0.2-0ubuntu1.20
+Version table:
+ *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+EOF
+    cat > "$TMP/releases.policy" <<'EOF'
+500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64
+EOF
+    mkdir -p "$TMP/lists"
+    printf 'Origin: Ubuntu\nSuite: noble-security\n' > "$TMP/lists/security.ubuntu.com_ubuntu_dists_noble-security_InRelease"
+    mkdir -p "$TMP/nogpgv"
+    ln -sf "$TMP/bin/apt-cache" "$TMP/nogpgv/apt-cache"
+    ln -sf /usr/bin/cat "$TMP/nogpgv/cat"
+    ln -sf /usr/bin/tr "$TMP/nogpgv/tr"
+    ln -sf /usr/bin/awk "$TMP/nogpgv/awk"
+    PATH="$TMP/nogpgv"
+    actual=$(detect_security_update openssl 3.0.2-0ubuntu1.20)
+    PATH="$old_path"
+    [[ "$actual" == false ]] || fail "no gpgv: expected false, got $actual"
+
+    export FAKE_APT_CACHE_FAIL=1
+    actual=$(detect_security_update nginx 1.2.3)
+    unset FAKE_APT_CACHE_FAIL
+    [[ "$actual" == false ]] || fail "apt-cache exit: expected false, got $actual"
+
+    export FLUXION_DETECT_SECURITY=false
+    run_case disabled openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    unset FLUXION_DETECT_SECURITY
+
+    cat > "$TMP/package.policy" <<'EOF'
+Package: nginx
+Version table:
+ *** 1.2.3 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages
+Package: openssl
+Version table:
+ *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+EOF
+    cat > "$TMP/releases.policy" <<'EOF'
+500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages
+     release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=main,b=amd64
+500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64
+EOF
+    export FLUXION_APT_PACKAGE_POLICY="$TMP/package.policy" FLUXION_APT_RELEASES="$TMP/releases.policy"
+    export FAKE_APT_CACHE_FAIL=nginx
+    rm -f "$TMP/requests/payload.json"
+    printf 'nginx 1.2.2 1.2.3\nopenssl 3.0.2-0ubuntu1.19 3.0.2-0ubuntu1.20\n' | bash "$HOOK"
+    python3 - "$TMP/requests/payload.json" <<'PY'
+import json,sys
+body=json.load(open(sys.argv[1]))
+assert [(u['package_name'], u['is_security']) for u in body['updates']] == [('nginx', False), ('openssl', True)], body
+PY
+}
+
+# Make the fake distinguish nginx failure; it needs this package-specific behavior in the batch test.
+cat > "$TMP/bin/apt-cache" <<'APT'
+#!/bin/bash
+if [[ "${1:-}" == policy && $# -eq 2 && "$2" == nginx && "${FAKE_APT_CACHE_FAIL:-}" == nginx ]]; then exit 1; fi
+if [[ "${1:-}" == policy && $# -eq 1 ]]; then cat "$FLUXION_APT_RELEASES"
+elif [[ "${1:-}" == policy && $# -eq 2 ]]; then cat "$FLUXION_APT_PACKAGE_POLICY"
+else exit 1; fi
+APT
+chmod 755 "$TMP/bin/apt-cache"
+
+test_detect_security_update_matches_exact_security_version
+test_detect_security_update_falls_back_to_false
+echo 'All APT security detection tests passed'

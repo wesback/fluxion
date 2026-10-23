@@ -65,52 +65,130 @@ detect_os_info() {
     echo "$os_info"
 }
 
-# Function to detect if a package update likely came from a security repository
+# Helpers beside security update detection
+is_fluxion_insecure_source() {
+    local description="$1"
+    [[ "$description" =~ trusted[[:space:]]*=[[:space:]]*(yes|true) ]] && return 0
+    [[ "$description" =~ allow-insecure[[:space:]]*=[[:space:]]*(yes|true) ]] && return 0
+    return 1
+}
+
+verify_fluxion_inrelease() {
+    local description="$1"
+    local origin="$2"
+    local suite="$3"
+    local lists_dir="${FLUXION_APT_LISTS_DIR:-/var/lib/apt/lists}"
+    local keyring=""
+
+    case "$origin" in
+        Ubuntu) keyring="${FLUXION_APT_UBUNTU_KEYRING:-/usr/share/keyrings/ubuntu-archive-keyring.gpg}" ;;
+        Debian) keyring="${FLUXION_APT_DEBIAN_KEYRING:-/usr/share/keyrings/debian-archive-keyring.gpg}" ;;
+        *) return 1 ;;
+    esac
+    command -v gpgv &>/dev/null || return 1
+
+    local address
+    address=$(awk '{print $1}' <<< "$description")
+    address="${address#http://}"
+    address="${address#https://}"
+    address="${address%%[[:space:]]*}"
+    [[ -n "$address" ]] || return 1
+
+    local saved_address
+    saved_address=$(printf '%s' "$address" | tr '/' '_')
+    local release_file="$lists_dir/${saved_address}_dists_${suite}_InRelease"
+    [[ -f "$release_file" ]] || return 1
+
+    local verified
+    if ! verified=$(gpgv --keyring "$keyring" --output - "$release_file" 2>/dev/null); then
+        return 1
+    fi
+
+    local printed_origin="" printed_suite=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^Origin:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]]; then printed_origin="${BASH_REMATCH[1]}"; fi
+        if [[ "$line" =~ ^Suite:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]]; then printed_suite="${BASH_REMATCH[1]}"; fi
+    done <<< "$verified"
+
+    [[ "$printed_origin" == "$origin" && "$printed_suite" == "$suite" ]]
+}
+
+# Function to detect whether an exact package version came from an official security repository
 detect_security_update() {
     local package_name="$1"
     local version="$2"
 
-    # Disabled or unavailable apt-cache => cannot determine
-    if [[ "$FLUXION_DETECT_SECURITY" != "true" ]]; then
-        echo "false"
-        return
-    fi
+    [[ "${FLUXION_DETECT_SECURITY:-true}" == "true" ]] || { echo "false"; return; }
+    command -v apt-cache &>/dev/null || { echo "false"; return; }
 
-    if ! command -v apt-cache &> /dev/null; then
-        echo "false"
-        return
-    fi
+    local package_policy release_policy
+    package_policy=$(apt-cache policy "$package_name" 2>/dev/null) || { echo "false"; return; }
+    release_policy=$(apt-cache policy 2>/dev/null) || { echo "false"; return; }
 
-    local policy_output
-    policy_output=$(apt-cache policy "$package_name" 2>/dev/null || true)
-    if [[ -z "$policy_output" ]]; then
-        echo "false"
-        return
-    fi
-
-    # Try to detect security origin specifically for the installed/new version block first
-    if [[ -n "$version" ]] && [[ "$version" != "-" ]]; then
-        if echo "$policy_output" | awk -v target="$version" '
-            BEGIN { in_target=0; found=0 }
-            /^[[:space:]]+[0-9]/ {
-                in_target = ($1 == target)
-            }
-            in_target && /security|[-]security/ {
-                found=1
-            }
-            END { exit found ? 0 : 1 }
-        '; then
-            echo "true"
-            return
+    local -a exact_sources=()
+    local in_target=false line rest
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        rest="${line#${line%%[![:space:]]*}}"
+        rest="${rest%${rest##*[![:space:]]}}"
+        if [[ "$rest" =~ ^\*\*\*[[:space:]]+([^[:space:]]+)[[:space:]]+[0-9]+ ]]; then
+            in_target=false
+            [[ "${BASH_REMATCH[1]}" == "$version" ]] && in_target=true
+            continue
         fi
-    fi
+        if [[ "$rest" =~ ^([^[:space:]]+)[[:space:]]+[0-9]+$ ]]; then
+            in_target=false
+            [[ "${BASH_REMATCH[1]}" == "$version" ]] && in_target=true
+            continue
+        fi
+        if [[ "$in_target" == true && "$rest" =~ ^[0-9]+[[:space:]]+(.+)$ ]]; then
+            exact_sources+=("${BASH_REMATCH[1]}")
+        fi
+    done <<< "$package_policy"
+    ((${#exact_sources[@]} == 0)) && { echo "false"; return; }
 
-    # Fallback: if policy mentions security at all, consider it a security update candidate
-    if echo "$policy_output" | grep -Eqi '[-]security| security '; then
-        echo "true"
-    else
-        echo "false"
-    fi
+    local description="" release_line=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        local leading="${line#${line%%[![:space:]]*}}"
+        if [[ "$leading" =~ ^([0-9]+)[[:space:]]+(.+)$ ]]; then
+            description="${BASH_REMATCH[2]}"
+            description="${description%${description##*[![:space:]]}}"
+            continue
+        fi
+        [[ "$leading" =~ ^release[[:space:]]+(.+) ]] || continue
+        release_line="${BASH_REMATCH[1]}"
+
+        local source_match=false source
+        for source in "${exact_sources[@]}"; do
+            if is_fluxion_insecure_source "$source"; then continue; fi
+            if [[ "$description" == "$source" ]]; then source_match=true; break; fi
+        done
+        [[ "$source_match" == true ]] || continue
+        is_fluxion_insecure_source "$description" && continue
+
+        local origin="" suite="" archive="" field
+        IFS=',' read -r -a release_fields <<< "$release_line"
+        for field in "${release_fields[@]}"; do
+            field="${field#${field%%[![:space:]]*}}"
+            field="${field%${field##*[![:space:]]}}"
+            case "$field" in
+                o=Ubuntu) origin="Ubuntu" ;;
+                o=Debian) origin="Debian" ;;
+                a=*-security) archive="${field#a=}" ;;
+            esac
+        done
+        [[ -n "$origin" && -n "$archive" ]] || continue
+
+        local description_address description_suite
+        read -r description_address description_suite _ <<< "$description"
+        description_suite="${description_suite%%/*}"
+        description_address="${description_address#http://}"
+        description_address="${description_address#https://}"
+        [[ "$description_suite" == "$archive" ]] || continue
+
+        verify_fluxion_inrelease "$description" "$origin" "$archive" && { echo "true"; return; }
+    done <<< "$release_policy"
+
+    echo "false"
 }
 
 # Function to send a single update to the API
