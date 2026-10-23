@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
+import posixpath
 
 from scripts.ingest_load_report import STANDARD_PROFILE
 
@@ -52,13 +53,62 @@ def _positive_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _normalized_target_url(value: str) -> str | None:
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        if hostname is None:
+            return None
+        hostname = hostname.rstrip(".").lower()
+        port = parsed.port
+    except (TypeError, ValueError):
+        return None
+
+    if port == 443:
+        authority = hostname
+    elif port is not None:
+        authority = f"{hostname}:{port}"
+    else:
+        authority = hostname
+
+    path = unquote(parsed.path or "/")
+    normalized_path = posixpath.normpath(path)
+    if normalized_path == ".":
+        normalized_path = "/"
+    if normalized_path != "/" and normalized_path.endswith("/"):
+        normalized_path = normalized_path[:-1]
+    return f"{parsed.scheme.lower()}://{authority}{normalized_path}"
+
+
 def _production_target(target_url: str, target_environment: Any, environ: Mapping[str, str]) -> bool:
     if isinstance(target_environment, str) and target_environment.strip().lower() == "production":
         return True
 
     production_url_name = "_".join(("FLUXION", "LOAD", "PRODUCTION", "TARGET", "URL"))
     configured_url = environ.get(production_url_name)
-    return isinstance(configured_url, str) and configured_url.strip() == target_url
+    if isinstance(configured_url, str) and _safe_target_url(configured_url):
+        normalized_target = _normalized_target_url(target_url)
+        normalized_configured = _normalized_target_url(configured_url)
+        if normalized_target is not None and normalized_target == normalized_configured:
+            return True
+
+    try:
+        hostname = urlsplit(target_url).hostname or ""
+    except (TypeError, ValueError):
+        hostname = ""
+    hostname = hostname.rstrip(".").lower()
+
+    if isinstance(target_environment, str):
+        environment = target_environment.strip().lower()
+        if environment in {"test", "testing", "development", "dev", "staging"}:
+            return False
+
+    if hostname in {"ingest.example", "localhost", "127.0.0.1"}:
+        return False
+    if hostname.endswith(".invalid") or hostname.endswith(".test"):
+        return False
+
+    return True
 
 
 def _safe_target_url(value: Any) -> bool:

@@ -105,6 +105,24 @@ def test_load_credentials_and_secret_contract():
         "FLUXION_LOAD_ISOLATION_APPROVED": "true",
     })
 
+    equivalent_production_url = {
+        **valid_parameters(),
+        "target_url": "https://api.production.example:443/api/v1/./",
+    }
+    equivalent_environment = {
+        "FLUXION_LOAD_API_KEY": "test-key",
+        "FLUXION_LOAD_PRODUCTION_TARGET_URL": "https://API.PRODUCTION.EXAMPLE/api/v1",
+    }
+    with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
+        build_load_run_config(equivalent_production_url, equivalent_environment)
+
+    unconfigured_production_url = {
+        **valid_parameters(),
+        "target_url": "https://api.company-internal.example/api/v1",
+    }
+    with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
+        build_load_run_config(unconfigured_production_url, {"FLUXION_LOAD_API_KEY": "test-key"})
+
     neutral_production_url = {
         **valid_parameters(),
         "target_url": "https://service.example/api/v1",
