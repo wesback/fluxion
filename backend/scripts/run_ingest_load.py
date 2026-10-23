@@ -87,12 +87,28 @@ def _canonical_row_state(value: Any) -> dict[str, Any] | None:
         if isinstance(rows, Mapping):
             normalized_rows = []
             for identity, content in sorted(rows.items(), key=lambda item: str(item[0])):
+                if content is None:
+                    return None
                 normalized_rows.append([copy.deepcopy(identity), copy.deepcopy(content)])
         elif isinstance(rows, (list, tuple)):
             normalized_rows = []
             for row in rows:
-                if isinstance(row, Mapping) or (isinstance(row, (list, tuple)) and len(row) >= 2):
-                    normalized_rows.append(copy.deepcopy(row))
+                if isinstance(row, Mapping):
+                    identity = None
+                    for key in ("stable_id", "stable_identity", "identity", "id", "_id", "uuid"):
+                        if key in row and row[key] is not None:
+                            identity = row[key]
+                            break
+                    if identity is None:
+                        return None
+                    identity_keys = {"stable_id", "stable_identity", "identity", "id", "_id", "uuid"}
+                    if not set(row.keys()) - identity_keys:
+                        return None
+                    normalized_rows.append([copy.deepcopy(identity), copy.deepcopy(row)])
+                elif isinstance(row, (list, tuple)) and len(row) >= 2:
+                    if row[0] is None or row[1] is None:
+                        return None
+                    normalized_rows.append([copy.deepcopy(row[0]), copy.deepcopy(row[1])])
                 else:
                     return None
         elif isinstance(rows, (set, frozenset)):

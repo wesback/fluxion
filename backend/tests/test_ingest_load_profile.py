@@ -163,6 +163,15 @@ def test_load_repeatability_and_cleanup(tmp_path):
         run_ingest_load(params(tmp_path), environment, FakeClient(), id_only_store)
     assert id_only_store.creations == 0
 
+    id_only_list_store = FakeFixtures()
+    id_only_list_store.snapshot_fixture_state = lambda: {
+        table: [{"stable_id": identity} for identity in rows]
+        for table, rows in id_only_list_store.rows.items()
+    }
+    with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: exact fixture state unavailable"):
+        run_ingest_load(params(tmp_path), environment, FakeClient(), id_only_list_store)
+    assert id_only_list_store.creations == 0
+
     fixture_state_store = FakeFixtures()
     fixture_state_store_snapshot = fixture_state_store.snapshot_fixture_state
     fixture_state_store.snapshot_fixture_state = None
