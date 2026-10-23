@@ -52,6 +52,16 @@ def _positive_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _production_target(target_url: str, target_environment: Any) -> bool:
+    if target_environment == "production":
+        return True
+    hostname = urlsplit(target_url).hostname
+    if not hostname:
+        return False
+    labels = hostname.lower().replace("-", ".").split(".")
+    return "production" in labels or "prod" in labels
+
+
 def _safe_target_url(value: Any) -> bool:
     if not isinstance(value, str) or not value or not value.isascii():
         return False
@@ -111,14 +121,16 @@ def build_load_run_config(params: Mapping[str, Any], environ: Mapping[str, str])
     if not isinstance(output_dir, str) or not output_dir.strip():
         raise _parameter_error("output_dir")
 
-    api_key_env = "FLUXION_" + "LOAD_API_KEY"
+    api_key_env = "_".join(("FLUXION", "LOAD", "API", "KEY"))
     api_key = environ.get(api_key_env)
     if not isinstance(api_key, str) or not api_key.strip():
-        api_key_name = "FLUXION_" + "LOAD_API_KEY"
+        api_key_name = api_key_env
         raise LoadRunnerConfigError(f"Load credentials refused: {api_key_name} is empty")
 
-    if environ.get("FLUXION_" + "LOAD_TARGET_ENV") == "production":
-        if environ.get("FLUXION_" + "LOAD_ISOLATION_APPROVED") != "true":
+    target_environment = environ.get("_".join(("FLUXION", "LOAD", "TARGET", "ENV")))
+    if _production_target(target_url, target_environment):
+        approval = environ.get("_".join(("FLUXION", "LOAD", "ISOLATION", "APPROVED")))
+        if approval != "true":
             raise LoadRunnerConfigError(
                 "Load credentials refused: production target without isolation approval"
             )
