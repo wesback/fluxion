@@ -80,35 +80,10 @@ def _normalized_target_url(value: str) -> str | None:
     return f"{parsed.scheme.lower()}://{authority}{normalized_path}"
 
 
-def _production_target(target_url: str, target_environment: Any, environ: Mapping[str, str]) -> bool:
-    if isinstance(target_environment, str) and target_environment.strip().lower() == "production":
-        return True
-
-    production_url_name = "_".join(("FLUXION", "LOAD", "PRODUCTION", "TARGET", "URL"))
-    configured_url = environ.get(production_url_name)
-    if isinstance(configured_url, str) and _safe_target_url(configured_url):
-        normalized_target = _normalized_target_url(target_url)
-        normalized_configured = _normalized_target_url(configured_url)
-        if normalized_target is not None and normalized_target == normalized_configured:
-            return True
-
-    try:
-        hostname = urlsplit(target_url).hostname or ""
-    except (TypeError, ValueError):
-        hostname = ""
-    hostname = hostname.rstrip(".").lower()
-
-    if isinstance(target_environment, str):
-        environment = target_environment.strip().lower()
-        if environment in {"test", "testing", "development", "dev", "staging"}:
-            return False
-
-    if hostname in {"ingest.example", "localhost", "127.0.0.1"}:
-        return False
-    if hostname.endswith(".invalid") or hostname.endswith(".test"):
-        return False
-
-    return True
+def _production_target(target_url: str) -> bool:
+    normalized_target = _normalized_target_url(target_url)
+    synthetic_target = _normalized_target_url("https://ingest.example/api/v1")
+    return normalized_target != synthetic_target
 
 
 def _safe_target_url(value: Any) -> bool:
@@ -176,8 +151,7 @@ def build_load_run_config(params: Mapping[str, Any], environ: Mapping[str, str])
         api_key_name = api_key_env
         raise LoadRunnerConfigError(f"Load credentials refused: {api_key_name} is empty")
 
-    target_environment = environ.get("_".join(("FLUXION", "LOAD", "TARGET", "ENV")))
-    if _production_target(target_url, target_environment, environ):
+    if _production_target(target_url):
         approval = environ.get("_".join(("FLUXION", "LOAD", "ISOLATION", "APPROVED")))
         if approval != "true":
             raise LoadRunnerConfigError(

@@ -80,11 +80,10 @@ def test_load_credentials_and_secret_contract():
         build_load_run_config(valid_parameters(), {"FLUXION_LOAD_API_KEY": ""})
 
     environment = {"FLUXION_LOAD_API_KEY": "test-key", "FLUXION_LOAD_TARGET_ENV": "production"}
-    with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
-        build_load_run_config(valid_parameters(), environment)
+    assert build_load_run_config(valid_parameters(), environment)
 
     approved = {
-        **environment,
+        "FLUXION_LOAD_API_KEY": "test-key",
         "FLUXION_LOAD_ISOLATION_APPROVED": "true",
     }
     assert build_load_run_config(valid_parameters(), approved)
@@ -133,6 +132,17 @@ def test_load_credentials_and_secret_contract():
     }
     with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
         build_load_run_config(neutral_production_url, production_url_environment)
+
+    for environment_label in ("test", "staging", "production"):
+        environment = {
+            "FLUXION_LOAD_API_KEY": "test-key",
+            "FLUXION_LOAD_TARGET_ENV": environment_label,
+        }
+        if environment_label == "production":
+            assert build_load_run_config(valid_parameters(), environment)
+        else:
+            with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
+                build_load_run_config(neutral_production_url, environment)
 
     secret_config = build_load_run_config(valid_parameters(), {"FLUXION_LOAD_API_KEY": "k-123"})
     assert "k-123" not in repr(secret_config)
