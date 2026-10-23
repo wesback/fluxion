@@ -39,13 +39,13 @@ test_stage_then_report_sends_differences() {
   setup
   printf '%s\n' 'bash.x86_64 bash 5.2.26-3.fc40' 'vim-minimal.x86_64 vim-minimal 2:9.1.393-1.fc40' 'telnet.x86_64 telnet 1:0.17-92.fc40' > "$TMP/rpm/stage"
   printf '%s\n' 'bash.x86_64 bash 5.2.32-1.fc40' 'vim-minimal.x86_64 vim-minimal 2:9.1.393-1.fc40' 'htop.x86_64 htop 3.3.0-4.fc40' > "$TMP/rpm/report"
-  printf 'FLUXION_API_URL=http://fluxion.test/api/v1\nFLUXION_API_KEY=k1\n' > "$FLUXION_CONFIG_FILE"
+  printf 'FLUXION_API_URL=https://fluxion.test/api/v1\nFLUXION_API_KEY=k1\n' > "$FLUXION_CONFIG_FILE"
   export RPM_PHASE=stage; "$HOOK" stage || return 1
   export RPM_PHASE=report; "$HOOK" report || return 1
   python3 - "$CURL_LOG" <<'PY'
 import json,sys
 lines=open(sys.argv[1]).read().splitlines()
-assert lines[0]=='http://fluxion.test/api/v1/updates/ingest/dnf'
+assert lines[0]=='https://fluxion.test/api/v1/updates/ingest/dnf'
 assert lines[1]=='X-API-Key: k1'
 body=json.loads(lines[2]); assert body['updates']==[
  {'package_name':'bash','old_version':'5.2.26-3.fc40','new_version':'5.2.32-1.fc40','is_security':False},
@@ -61,9 +61,9 @@ test_report_request_shape_and_chunks() {
   setup
   : > "$TMP/rpm/stage"
   : > "$TMP/rpm/report"
-  printf 'FLUXION_API_URL=http://fluxion.test/api/v1\nFLUXION_API_KEY=k1\n' > "$FLUXION_CONFIG_FILE"
+  printf 'FLUXION_API_URL=https://fluxion.test/api/v1\nFLUXION_API_KEY=k1\n' > "$FLUXION_CONFIG_FILE"
   export RPM_PHASE=stage; "$HOOK" stage || return 1
-  for i in $(seq -w 1 150); do printf 'pkg%s.x86_64 pkg%s 1\n' "$i" "$i"; done > "$TMP/rpm/report"
+  for i in $(seq 1 150); do printf 'pkg%d.x86_64 pkg%d 1\n' "$i" "$i"; done > "$TMP/rpm/report"
   export RPM_PHASE=report; "$HOOK" report || return 1
   python3 - "$CURL_LOG" <<'PY'
 import json,sys
@@ -83,6 +83,13 @@ test_hook_fail_safe() {
   setup
   export RPM_PHASE=report
   "$HOOK" report || return 1
+  [[ ! -s "$CURL_LOG" ]] || return 1
+  printf 'FLUXION_API_URL=http://fluxion.test/api/v1\nFLUXION_API_KEY=secret-key\n' > "$FLUXION_CONFIG_FILE"
+  printf 'x.x86_64 x 1\n' > "$TMP/rpm/stage"
+  printf 'x.x86_64 x 2\n' > "$TMP/rpm/report"
+  export RPM_PHASE=stage; "$HOOK" stage || return 1
+  rm -f "$CURL_LOG"
+  export RPM_PHASE=report; "$HOOK" report || return 1
   [[ ! -s "$CURL_LOG" ]] || return 1
   printf 'FLUXION_API_URL=$(touch %s/pwned)\n' "$TMP" > "$FLUXION_CONFIG_FILE"
   export RPM_PHASE=stage; "$HOOK" stage || return 1
