@@ -123,9 +123,10 @@ main() {
         done
         json_updates+="]"
         local payload="{\"hostname\":\"$(json_escape "$hostname_value")\",\"os_info\":\"$(json_escape "$os_info")\",\"updates\":$json_updates}"
-        local args=(-X POST -H "Content-Type: application/json" --max-time "${FLUXION_TIMEOUT:-5}" --silent --show-error --fail -d "$payload")
-        args+=(-H "X-API-Key: $FLUXION_API_KEY")
-        if curl "${args[@]}" "$FLUXION_API_URL/updates/ingest/pacman" >/dev/null 2>&1; then
+        local args=(-X POST -H "Content-Type: application/json" --max-time "${FLUXION_TIMEOUT:-5}" --silent --show-error --fail --config - -d "$payload")
+        local curl_key="${FLUXION_API_KEY//\\/\\\\}"
+        curl_key="${curl_key//\"/\\\"}"
+        if printf 'header = "X-API-Key: %s"\n' "$curl_key" | curl "${args[@]}" "$FLUXION_API_URL/updates/ingest/pacman" >/dev/null 2>&1; then
             log_message "INFO" "Sent $((end-index)) package changes"
         else
             log_message "ERROR" "Failed to send package changes"

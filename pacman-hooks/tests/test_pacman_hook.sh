@@ -18,7 +18,10 @@ if [[ "${1:-}" == "-f" ]]; then printf '%s\n' "${FAKE_HOSTNAME_F:-arch.test}"; e
 HOSTNAME
 cat > "$TMP/bin/curl" <<'CURL'
 #!/bin/bash
-url=""; payload=""; headers=""
+url=""; payload=""; headers=""; args="$*"
+config=$(cat)
+config_header=$(printf '%s' "$config" | sed -n 's/^header = "\(.*\)"$/\1/p' | head -n 1)
+[[ -n "$config_header" ]] && headers="${headers}${config_header}"$'\n'
 while (($#)); do
   case "$1" in
     -d) payload=$2; shift 2;;
@@ -31,6 +34,8 @@ n=$(find "$FLUXION_REQUEST_DIR" -name 'body.*' | wc -l)
 printf '%s' "$payload" > "$FLUXION_REQUEST_DIR/body.$n"
 printf '%s' "$url" > "$FLUXION_REQUEST_DIR/url.$n"
 printf '%s' "$headers" > "$FLUXION_REQUEST_DIR/headers.$n"
+printf '%s\n' "$args" > "$FLUXION_REQUEST_DIR/args.$n"
+printf '%s' "$config" > "$FLUXION_REQUEST_DIR/config.$n"
 [[ "${FAKE_CURL_FAIL:-0}" == "22" ]] && exit 22
 CURL
 chmod 755 "$TMP/bin/"*
@@ -73,6 +78,7 @@ EOFCONFIG
   for i in $(seq -w 1 150); do printf 'pkg%s 1\n' "$i" >> "$BEFORE.large" 2>/dev/null || true; done
   : > "$BEFORE"; : > "$AFTER"
   for i in $(seq -w 1 150); do printf 'pkg%s 1\n' "$i" >> "$BEFORE"; printf 'pkg%s 2\n' "$i" >> "$AFTER"; done
+  export FAKE_HOSTNAME_F="arch/edge.test"
   export FLUXION_TEST_LISTING="$BEFORE"; "$HOOK" stage
   export FLUXION_TEST_LISTING="$AFTER"; "$HOOK" report
   [[ $(find "$TMP/requests" -name 'body.*' | wc -l) -eq 2 ]] || fail 'chunk request count'
@@ -81,12 +87,14 @@ import glob,json,sys
 root=sys.argv[1]
 urls=sorted(glob.glob(root+'/url.*')); bodies=sorted(glob.glob(root+'/body.*')); headers=sorted(glob.glob(root+'/headers.*'))
 assert all(open(u).read() == 'https://fluxion.test/api/v1/updates/ingest/pacman' for u in urls)
-assert all('X-API-Key: k1\n' in open(h).read() for h in headers)
+assert all(open(h).read().splitlines().count('X-API-Key: k1') == 1 for h in headers)
 chunks=[json.loads(open(f).read()) for f in bodies]
 assert [len(c['updates']) for c in chunks] == [100,50]
 names=[u['package_name'] for c in chunks for u in c['updates']]
 assert len(names)==len(set(names))==150
-assert all(c['hostname']=='arch.test' for c in chunks)
+assert all(c['hostname']=='arch/edge.test' for c in chunks)
+for args_file in sorted(glob.glob(root+'/args.*')):
+    assert 'k1' not in open(args_file).read()
 PYCHUNK
   cat > "$TMP/pwned-config" <<'PWN'
 FLUXION_API_URL=$(touch $TMP/pwned)
@@ -95,6 +103,14 @@ PWN
   export FLUXION_CONFIG_FILE="$TMP/pwned-config" FLUXION_API_URL="" FLUXION_API_KEY=""
   "$HOOK" report
   [[ ! -e "$TMP/pwned" ]] || fail 'config was sourced'
+  cat > "$TMP/no-key-config" <<'NOKEY'
+FLUXION_API_URL=https://fluxion.test/api/v1
+NOKEY
+  reset_requests
+  export FLUXION_CONFIG_FILE="$TMP/no-key-config" FLUXION_API_URL="" FLUXION_API_KEY=""
+  export FLUXION_TEST_LISTING="$BEFORE"; "$HOOK" stage
+  export FLUXION_TEST_LISTING="$AFTER"; "$HOOK" report
+  [[ $(find "$TMP/requests" -name 'body.*' | wc -l) -eq 0 ]] || fail 'missing API key sent a request'
   cat > "$TMP/http-config" <<'HTTP'
 FLUXION_API_URL=http://fluxion.test/api/v1
 FLUXION_API_KEY=k1
@@ -122,9 +138,11 @@ EOFCONFIG2
 
   export FAKE_CURL_FAIL=0 FLUXION_CONFIG_FILE="$TMP/config" FLUXION_API_URL="" FLUXION_API_KEY=""
   export FLUXION_TEST_LISTING="$BEFORE"; "$HOOK" stage
+  reset_requests
   export FAKE_PACMAN_FAIL=22; "$HOOK" report
   [[ $? -eq 0 ]] || fail 'pacman query failure exit'
   [[ ! -e "$TMP/state/pacman-before.list" ]] || fail 'pacman failure stage not removed'
+  [[ $(find "$TMP/requests" -name 'body.*' | wc -l) -eq 0 ]] || fail 'pacman failure reported removals'
 
   export FAKE_PACMAN_FAIL=0; reset_requests
   export FLUXION_STATE_DIR="$TMP/state" FLUXION_API_URL="https://fluxion.test/api/v1" FLUXION_API_KEY=k1
