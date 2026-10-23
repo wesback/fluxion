@@ -1,0 +1,205 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 161,
+  "branch": "ai-sdlc/issue-161",
+  "commitSha": "bcafe7167d71331ed56a4c6739fc1739208c379d",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The configuration implementation appears to follow the stated defaults and credential checks. The parameter contract test leaves required behavior unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_ingest_load_config.py",
+          "line": 35,
+          "message": "The test named for the parameter contract does not verify all values the criterion requires it to accept and preserve, and it does not exercise the specified missing-output_dir case.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_load_runner_parameter_contract checks the target URL and defaults, but does not assert that the supplied data_set_version and output_dir are preserved in the returned config. Its output_dir rejection case supplies None instead of omitting the field.",
+            "failureScenario": "If build_load_run_config discards the supplied data-set version or output directory, or accepts an omitted output_dir, this test still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The credentials and source-literal tests cover their named cases. The parameter contract test misses the specified omitted-output-directory rejection, so that behavior could regress without the test failing.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_ingest_load_config.py",
+          "line": 37,
+          "message": "The named parameter contract test does not cover the acceptance criterion's missing output directory case. Test with valid_parameters() after removing output_dir and assert the exact LoadRunnerConfigError.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The parameter contract test supplies output_dir=None, so it exercises explicit null handling rather than the omitted output_dir case in the acceptance table.",
+            "failureScenario": "If build_load_run_config defaults an omitted output_dir to a value but rejects explicit None, this test still passes even though omitting output_dir should raise Invalid load parameter: output_dir."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The production isolation check trusts environment metadata that can disagree with the caller-supplied target URL, allowing an unapproved production target configuration.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_config.py",
+          "line": 113,
+          "message": "A01:2025 Broken Access Control: the production approval gate can be bypassed by a target URL that points to production while FLUXION_LOAD_TARGET_ENV does not say production. Enforce that approval against the actual target.",
+          "confidence": 0.86,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The caller supplies target_url in params, but the production isolation check consults only FLUXION_LOAD_TARGET_ENV.",
+            "failureScenario": "With FLUXION_LOAD_API_KEY set and FLUXION_LOAD_TARGET_ENV unset or set to a non-production value, a caller supplies an HTTPS URL for the production ingest service and receives a config without isolation approval. The runner can then proceed with an unapproved production target."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-green",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 0,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": false,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "assertion",
+    "greenExit": 1,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_ingest_load_config.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
