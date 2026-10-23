@@ -112,22 +112,29 @@ def test_load_credentials_and_secret_contract():
         "FLUXION_LOAD_API_KEY": "test-key",
         "FLUXION_LOAD_PRODUCTION_TARGET_URL": "https://API.PRODUCTION.EXAMPLE/api/v1",
     }
-    with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
+    with pytest.raises(LoadRunnerConfigError, match="Invalid load parameter: target_url$"):
         build_load_run_config(equivalent_production_url, equivalent_environment)
 
     encoded_slash_target = {
         **valid_parameters(),
         "target_url": "https://ingest.example/api%2fv1",
     }
-    with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
+    with pytest.raises(LoadRunnerConfigError, match="Invalid load parameter: target_url$"):
         build_load_run_config(encoded_slash_target, {"FLUXION_LOAD_API_KEY": "test-key"})
 
     repeated_slash_target = {
         **valid_parameters(),
         "target_url": "https://ingest.example/api//v1",
     }
-    with pytest.raises(LoadRunnerConfigError, match="Load credentials refused: production target without isolation approval$"):
+    with pytest.raises(LoadRunnerConfigError, match="Invalid load parameter: target_url$"):
         build_load_run_config(repeated_slash_target, {"FLUXION_LOAD_API_KEY": "test-key"})
+
+    empty_query_production_url = {
+        **valid_parameters(),
+        "target_url": "https://service.example/api/v1?",
+    }
+    with pytest.raises(LoadRunnerConfigError, match="Invalid load parameter: target_url$"):
+        build_load_run_config(empty_query_production_url, {"FLUXION_LOAD_API_KEY": "test-key"})
 
     unconfigured_production_url = {
         **valid_parameters(),

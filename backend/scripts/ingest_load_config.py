@@ -52,32 +52,8 @@ def _positive_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
-def _normalized_target_url(value: str) -> str | None:
-    try:
-        parsed = urlsplit(value)
-        hostname = parsed.hostname
-        if hostname is None:
-            return None
-        hostname = hostname.rstrip(".").lower()
-        port = parsed.port
-    except (TypeError, ValueError):
-        return None
-
-    if port == 443:
-        authority = hostname
-    elif port is not None:
-        authority = f"{hostname}:{port}"
-    else:
-        authority = hostname
-
-    path = parsed.path or "/"
-    return f"{parsed.scheme.lower()}://{authority}{path}"
-
-
 def _production_target(target_url: str) -> bool:
-    normalized_target = _normalized_target_url(target_url)
-    synthetic_target = _normalized_target_url("https://ingest.example/api/v1")
-    return normalized_target != synthetic_target
+    return target_url != "https://ingest.example/api/v1"
 
 
 def _safe_target_url(value: Any) -> bool:
@@ -85,17 +61,23 @@ def _safe_target_url(value: Any) -> bool:
         return False
     if any(ord(char) < 0x21 or ord(char) > 0x7E for char in value):
         return False
+    if "?" in value or "#" in value or "\\" in value or "%" in value:
+        return False
     try:
         parsed = urlsplit(value)
+        port = parsed.port
     except (TypeError, ValueError):
         return False
     return (
         parsed.scheme == "https"
         and bool(parsed.netloc)
+        and parsed.hostname is not None
         and parsed.username is None
         and parsed.password is None
+        and parsed.path == "/api/v1"
         and not parsed.query
         and not parsed.fragment
+        and port is None
     )
 
 
