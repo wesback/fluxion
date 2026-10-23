@@ -1,0 +1,264 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 154,
+  "branch": "ai-sdlc/issue-154",
+  "commitSha": "e1d2f5040e44ef12e5422a65895eac117bc2e959",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The report path can turn a failed package query into false removals. The tests also miss the fail-safe behavior and do not enforce the required package ordering.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "pacman-hooks/fluxion-pacman-hook",
+          "line": 71,
+          "message": "Check that `pacman -Q` succeeds before comparing listings; otherwise a query failure is reported as removal of every package.",
+          "confidence": 0.95,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "report captures `pacman -Q` output but does not check the command's exit status before treating an empty listing as valid.",
+            "failureScenario": "If `pacman -Q` fails after staging a nonempty package list, `after` remains empty and the hook sends every staged package as removed."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/tests/test_pacman_hook.sh",
+          "line": 83,
+          "message": "The fail-safe acceptance criterion is not tested: stage before the fake curl failure, then assert exit 0, staged-file removal, and an `ERROR` log entry.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The earlier report removes the staged file on exit; the later purported curl-failure case invokes report without staging again, so report returns before calling curl.",
+            "failureScenario": "If report stops logging curl failures or fails to remove a staged file after a curl error, this script still passes because it never reaches the fake curl failure path and asserts neither the log entry nor staged-file removal."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/tests/test_pacman_hook.sh",
+          "line": 50,
+          "message": "The differences test does not verify the required package-name order; assert the exact ordered `updates` array.",
+          "confidence": 0.94,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The differences test searches the payload for each expected package but never checks the order of the `updates` array.",
+            "failureScenario": "If the implementation sends the correct differences in a different order, the test passes despite the criterion requiring package-name order."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook can produce invalid JSON for slash-containing host or OS values and can send reports without the required API key. The request-shape test also passes when the endpoint or API-key header is wrong.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "pacman-hooks/fluxion-pacman-hook",
+          "line": 29,
+          "message": "json_escape replaces forward slashes with backslashes instead of escaping backslashes. Reports can become invalid JSON when hostname or OS information contains a slash.",
+          "confidence": 0.98,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "report passes hostname and os_info through json_escape before placing them in the request body.",
+            "failureScenario": "If PRETTY_NAME in /etc/os-release contains a slash, such as Foo/Bar, json_escape replaces it with a backslash. The resulting body contains invalid JSON and Fluxion rejects the package report."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/fluxion-pacman-hook",
+          "line": 118,
+          "message": "The hook sends reports when FLUXION_API_KEY is missing, omitting the required X-API-Key header.",
+          "confidence": 0.97,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "When FLUXION_API_URL is set, report builds the curl arguments and adds the X-API-Key header only if FLUXION_API_KEY is nonempty.",
+            "failureScenario": "With a configured API URL and no API key in the environment or config, report sends package changes without X-API-Key, contrary to the required-key setting and request acceptance criterion."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/tests/test_pacman_hook.sh",
+          "line": 69,
+          "message": "The request-shape criterion is not meaningfully tested: the URL is never checked, the header assertion suppresses failures, and the named test case `test_report_request_shape_and_chunks` is not defined.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The test fake records request URLs and headers, but the script never asserts the recorded URL, and its API-key header check ends with `|| true`, so it cannot fail when the URL or header is wrong.",
+            "failureScenario": "If report posts to the wrong endpoint or omits X-API-Key, the request-shape criterion's test still passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook can expose the API key when configured with an HTTP endpoint. The request-shape test also cannot detect a missing API key or incorrect destination URL.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "pacman-hooks/fluxion-pacman-hook",
+          "line": 117,
+          "message": "The hook sends the API key over HTTP when FLUXION_API_URL uses that scheme. Require HTTPS before sending the credential.",
+          "confidence": 0.91,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The configured FLUXION_API_URL is used directly for the request, and FLUXION_API_KEY is added to the X-API-Key header.",
+            "failureScenario": "If an operator configures an http URL, as the test fixture does, a network attacker can capture the API key in transit and reuse it. This is an OWASP A04:2025 Cryptographic Failures risk."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/tests/test_pacman_hook.sh",
+          "line": 76,
+          "message": "The request-shape acceptance criterion lacks a test that can fail on a missing API key or incorrect URL. The current header assertion is explicitly optional.",
+          "confidence": 0.88,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The request-shape criterion names test_report_request_shape_and_chunks, but the script has no named test cases; its X-API-Key check ends with `|| true`.",
+            "failureScenario": "If the hook omits X-API-Key or sends the request to the wrong URL, this check cannot fail, so the acceptance criterion is unverified."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "pacman-hooks/tests/test_pacman_hook.sh"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

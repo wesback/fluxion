@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Reporting package changes to Fluxion
+When = PostTransaction
+Exec = /usr/local/lib/fluxion/fluxion-pacman-hook report
