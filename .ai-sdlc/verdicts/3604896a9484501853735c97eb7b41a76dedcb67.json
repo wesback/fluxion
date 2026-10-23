@@ -1,0 +1,246 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 154,
+  "branch": "ai-sdlc/issue-154",
+  "commitSha": "3604896a9484501853735c97eb7b41a76dedcb67",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook exposes the API key through curl's arguments, contrary to the acceptance criteria. The named tests also leave several required request and failure behaviors unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "pacman-hooks/fluxion-pacman-hook",
+          "line": 127,
+          "message": "The API key is passed in curl's process arguments. Keep it out of argv; the current HTTPS check does not prevent local exposure.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "report places FLUXION_API_KEY in the X-API-Key header string in args, then passes args to curl.",
+            "failureScenario": "While curl is running, a local user who can read its process arguments can recover and reuse the API key. This violates the criterion that the key not appear in curl's arguments and is an OWASP A04:2025 Cryptographic Failures risk."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/tests/test_pacman_hook.sh",
+          "line": 106,
+          "message": "Acceptance criterion 2 is not fully tested: the named test does not check curl arguments, a missing API key, or a slash-containing hostname.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_report_request_shape_and_chunks checks the HTTPS URL, header presence, chunk sizes, and hostname arch.test, but the fake curl does not record or assert its arguments. The test also has no missing-key case or slash-containing hostname case.",
+            "failureScenario": "If the hook passes k1 in curl's arguments, sends a request without a configured key, or produces invalid JSON for hostname arch/edge.test, the named test still passes, leaving those behaviors in acceptance criterion 2 unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/tests/test_pacman_hook.sh",
+          "line": 106,
+          "message": "Acceptance criterion 3's failed-pacman case does not assert that no request is sent or that no removals are reported.",
+          "confidence": 0.94,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "In test_hook_fail_safe, the fake pacman failure case calls report after the earlier curl-failure case, without clearing or counting recorded requests.",
+            "failureScenario": "If report sends a request after pacman -Q fails, the test does not assert that no request was added, so acceptance criterion 3's no-request and no-false-removals behavior can regress without failing this test."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook leaks the API key through curl's process arguments. The fail-safe test also misses the assertion that would catch false removals after a failed package query.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "pacman-hooks/fluxion-pacman-hook",
+          "line": 127,
+          "message": "The API key is passed in curl's process arguments, despite the criterion requiring that it not appear there. The fake curl does not capture arguments, so the named test cannot detect this.",
+          "confidence": 0.99,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The report path adds the API key to the curl argument array, then passes that array to curl.",
+            "failureScenario": "During a report, a local user who can read process arguments can recover the API key, contrary to the request criterion. This is an OWASP A02:2025 Security Misconfiguration risk."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "pacman-hooks/tests/test_pacman_hook.sh",
+          "line": 124,
+          "message": "The fail-safe test does not verify the acceptance criterion that a failed post-transaction pacman query sends no request and reports no removals.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "In test_hook_fail_safe, the fake pacman failure is followed by assertions for exit status and staged-file removal, but no assertion checks the request directory or reported updates.",
+            "failureScenario": "If report treats the failed pacman query as an empty package listing and sends false removals, curl succeeds; the test still passes because it does not assert that no request was sent."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The report path exposes the API key in curl's process arguments, contrary to the acceptance criterion. This creates a reachable credential disclosure risk while the request runs.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "pacman-hooks/fluxion-pacman-hook",
+          "line": 127,
+          "message": "The API key is exposed in curl's process arguments. Pass it through a mechanism that does not place it in argv.",
+          "confidence": 0.96,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The hook adds the API key to the curl argument array, then passes that array to curl.",
+            "failureScenario": "While a package report is running, a local user who can read the curl process arguments can recover and reuse the API key. This violates the criterion that the key not appear in curl's arguments. OWASP A04:2025."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "pacman-hooks/tests/test_pacman_hook.sh"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
