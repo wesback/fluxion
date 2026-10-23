@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.models import WebhookConfig, WebhookDeliveryHistory, WebhookOutbox
@@ -142,14 +142,18 @@ class WebhookService:
         result = await self.session.execute(
             select(WebhookOutbox)
             .where(
-                WebhookOutbox.status.in_(tuple(WebhookOutbox.RECOVERABLE_STATUSES)),
-                WebhookOutbox.next_attempt_at <= now,
-                (
-                    (WebhookOutbox.status != WebhookOutbox.STATUS_CLAIMED)
-                    | (WebhookOutbox.lease_expires_at <= now)
+                or_(
+                    and_(
+                        WebhookOutbox.status.in_((WebhookOutbox.STATUS_PENDING,
+                                                  WebhookOutbox.STATUS_RETRYABLE)),
+                        WebhookOutbox.next_attempt_at <= now,
+                    ),
+                    and_(
+                        WebhookOutbox.status == WebhookOutbox.STATUS_CLAIMED,
+                        WebhookOutbox.lease_expires_at <= now,
+                    ),
                 ),
-                (WebhookOutbox.lease_expires_at.is_(None)) |
-                (WebhookOutbox.lease_expires_at <= now),
+                WebhookOutbox.status.in_(tuple(WebhookOutbox.RECOVERABLE_STATUSES)),
             )
             .with_for_update(skip_locked=True)
             .order_by(WebhookOutbox.id)
@@ -198,9 +202,59 @@ class WebhookService:
         return await self.relay_once(limit=limit, lease_seconds=lease_seconds)
 
     async def _renew_claim(self, row: WebhookOutbox) -> bool:
-        """Renew the delivery lease before an HTTP attempt to prevent parallel relays."""
+        """Renew one delivery identity's lease before an HTTP attempt."""
         now = datetime.now(UTC)
         expires = now + timedelta(seconds=RELAY_LEASE_SECONDS)
+        owner = row.lease_owner or str(uuid.uuid4())
+        result = await self.session.execute(
+            update(WebhookOutbox)
+            .where(
+                WebhookOutbox.id == row.id,
+                WebhookOutbox.status.in_(
+                    (WebhookOutbox.STATUS_PENDING,
+                     WebhookOutbox.STATUS_CLAIMED,
+                     WebhookOutbox.STATUS_RETRYABLE)
+                ),
+                WebhookOutbox.updated_at == row.updated_at,
+                (
+                    (WebhookOutbox.lease_owner == row.lease_owner)
+                    | (WebhookOutbox.lease_owner.is_(None))
+                ),
+            )
+            .values(
+                status=WebhookOutbox.STATUS_CLAIMED,
+                lease_owner=owner,
+                lease_expires_at=expires,
+                updated_at=now,
+            )
+        )
+        if result.rowcount != 1:
+            await self.session.rollback()
+            return False
+        await self.session.commit()
+        row.status = WebhookOutbox.STATUS_CLAIMED
+        row.lease_owner = owner
+        row.updated_at = now
+        row.lease_expires_at = expires
+        return True
+
+    async def _record_failed_attempt(self, row: WebhookOutbox, attempt: int) -> None:
+        """Atomically persist an attempt before backoff or terminal state."""
+        now = datetime.now(UTC)
+        terminal = attempt >= RELAY_MAX_ATTEMPTS
+        values: dict = {
+            "attempt_count": attempt,
+            "updated_at": now,
+        }
+        if terminal:
+            values.update(status=WebhookOutbox.STATUS_DEAD,
+                          lease_owner=None, lease_expires_at=None)
+        else:
+            backoff = INITIAL_BACKOFF * (2 ** (attempt - 1))
+            values.update(status=WebhookOutbox.STATUS_RETRYABLE,
+                          next_attempt_at=now + timedelta(seconds=backoff),
+                          lease_owner=None, lease_expires_at=None)
+
         result = await self.session.execute(
             update(WebhookOutbox)
             .where(
@@ -209,15 +263,14 @@ class WebhookService:
                 WebhookOutbox.updated_at == row.updated_at,
                 WebhookOutbox.lease_owner == row.lease_owner,
             )
-            .values(lease_expires_at=expires, updated_at=now)
+            .values(**values)
         )
         if result.rowcount != 1:
             await self.session.rollback()
-            return False
+            return
         await self.session.commit()
-        row.updated_at = now
-        row.lease_expires_at = expires
-        return True
+        for key, value in values.items():
+            setattr(row, key, value)
 
     async def _relay_claimed_row(self, row: WebhookOutbox) -> None:
         if row.attempt_count >= RELAY_MAX_ATTEMPTS:
@@ -261,11 +314,15 @@ class WebhookService:
                     await self._finish_claim(row, True, status_code, response_body, error_message,
                                              exhausted=False, attempt_count=attempt)
                     return
+
+                await self._record_failed_attempt(row, attempt)
                 if attempt >= RELAY_MAX_ATTEMPTS:
-                    await self._finish_claim(row, False, status_code, response_body, error_message,
-                                             exhausted=True, attempt_count=attempt)
                     return
-                await asyncio.sleep(INITIAL_BACKOFF * (2 ** (attempt - 1)))
+
+                backoff = INITIAL_BACKOFF * (2 ** (attempt - 1))
+                logger.warning("Webhook delivery failed; retrying: attempt=%s/%s backoff=%ss",
+                               attempt, RELAY_MAX_ATTEMPTS, backoff)
+                await asyncio.sleep(backoff)
 
     async def _finish_claim(self, row: WebhookOutbox, success: bool, status_code: int | None,
                             response_body: str | None, error_message: str | None,

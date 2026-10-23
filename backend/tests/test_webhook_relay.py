@@ -46,34 +46,37 @@ class RelaySession:
         text = str(statement)
         if text.lstrip().upper().startswith("SELECT"):
             self.claim_attempts += 1
+            now = datetime.now(UTC)
             recoverable = [
                 row for row in self.rows
-                if row.status in WebhookOutbox.RECOVERABLE_STATUSES
-                and row.status != WebhookOutbox.STATUS_CLAIMED
+                if row.status == WebhookOutbox.STATUS_PENDING
+                or (row.status == WebhookOutbox.STATUS_RETRYABLE
+                    and row.next_attempt_at <= now)
+                or (row.status == WebhookOutbox.STATUS_CLAIMED
+                    and (row.lease_expires_at is None or row.lease_expires_at <= now))
             ]
             return ScalarResult(recoverable[:RELAY_CLAIM_LIMIT])
 
         params = statement.compile().params
-        if self.mutate_owner:
+        if self.mutate_owner and "lease_owner" in params:
             for row in self.rows:
                 row.lease_owner = "other-owner"
             self.mutate_owner = False
             return ExecuteResult(0)
 
-        for row in self.rows:
-            if "status" in params:
-                row.status = params["status"]
-            if "attempt_count" in params:
-                row.attempt_count = params["attempt_count"]
-            if "lease_owner" in params:
-                row.lease_owner = params["lease_owner"]
-            if "lease_expires_at" in params:
-                row.lease_expires_at = params["lease_expires_at"]
-            if "updated_at" in params:
-                row.updated_at = params["updated_at"]
-            if "next_attempt_at" in params:
-                row.next_attempt_at = params["next_attempt_at"]
-        return ExecuteResult(1 if self.rows else 0)
+        candidates = [row for row in self.rows if row.status == WebhookOutbox.STATUS_CLAIMED]
+        if not candidates and "status" in params and params["status"] == WebhookOutbox.STATUS_CLAIMED:
+            candidates = [row for row in self.rows
+                          if row.status in (WebhookOutbox.STATUS_PENDING, WebhookOutbox.STATUS_RETRYABLE)]
+        if not candidates:
+            candidates = [row for row in self.rows if row.status == WebhookOutbox.STATUS_PENDING]
+
+        for row in candidates[:1]:
+            for key in ("status", "attempt_count", "lease_owner", "lease_expires_at",
+                        "updated_at", "next_attempt_at"):
+                if key in params:
+                    setattr(row, key, params[key])
+        return ExecuteResult(1 if candidates else 0)
 
     async def commit(self):
         self.commits += 1
@@ -102,17 +105,36 @@ async def test_bounded_claim_and_single_inflight_delivery(monkeypatch):
     row = WebhookOutbox(id=1, delivery_id="same", webhook_config_id=1, event_type="test",
                         payload={}, status="pending", attempt_count=0, next_attempt_at=now,
                         updated_at=now)
-    session = RelaySession([row])
-    service = WebhookService(session)
+    config = WebhookConfig(id=1, name="test", url="https://example.com/hook", enabled=True,
+                           event_types=["test"])
+    session = RelaySession([row], config)
+    first_service = WebhookService(session)
+    second_service = WebhookService(session)
+    attempted = []
 
-    first = await service.claim_pending(limit=100, lease_seconds=30)
-    second = await service.claim_pending(limit=100, lease_seconds=30)
+    async def send(*args, **kwargs):
+        attempted.append(row.delivery_id)
+        return True, 204, "", None
+
+    async def log_delivery(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(webhook_service.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(first_service, "_send_request", send)
+    monkeypatch.setattr(second_service, "_send_request", send)
+    monkeypatch.setattr(first_service, "_log_delivery", log_delivery)
+    monkeypatch.setattr(second_service, "_log_delivery", log_delivery)
+
+    first = await first_service.relay_once(limit=100, lease_seconds=30)
+    second = await second_service.relay_once(limit=100, lease_seconds=30)
 
     assert RELAY_CLAIM_LIMIT == 100
     assert RELAY_LEASE_SECONDS == 30
     assert len(first) == 1
-    assert first[0].lease_owner is not None
+    assert first[0].lease_owner is None
     assert second == []
+    assert attempted == ["same"]
+    assert row.status == WebhookOutbox.STATUS_DELIVERED
 
 
 @pytest.mark.asyncio
@@ -140,12 +162,13 @@ async def test_retry_sequence_stops_on_success(monkeypatch):
 
     monkeypatch.setattr(service, "_log_delivery", log_delivery)
 
-    for _ in range(RELAY_MAX_ATTEMPTS):
-        await service._relay_claimed_row(row)
-        if row.status in WebhookOutbox.TERMINAL_STATUSES:
-            break
-        row.status = WebhookOutbox.STATUS_CLAIMED
+    async def no_sleep(_seconds):
+        return None
 
+    monkeypatch.setattr(webhook_service.asyncio, "sleep", no_sleep)
+    claimed = await service.relay_once(limit=RELAY_CLAIM_LIMIT)
+
+    assert len(claimed) == 1
     assert attempted == [500, 500, 204]
     assert len(attempted) == 3
     assert row.status == WebhookOutbox.STATUS_DELIVERED
@@ -153,7 +176,7 @@ async def test_retry_sequence_stops_on_success(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_restart_claims_only_recoverable_intents():
+async def test_restart_claims_only_recoverable_intents(monkeypatch):
     now = datetime.now(UTC)
     rows = []
     for i in range(1000):
@@ -166,13 +189,34 @@ async def test_restart_claims_only_recoverable_intents():
                                   event_type="test", payload={}, status=status, attempt_count=1,
                                   next_attempt_at=now - timedelta(seconds=1), updated_at=now))
 
-    session = RelaySession(rows)
+    config = WebhookConfig(id=1, name="test", url="https://example.com/hook", enabled=True,
+                           event_types=["test"])
+    session = RelaySession(rows, config)
     service = WebhookService(session)
-    claimed = await service.claim_pending(limit=RELAY_CLAIM_LIMIT)
+    attempted = []
 
-    assert len(claimed) <= RELAY_CLAIM_LIMIT
-    assert all(row.status == WebhookOutbox.STATUS_CLAIMED for row in claimed)
-    assert all(row.status not in WebhookOutbox.TERMINAL_STATUSES for row in rows)
+    async def send(*args, **kwargs):
+        attempted.append(True)
+        return True, 204, "", None
+
+    async def log_delivery(*args, **kwargs):
+        return None
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(webhook_service.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(service, "_send_request", send)
+    monkeypatch.setattr(service, "_log_delivery", log_delivery)
+    monkeypatch.setattr(webhook_service.asyncio, "sleep", no_sleep)
+    terminal_ids = {row.delivery_id for row in rows if row.status in WebhookOutbox.TERMINAL_STATUSES}
+    claimed = await service.relay_once(limit=RELAY_CLAIM_LIMIT)
+
+    assert len(claimed) == RELAY_CLAIM_LIMIT
+    assert len(attempted) == RELAY_CLAIM_LIMIT
+    assert all(row.status in (WebhookOutbox.STATUS_DELIVERED, WebhookOutbox.STATUS_DEAD)
+               for row in claimed)
+    assert not terminal_ids.intersection({row.delivery_id for row in claimed})
 
 
 @pytest.mark.asyncio
@@ -197,24 +241,35 @@ async def test_relay_state_transitions_are_atomic():
 async def test_retry_bound_and_terminal_dead_letter(monkeypatch):
     now = datetime.now(UTC)
     row = WebhookOutbox(id=1, delivery_id="dead", webhook_config_id=1, event_type="test",
-                        payload={}, status="claimed", attempt_count=0, next_attempt_at=now,
-                        updated_at=now, lease_owner="owner")
-    session = RelaySession([row])
+                        payload={}, status="pending", attempt_count=0, next_attempt_at=now,
+                        updated_at=now)
+    config = WebhookConfig(id=1, name="test", url="https://example.com/hook", enabled=True,
+                           event_types=["test"])
+    session = RelaySession([row], config)
     service = WebhookService(session)
     attempted = []
+    sleeps = []
 
-    for attempt in range(1, RELAY_MAX_ATTEMPTS + 1):
-        row.status = WebhookOutbox.STATUS_CLAIMED
-        row.lease_owner = "owner"
-        row.updated_at = now + timedelta(microseconds=attempt)
-        await service._finish_claim(row, success=False, status_code=500,
-                                   response_body="", error_message="timeout", exhausted=attempt == 3,
-                                   attempt_count=attempt)
-        attempted.append(attempt)
-        if row.status == WebhookOutbox.STATUS_DEAD:
-            break
+    async def send(*args, **kwargs):
+        attempted.append(args[4])
+        return False, 500, "", "server error"
+
+    async def no_sleep(seconds):
+        sleeps.append(seconds)
+
+    async def log_delivery(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(webhook_service.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(service, "_send_request", send)
+    monkeypatch.setattr(service, "_log_delivery", log_delivery)
+    monkeypatch.setattr(webhook_service.asyncio, "sleep", no_sleep)
+
+    claimed = await service.relay_once(limit=1)
 
     assert attempted == [1, 2, 3]
+    assert sleeps == [INITIAL_BACKOFF, INITIAL_BACKOFF * 2]
+    assert len(claimed) == 1
     assert row.status == WebhookOutbox.STATUS_DEAD
     assert row.attempt_count == 3
     assert row.lease_owner is None
