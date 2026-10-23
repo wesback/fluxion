@@ -83,7 +83,13 @@ def test_load_repeatability_and_cleanup(tmp_path):
     client = FakeClient()
     fixtures = FakeFixtures()
     first = run_ingest_load(params(tmp_path), environment, client, fixtures)
+    import json
+    first_report = json.loads((tmp_path / "ingest-load-report.json").read_text())
+    first_config = {field: first_report[field] for field in ("target_url", "client_count", "batch_size", "duration", "data_set_version", "test_data_version")}
     second = run_ingest_load(params(tmp_path), environment, client, fixtures)
+    second_report = json.loads((tmp_path / "ingest-load-report.json").read_text())
+    second_config = {field: second_report[field] for field in ("target_url", "client_count", "batch_size", "duration", "data_set_version", "test_data_version")}
+    assert first_config == second_config
     assert (first["data_set_version"], first["test_data_version"]) == (second["data_set_version"], second["test_data_version"])
     assert fixtures.snapshot_counts() == {"package_updates": 4, "hosts": 2, "api_keys": 1, "webhook_configs": 1}
 
