@@ -75,6 +75,14 @@ test("patchProxyForwardsHostScopeUpdate", async () => {
 
 function elementType(value) { return typeof value === "function" ? value.name : String(value) }
 
+test("useUpdateAPIKeyInvalidatesAPIKeyList", () => {
+  const source = readFileSync(join(root, "lib/hooks/use-admin.ts"), "utf8")
+  const updateHook = source.match(/export function useUpdateAPIKey\(\)[\s\S]*?\n\}/)?.[0] ?? ""
+  assert.match(updateHook, /mutationFn: \(\{ keyId, data \}\) => apiClient\.updateAPIKey\(keyId, data\)/)
+  assert.match(updateHook, /onSuccess: \(\) => \{/)
+  assert.match(updateHook, /queryClient\.invalidateQueries\(\{ queryKey: adminQueryKeys\.apiKeys \}\)/)
+})
+
 test("apiKeysPageEditsHostScope", async () => {
   const source = readFileSync(join(root, "app/admin/api-keys/page.tsx"), "utf8")
   assert.match(source, /<TableHead>Hosts<\/TableHead>/)
@@ -82,7 +90,7 @@ test("apiKeysPageEditsHostScope", async () => {
   assert.match(source, /Only these hosts/) 
   assert.match(source, /buildHostScopeUpdate/)
 
-  let updateCalls = 0
+  let updateCalls = []
   let createCalls = []
   let slots = []
   let index = 0
@@ -107,7 +115,7 @@ test("apiKeysPageEditsHostScope", async () => {
     "@/lib/hooks/use-admin": {
       useAPIKeys: () => ({ data: { items: [{ id: 7, name: "shared", role: "user", host_scope: "listed", allowed_hosts: ["node1.example.test", "node2.example.test"], is_active: true, created_at: "2026-01-01T00:00:00Z", last_used: null }], total: 1 }, isLoading: false, error: null, refetch: () => {} }),
       useCreateAPIKey: () => ({ mutateAsync: async (body) => { createCalls.push(body); return { api_key: "new-key" } }, isPending: false }),
-      useUpdateAPIKey: () => ({ mutateAsync: async () => { updateCalls++ }, isPending: false }),
+      useUpdateAPIKey: () => ({ mutateAsync: async (body) => { updateCalls.push(body); return { id: 7 } }, isPending: false }),
       useDeleteAPIKey: () => ({ mutateAsync: async () => {}, isPending: false }),
     },
     "@/lib/host-scope.mjs": { buildHostScopeUpdate },
@@ -137,19 +145,29 @@ test("apiKeysPageEditsHostScope", async () => {
   editButton.props.onClick()
   render()
   assert.match(renderToStaticMarkup(tree), /Edit host scope/) 
+  let hostsTextarea = find((node) => node.props.id === "edit-key-hosts")
+  assert.ok(hostsTextarea)
+  assert.equal(hostsTextarea.props.value, "node1.example.test\nnode2.example.test")
   const scopeSelect = find((node) => node.props.id === "edit-key-host-scope")
   assert.ok(scopeSelect)
   scopeSelect.props.onChange({ target: { value: "listed" } })
   render()
-  const hostsTextarea = find((node) => node.props.id === "edit-key-hosts")
+  hostsTextarea = find((node) => node.props.id === "edit-key-hosts")
   hostsTextarea.props.onChange({ target: { value: "" } })
   render()
-  const saveButton = find((node) => node.props.children === "Save Changes")
+  let saveButton = find((node) => node.props.children === "Save Changes")
   assert.ok(saveButton)
   saveButton.props.onClick()
   render()
   assert.equal(renderToStaticMarkup(tree).includes("Add at least one hostname or choose All hosts"), true)
-  assert.equal(updateCalls, 0)
+  assert.equal(updateCalls.length, 0)
+
+  hostsTextarea = find((node) => node.props.id === "edit-key-hosts")
+  hostsTextarea.props.onChange({ target: { value: "Node1.example.test\nnode1.example.test, NODE2.EXAMPLE.TEST" } })
+  render()
+  saveButton = find((node) => node.props.children === "Save Changes")
+  await saveButton.props.onClick()
+  assert.equal(JSON.stringify(updateCalls), JSON.stringify([{ keyId: 7, data: { host_scope: "listed", allowed_hosts: ["node1.example.test", "node2.example.test"] } }]))
 
   const createButton = find((node) => node.props.children?.[0]?.props?.children === undefined && node.props.children === undefined)
   const createActions = []

@@ -243,10 +243,10 @@ The build will be optimized and output to `.next/` directory.
 
 ## Security
 
-- API keys are stored server-side only
-- Never exposed to client browser
-- Automatic inclusion in authenticated requests
-- No localStorage or cookie storage
+- The admin pages and all `/api/admin/*` routes have no sign-in or browser-user authorization.
+- These routes act with the server-side `FLUXION_API_KEY`; the API key is not sent to the browser.
+- The frontend must only be reachable on a trusted network or behind an operator-managed authentication proxy.
+- Never expose the frontend publicly without authentication; API keys are not stored in localStorage or cookies.
 
 ## Browser Support
 
