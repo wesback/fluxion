@@ -59,7 +59,11 @@ async def authorize_batch_hostname(request: Request) -> dict[str, Any]:
 
     if role == "admin" or host_scope == "all":
         return {"role": role, "allowed_hosts": allowed_hosts or [], "host_scope": host_scope}
-    if host_scope != "listed" or not isinstance(hostname, str) or hostname not in (allowed_hosts or []):
+    if (
+        host_scope != "listed"
+        or not isinstance(hostname, str)
+        or hostname.lower() not in {allowed.lower() for allowed in (allowed_hosts or []) if isinstance(allowed, str)}
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hostname not authorized for this API key")
     return {"role": role, "allowed_hosts": allowed_hosts or [], "host_scope": host_scope}
 
@@ -178,6 +182,7 @@ async def create_package_update(
     background_tasks: BackgroundTasks,
     request: Request,
     session: AsyncSession = Depends(get_session),
+    _authorized: dict[str, Any] = Depends(authorize_batch_hostname),
 ) -> PackageUpdateResponse:
     """
     Create a package update record.
