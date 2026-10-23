@@ -13,6 +13,7 @@ printf 'Debian archive signing key fixture\n' > "$TMP/debian-archive-keyring.gpg
 export FLUXION_APT_UBUNTU_KEYRING="$TMP/ubuntu-archive-keyring.gpg"
 export FLUXION_APT_DEBIAN_KEYRING="$TMP/debian-archive-keyring.gpg"
 export FLUXION_APT_SOURCES_LIST="$TMP/sources.list"
+export FLUXION_APT_SOURCES_DIR="$TMP/etc/apt/sources.list.d"
 
 cat > "$TMP/bin/apt-cache" <<'APT'
 #!/bin/bash
@@ -109,8 +110,28 @@ $'500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages\n     release v
 $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
     : > "$TMP/sources.list"
 
+    cat > "$TMP/etc/apt/sources.list.d/security.sources" <<'EOF'
+Types: deb
+URIs: http://security.ubuntu.com/ubuntu
+Suites: noble-security
+Components: main
+Trusted: yes
+EOF
+    run_case trusted-deb822 openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    rm -f "$TMP/etc/apt/sources.list.d/security.sources"
+
     printf '%s\n' 'deb [allow-insecure=yes] http://security.ubuntu.com/ubuntu noble-security main' > "$TMP/sources.list"
     run_case allow-insecure openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    : > "$TMP/sources.list"
+
+    printf '%s\n' 'deb [signed-by=/tmp/untrusted-archive-keyring.gpg] http://security.ubuntu.com/ubuntu noble-security main' > "$TMP/sources.list"
+    run_case wrong-signed-by-keyring openssl 3.0.2-0ubuntu1.20 \
 ' *** 3.0.2-0ubuntu1.20 500
         500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
 $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false

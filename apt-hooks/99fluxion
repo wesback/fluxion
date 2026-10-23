@@ -69,6 +69,7 @@ detect_os_info() {
 detect_security_keyring_trusts() {
     local publisher="$1"
     local source="$2"
+    local release_line="$3"
     local -a keyrings=()
 
     case "$publisher" in
@@ -95,7 +96,70 @@ detect_security_keyring_trusts() {
 
     local keyring
     for keyring in "${keyrings[@]}"; do
-        [[ -n "$keyring" && -r "$keyring" && -s "$keyring" ]] && return 0
+        [[ -n "$keyring" && -r "$keyring" && -s "$keyring" ]] || continue
+
+        if grep -Iq . "$keyring" 2>/dev/null; then
+            if [[ "$publisher" == "o=Ubuntu" ]] && grep -Fq "Debian archive signing key" "$keyring" 2>/dev/null; then continue; fi
+            if [[ "$publisher" == "o=Debian" ]] && grep -Fq "Ubuntu archive signing key" "$keyring" 2>/dev/null; then continue; fi
+        fi
+
+        local signing_key=""
+        if [[ "$release_line" =~ Signed-By[=:]([^[:space:],]+) ]]; then
+            signing_key="${BASH_REMATCH[1]}"
+        elif [[ "$release_line" =~ Key[=:]([^[:space:],]+) ]]; then
+            signing_key="${BASH_REMATCH[1]}"
+        elif [[ "$release_line" =~ Fingerprint[=:]([^[:space:],]+) ]]; then
+            signing_key="${BASH_REMATCH[1]}"
+        fi
+        if [[ -n "$signing_key" ]] && ! grep -Fq -- "$signing_key" "$keyring" 2>/dev/null; then
+            continue
+        fi
+
+        local uri="$source"
+        uri="${uri#http://}"; uri="${uri#https://}"; uri="${uri%%[[:space:]]*}"
+        local configured=false signed_by=""
+        local signing_match=false
+        local file_list=(/etc/apt/sources.list)
+        [[ -n "${FLUXION_APT_SOURCES_LIST:-}" ]] && file_list=("$FLUXION_APT_SOURCES_LIST")
+        [[ -d /etc/apt/sources.list.d ]] && file_list+=(/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources)
+        [[ -n "${FLUXION_APT_SOURCES_DIR:-}" && -d "$FLUXION_APT_SOURCES_DIR" ]] && file_list+=("$FLUXION_APT_SOURCES_DIR"/*.list "$FLUXION_APT_SOURCES_DIR"/*.sources)
+
+        local source_file line
+        for source_file in "${file_list[@]}"; do
+            [[ -f "$source_file" ]] || continue
+            while IFS= read -r line; do
+                line="${line%%#*}"
+                if [[ "$line" == *"$uri"* ]]; then
+                    configured=true
+                    if [[ "$line" =~ signed-by[=[:space:]] ]]; then
+                        signed_by="${line##*signed-by=}"
+                        signed_by="${signed_by%%]*}"
+                        signed_by="${signed_by%%[[:space:]]*}"
+                    elif [[ "${line,,}" =~ signed-by:[[:space:]]*([^[:space:]]+) ]]; then
+                        signed_by="${BASH_REMATCH[1]}"
+                    fi
+                fi
+            done < "$source_file"
+        done
+
+        if [[ "$configured" == true && -n "$signed_by" ]]; then
+            if [[ "$signed_by" == "$keyring" ]]; then
+                return 0
+            elif [[ -f "$signed_by" && -f "$keyring" ]] && cmp -s "$signed_by" "$keyring"; then
+                return 0
+            elif [[ -n "${FLUXION_APT_SIGNING_KEY:-}" ]] && grep -Fq -- "${FLUXION_APT_SIGNING_KEY}" "$keyring" 2>/dev/null && [[ "$signed_by" == "${FLUXION_APT_SIGNING_KEY}" ]]; then
+                return 0
+            elif command -v gpg &>/dev/null && [[ "$signed_by" =~ ^[0-9A-Fa-f]+$ ]]; then
+                if gpg --batch --with-colons --show-keys "$keyring" 2>/dev/null | grep -qi "^fpr:::::::::${signed_by}:$"; then
+                    return 0
+                fi
+                continue
+            else
+                continue
+            fi
+        fi
+        [[ "$configured" == true && -n "$signed_by" ]] && continue
+        return 0
     done
     return 1
 }
@@ -109,27 +173,42 @@ detect_security_source_is_insecure() {
 
     local files=()
     [[ -n "${FLUXION_APT_SOURCES_LIST:-}" ]] && files+=("$FLUXION_APT_SOURCES_LIST")
-    [[ -n "${FLUXION_APT_SOURCES_DIR:-}" ]] && files+=("$FLUXION_APT_SOURCES_DIR"/*.list)
+    [[ -n "${FLUXION_APT_SOURCES_DIR:-}" ]] && files+=("$FLUXION_APT_SOURCES_DIR"/*.list "$FLUXION_APT_SOURCES_DIR"/*.sources)
     files+=(/etc/apt/sources.list)
     if [[ -d /etc/apt/sources.list.d ]]; then
-        files+=(/etc/apt/sources.list.d/*.list)
+        files+=(/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources)
     fi
 
     local uri="$description"
     uri="${uri#http://}"; uri="${uri#https://}"
     uri="${uri%%[[:space:]]*}"
-    local file
+    local file line stanza=""
     for file in "${files[@]}"; do
         [[ -f "$file" ]] || continue
-        while IFS= read -r line; do
+        while IFS= read -r line || [[ -n "$line" ]]; do
             line="${line%%#*}"
-            if [[ "$line" == *"$uri"* ]]; then
-                if [[ "$line" =~ trusted[[:space:]]*=[[:space:]]*(yes|true) ]] ||
-                   [[ "$line" =~ allow-insecure[[:space:]]*=[[:space:]]*(yes|true) ]]; then
+            local lower_line="${line,,}"
+            if [[ "$line" == *"$uri"* ]] && [[ "$line" =~ trusted[[:space:]]*=[[:space:]]*(yes|true) || "$line" =~ allow-insecure[[:space:]]*=[[:space:]]*(yes|true) ]]; then
+                return 0
+            fi
+            if [[ "$lower_line" =~ ^[[:space:]]*(trusted|allow-insecure)[[:space:]]*:[[:space:]]*(yes|true)[[:space:]]*$ ]] && [[ "$stanza" == *"$uri"* ]]; then
+                return 0
+            fi
+            if [[ -z "${line//[[:space:]]/}" ]]; then
+                if [[ "$stanza" == *"$uri"* ]] && [[ "$stanza" =~ trusted[[:space:]_:]*[=:][[:space:]]*(yes|true) ]] ||
+                   [[ "$stanza" == *"$uri"* ]] && [[ "$stanza" =~ allow-insecure[[:space:]_:]*[=:][[:space:]]*(yes|true) ]]; then
                     return 0
                 fi
+                stanza=""
+                continue
             fi
+            stanza+="$line "
         done < "$file"
+        local lower_stanza="${stanza,,}"
+        if [[ "$lower_stanza" == *"$uri"* ]] && [[ "$lower_stanza" =~ trusted[[:space:]_:]*[=:][[:space:]]*(yes|true) ]] ||
+           [[ "$lower_stanza" == *"$uri"* ]] && [[ "$lower_stanza" =~ allow-insecure[[:space:]_:]*[=:][[:space:]]*(yes|true) ]]; then
+            return 0
+        fi
     done
     return 1
 }
@@ -198,7 +277,7 @@ detect_security_update() {
             fi
         done
         [[ -n "$archive" && ( -z "$suite" || "$archive" == "a=$suite-security" ) ]] || continue
-        if [[ -n "$publisher" && -n "$archive" ]] && detect_security_keyring_trusts "$publisher" "$description"; then
+        if [[ -n "$publisher" && -n "$archive" ]] && detect_security_keyring_trusts "$publisher" "$description" "$release_line"; then
             echo "true"; return
         fi
     done <<< "$release_policy"
