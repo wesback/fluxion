@@ -18,3 +18,13 @@ Machine-readable field names: `request_count`, `package_count`, `throughput`, `h
 Before a report is emitted, the runner metadata must match `target_url`, `client_count`, `batch_size`, `duration`, `data_set_version`, and `test_data_version` exactly. The helper compares post-change p95 latency against baseline evidence; a reduction of at least 30 percent emits a success verdict, while missing evidence or an unmet target records `risk waiver required` and requires a waiver owner and reason.
 
 Load-test credentials must be injected through environment variables or secrets and must never be committed.
+
+## Load runner parameters and environment
+
+`run_ingest_load(params, environ, client, fixtures)` accepts:
+
+- `target_url`, `client_count` (default 50), `batch_size` (default 100), `duration` (default 600 seconds), `data_set_version`, `test_data_version`, and `output_dir`.
+- Set `FLUXION_LOAD_API_KEY` to the required API key; the runner sends it only as the `X-API-Key` header.
+- Set `FLUXION_LOAD_ISOLATION_APPROVED=true` for an explicitly approved production target. `FLUXION_LOAD_TARGET_ENV` and `FLUXION_LOAD_PRODUCTION_TARGET_URL` identify or classify the target environment.
+
+The standard run uses 50 clients, batches of 100 package items, 10 minutes, 1,000 hosts, and 1,000,000 package rows.
