@@ -1,0 +1,198 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 138,
+  "branch": "ai-sdlc/issue-138",
+  "commitSha": "699ed4b0d63705442999c45374e58ae762265505",
+  "round": 1,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix rejects undeclared report fields, requires a non-empty waiver owner and reason before publishing an unmet or baseline-missing comparison, and tightens the documented batch-size assertions. I found no remaining prior-round findings or defects in the changes since the previous commit.",
+      "findingList": []
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The validation path now rejects undeclared fields and incomplete waivers. However, the exported JSON helper still bypasses that validation and can serialize sensitive extra fields.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 157,
+          "message": "The prior credential exposure finding remains reachable through render_json_report, which still serializes arbitrary fields without validation. Restrict this output to declared report fields or validate before serialization. OWASP A02:2025.",
+          "confidence": 0.84,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The exported render_json_report helper calls json.dumps directly and bypasses validate_load_report, which now rejects undeclared fields.",
+            "failureScenario": "A runner passes a mapping containing a credential to render_json_report; it serializes and returns the credential for publication."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The prior waiver and undeclared-field findings appear fixed in the round-two changes. A target URL containing credentials can still expose them in published report output.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 53,
+          "message": "Sanitize or reject credentials in target_url before including it in published reports.",
+          "confidence": 0.84,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The report accepts target_url as a non-empty string, then includes it in the JSON and human-readable output without removing credentials or sensitive query parameters.",
+            "failureScenario": "If runner metadata contains a target URL with an embedded token or userinfo, publishing the report exposes that credential in both outputs. OWASP A04:2025."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_ingest_load_report.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

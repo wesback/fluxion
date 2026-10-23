@@ -1,0 +1,217 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 138,
+  "branch": "ai-sdlc/issue-138",
+  "commitSha": "3fc9fb000a7a47f1a3504b7ea336535cb0f9f7bb",
+  "round": 2,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The JSON helper now rejects undeclared fields, and embedded URL userinfo is rejected. However, credentials in an `authorization` query parameter still pass validation and can be published.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 51,
+          "message": "The target URL credential check still allows credentials in an `authorization` query parameter, leaving the prior credential exposure finding reachable. Reject this parameter or otherwise prevent its value from appearing in published reports.",
+          "confidence": 0.86,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_target_url_is_safe checks query parameter names against a fixed set and suffixes. The name authorization matches neither, so validate_load_report accepts it and report rendering includes the full target_url.",
+            "failureScenario": "A runner supplies a target URL with an authorization query parameter containing a bearer credential. Validation succeeds, and the returned JSON and human-readable report expose that credential. OWASP A04:2025."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The JSON helper now rejects undeclared fields, and URLs with userinfo or several sensitive query names are rejected. A credential in a `key` query parameter still passes validation and can be published.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 54,
+          "message": "Credential filtering still allows common query parameter names such as `key`. Reject this credential-bearing URL or otherwise prevent its value from appearing in published output.",
+          "confidence": 0.87,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_target_url_is_safe rejects selected query parameter names and suffixes, then validate_load_report accepts the URL and the report renderers serialize it.",
+            "failureScenario": "A report target URL such as https://ingest.example/api?key=secret passes validation because `key` is not in the blocked names or suffixes; publishing the report exposes the credential. OWASP A02:2025."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The URL check closes the userinfo and several named query-parameter cases, but a signed URL using `sig` still passes validation and can expose its credential in published report output.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_report.py",
+          "line": 48,
+          "message": "The target URL credential check still permits common signed URLs using `sig`, so report publication can expose a credential. Reject or redact signed URL parameters. OWASP A04:2025.",
+          "confidence": 0.91,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_target_url_is_safe rejects userinfo and selected sensitive query parameter names, but does not reject a signed URL parameter named `sig`. The accepted target_url is included in the report output.",
+            "failureScenario": "A runner supplies the same target URL in its parameters and report, such as `https://ingest.example/api?sig=secret`. Validation accepts it, and publishing the report exposes the signature in JSON and human-readable output."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_ingest_load_report.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
