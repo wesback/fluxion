@@ -85,6 +85,14 @@ def validate_load_report(report: Mapping[str, Any], parameters: Mapping[str, Any
     return dict(report)
 
 
+def _human_report_value(value: Any) -> Any:
+    """Reject strings that could add report lines or control output formatting."""
+    if isinstance(value, str):
+        if any(ord(char) < 0x20 or ord(char) == 0x7F or ord(char) in (0x0085, 0x2028, 0x2029) for char in value):
+            raise LoadReportContractError()
+    return value
+
+
 def render_human_report(report: Mapping[str, Any]) -> str:
     if not isinstance(report, Mapping):
         raise LoadReportContractError()
@@ -98,10 +106,10 @@ def render_human_report(report: Mapping[str, Any]) -> str:
     target_url = report.get("target_url")
     if not isinstance(target_url, str) or not target_url.strip() or not _target_url_is_safe(target_url):
         raise LoadReportContractError()
-    lines = [f"{field}: {report[field]}" for field in REPORT_FIELDS]
+    lines = [f"{field}: {_human_report_value(report[field])}" for field in REPORT_FIELDS]
     comparison = report.get("latency_comparison")
     if isinstance(comparison, Mapping):
-        lines.extend(f"{field}: {comparison[field]}" for field in (
+        lines.extend(f"{field}: {_human_report_value(comparison[field])}" for field in (
             "before_p95_latency", "post_p95_latency", "risk_status", "waiver_owner", "waiver_reason"
         ) if comparison.get(field) is not None)
     return "\n".join(lines)

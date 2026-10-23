@@ -147,6 +147,13 @@ def test_latency_improvement_or_waiver_contract():
     with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
         publish_load_report(valid_parameters(), valid_report(), baseline=None)
 
+    for forged_waiver in (
+        {"owner": "performance-owner\nforged: true", "reason": "Traffic anomaly"},
+        {"owner": "performance-owner", "reason": "Traffic anomaly\nforged: true"},
+    ):
+        with pytest.raises(LoadReportContractError, match="Load report contract incomplete"):
+            publish_load_report(valid_parameters(), unmet, baseline=100.0, waiver=forged_waiver)
+
 
 def test_documented_standard_profile_and_report_fields():
     try:
