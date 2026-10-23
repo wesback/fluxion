@@ -1,5 +1,6 @@
 """Repeatable authenticated ingestion load runner."""
 import inspect
+import copy
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -37,24 +38,57 @@ def _create(store: Any, config: Any) -> None:
         if inspect.isawaitable(value):
             raise LoadExecutionError("Load target unavailable")
 
+def _snapshot_state(store: Any) -> Any:
+    method = (getattr(store, "snapshot_fixture_state", None)
+              or getattr(store, "snapshot_rows", None)
+              or getattr(store, "snapshot_state", None)
+              or getattr(store, "snapshot_ids", None)
+              or getattr(store, "fixture_state", None)
+              or getattr(store, "snapshot", None))
+    if method is not None:
+        value = method()
+        if inspect.isawaitable(value):
+            raise LoadExecutionError("Load target unavailable")
+        if value is not None:
+            return copy.deepcopy(value)
+    return _snapshot(store)
+
+
 def _cleanup(store: Any) -> None:
     method = getattr(store, "cleanup", None) or getattr(store, "delete_fixtures", None)
     if method:
         try:
             value = method()
-            if inspect.isawaitable(value):
-                return
-        except Exception:
-            return
+        except Exception as exc:
+            raise LoadCleanupError("Load cleanup incomplete: fixture deletion failed") from exc
+        if inspect.isawaitable(value):
+            raise LoadExecutionError("Load target unavailable")
 
-def _verify_cleanup(store: Any, before: dict[str, int]) -> None:
+
+def _verify_cleanup(store: Any, before_counts: dict[str, int], before_state: Any) -> None:
+    _snapshot(store)
     after = _snapshot(store)
     for table in TABLES:
-        if after[table] != before[table]:
-            raise LoadCleanupError(f"Load cleanup incomplete: {table} {before[table]} != {after[table]}")
+        if after[table] != before_counts[table]:
+            raise LoadCleanupError(f"Load cleanup incomplete: {table} {before_counts[table]} != {after[table]}")
+
+    state_method = (getattr(store, "snapshot_fixture_state", None)
+                    or getattr(store, "snapshot_rows", None)
+                    or getattr(store, "snapshot_state", None)
+                    or getattr(store, "snapshot_ids", None))
+    if state_method is not None:
+        after_state = state_method()
+        if inspect.isawaitable(after_state):
+            raise LoadExecutionError("Load target unavailable")
+        if after_state != before_state:
+            raise LoadCleanupError("Load cleanup incomplete: fixture state != pre-run state")
+
     method = getattr(store, "verify_cleanup", None)
     if method:
-        value = method(before)
+        try:
+            value = method(before_state)
+        except TypeError:
+            value = method(before_counts)
         if inspect.isawaitable(value):
             raise LoadExecutionError("Load target unavailable")
         if value is False:
@@ -70,15 +104,18 @@ def run_ingest_load(params: Mapping[str, Any], environ: Mapping[str, str], clien
     config = build_load_run_config(params, environ)
     key = environ["FLUXION_LOAD_API_KEY"]
     before = _snapshot(fixtures)
+    before_state = _snapshot_state(fixtures)
 
     try:
         _create(fixtures, config)
     except Exception as exc:
-        _cleanup(fixtures)
-        after = _snapshot(fixtures)
-        for table in TABLES:
-            if after[table] != before[table]:
-                raise LoadCleanupError(f"Load cleanup incomplete: {table} {before[table]} != {after[table]}") from exc
+        try:
+            _cleanup(fixtures)
+            _verify_cleanup(fixtures, before, before_state)
+        except LoadCleanupError:
+            raise
+        except Exception as cleanup_exc:
+            raise LoadCleanupError("Load cleanup incomplete: fixture cleanup failed") from cleanup_exc
         raise
 
     request_count = 0
@@ -150,14 +187,14 @@ def run_ingest_load(params: Mapping[str, Any], environ: Mapping[str, str], clien
 
     if execution_error is not None:
         _cleanup(fixtures)
-        _verify_cleanup(fixtures, before)
+        _verify_cleanup(fixtures, before, before_state)
         raise execution_error
 
     if reached < config.client_count and config.client_count >= 50:
         execution_error = LoadExecutionError(f"fewer than 50 clients reached: reached {reached}")
 
     _cleanup(fixtures)
-    _verify_cleanup(fixtures, before)
+    _verify_cleanup(fixtures, before, before_state)
 
     if execution_error is not None:
         raise execution_error

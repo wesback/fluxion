@@ -40,22 +40,36 @@ class FakeFixtures:
         self.creations = 0
         self.fail_table = fail_table
         self.counts = {"package_updates": 4, "hosts": 2, "api_keys": 1, "webhook_configs": 1}
+        self.rows = {
+            "package_updates": {"pre-package-a", "pre-package-b", "pre-package-c", "pre-package-d"},
+            "hosts": {"pre-host-a", "pre-host-b"},
+            "api_keys": {"pre-key-a"},
+            "webhook_configs": {"pre-webhook-a"},
+        }
     def snapshot_counts(self):
         return dict(self.counts)
+    def snapshot_fixture_state(self):
+        return {table: sorted(rows) for table, rows in self.rows.items()}
     def create_fixtures(self, config):
         self.creations += 1
         self.counts["package_updates"] += config.batch_size
         self.counts["api_keys"] += 1
+        self.rows["package_updates"].add(f"test-package-{self.creations}")
+        self.rows["api_keys"].add(f"test-key-{self.creations}")
+        self.rows["hosts"].add(f"test-host-{self.creations}")
+        self.rows["webhook_configs"].add(f"test-webhook-{self.creations}")
     def cleanup(self):
         if self.fail_table:
             self.counts[self.fail_table] += 1
             return
-        self.counts["package_updates"] -= 3
-        self.counts["api_keys"] -= 1
-        if self.counts["package_updates"] < 4:
-            self.counts["package_updates"] = 4
-        if self.counts["api_keys"] < 1:
-            self.counts["api_keys"] = 1
+        for table in self.rows:
+            self.rows[table] = {row for row in self.rows[table] if not row.startswith("test-")}
+        self.counts["package_updates"] = 4
+        self.counts["hosts"] = 2
+        self.counts["api_keys"] = 1
+        self.counts["webhook_configs"] = 1
+    def verify_cleanup(self, before_state):
+        return self.snapshot_fixture_state() == before_state
 
 
 def test_load_runner_refuses_before_any_request(tmp_path):
@@ -92,6 +106,17 @@ def test_load_repeatability_and_cleanup(tmp_path):
     assert first_config == second_config
     assert (first["data_set_version"], first["test_data_version"]) == (second["data_set_version"], second["test_data_version"])
     assert fixtures.snapshot_counts() == {"package_updates": 4, "hosts": 2, "api_keys": 1, "webhook_configs": 1}
+
+    swapped = FakeFixtures()
+    original_cleanup = swapped.cleanup
+    def swap_cleanup():
+        swapped.counts["package_updates"] = 4
+        swapped.counts["api_keys"] = 1
+        swapped.rows["package_updates"].remove("pre-package-d")
+        swapped.rows["package_updates"].add("test-package-leak")
+    swapped.cleanup = swap_cleanup
+    with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
+        run_ingest_load(params(tmp_path), environment, FakeClient(), swapped)
 
     failed = FakeFixtures(fail_table="package_updates")
     with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: package_updates 4 != 8"):
