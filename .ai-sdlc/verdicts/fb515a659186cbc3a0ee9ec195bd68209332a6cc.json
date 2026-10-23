@@ -1,0 +1,222 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 161,
+  "branch": "ai-sdlc/issue-161",
+  "commitSha": "fb515a659186cbc3a0ee9ec195bd68209332a6cc",
+  "round": 3,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The added URL normalization and default production classification address the earlier cases, but the new non-production environment shortcut still permits an unapproved production target.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_config.py",
+          "line": 103,
+          "message": "A01:2025 Broken Access Control: the environment label can override the target’s production classification. A production target labeled `test` bypasses isolation approval; require an authoritative classification that cannot be overridden by caller-supplied environment metadata.",
+          "confidence": 0.91,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_production_target returns false for any target labeled test, testing, development, dev, or staging before checking the hostname-based production fallback.",
+            "failureScenario": "A caller supplies a production service URL, sets FLUXION_LOAD_TARGET_ENV=test, and leaves FLUXION_LOAD_PRODUCTION_TARGET_URL unset or set to another URL. The function returns false, so build_load_run_config skips the isolation approval check and returns a configuration for the production target."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The URL normalization and unset-environment fallback address the other prior findings. The explicit non-production environment branch still permits an unapproved production target.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_config.py",
+          "line": 103,
+          "message": "A01:2025 Broken Access Control: a non-production environment label still bypasses isolation approval for a production target. Require authoritative classification that cannot mark the actual production target as test.",
+          "confidence": 0.93,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_production_target returns False for target_environment values such as \"test\" before its default production classification. build_load_run_config then skips the isolation approval check.",
+            "failureScenario": "With an API key set, no FLUXION_LOAD_PRODUCTION_TARGET_URL configured, FLUXION_LOAD_TARGET_ENV set to \"test\", and target_url set to a production service on a neutral hostname, build_load_run_config returns a config without isolation approval."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix now treats unclassified targets as production by default, but explicitly trusts non-production environment labels. A production target with a neutral hostname can still bypass isolation approval when labeled test or staging.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_config.py",
+          "line": 103,
+          "message": "A01:2025 Broken Access Control: a non-production environment label bypasses the isolation check for an unlisted production target. Require authoritative classification before exempting a target from approval.",
+          "confidence": 0.91,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_production_target returns false for targets labeled test, testing, development, dev, or staging before reaching its default production classification.",
+            "failureScenario": "A caller targets a production service at a neutral HTTPS hostname, sets FLUXION_LOAD_TARGET_ENV to test, leaves FLUXION_LOAD_PRODUCTION_TARGET_URL unset, and omits isolation approval. The function returns false, so build_load_run_config accepts the configuration without approval."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_ingest_load_config.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

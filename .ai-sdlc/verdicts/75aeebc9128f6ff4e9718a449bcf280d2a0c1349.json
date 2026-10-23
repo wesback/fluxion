@@ -1,0 +1,215 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 161,
+  "branch": "ai-sdlc/issue-161",
+  "commitSha": "75aeebc9128f6ff4e9718a449bcf280d2a0c1349",
+  "round": 1,
+  "pipelineVersion": "2d8d7ad",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The production classification now depends only on the normalized target URL, and the named test covers non-production labels without approval. No defect was found in the reviewed changes.",
+      "findingList": []
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The prior environment-label bypass is fixed. Path normalization still lets an encoded slash qualify for the no-approval synthetic-target exemption.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/ingest_load_config.py",
+          "line": 74,
+          "message": "A01:2025 Broken Access Control: decoding reserved path characters lets a non-equivalent URL match the synthetic-target exemption. Preserve encoded reserved characters during normalization or reject this form.",
+          "confidence": 0.82,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_production_target exempts a target when its normalized URL equals the synthetic target. _normalized_target_url decodes every percent escape in the path before comparing it.",
+            "failureScenario": "A caller supplies https://ingest.example/api%2fv1 with an API key and no isolation approval. The encoded slash is decoded to /api/v1, so the function returns a config even though the request URL may address a different path than the exact synthetic target."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 1,
+        "suggestion": 0
+      },
+      "summary": "The change addresses the prior environment-label bypass. However, decoding reserved path characters during target classification can exempt a URL that is not the exact synthetic target.",
+      "findingList": [
+        {
+          "severity": "minor",
+          "file": "backend/scripts/ingest_load_config.py",
+          "line": 69,
+          "message": "A01:2025 Broken Access Control: decoding the reserved encoded slash can classify a non-equivalent target as the synthetic test URL and bypass isolation approval. Preserve reserved path characters during normalization or reject this encoding.",
+          "confidence": 0.73,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_normalized_target_url decodes reserved path characters before comparing the target with the synthetic URL. _production_target then exempts a URL whose decoded path matches that synthetic path.",
+            "failureScenario": "A caller supplies https://ingest.example/api%2fv1 without isolation approval. The encoded slash is decoded to /api/v1 for classification, so configuration is returned. A downstream HTTP client or proxy that preserves or interprets the encoded slash differently can route the request to a path other than the exact synthetic test target."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_ingest_load_config.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
