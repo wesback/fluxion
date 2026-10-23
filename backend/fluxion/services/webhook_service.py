@@ -3,14 +3,15 @@
 import asyncio
 import logging
 import time
-from datetime import UTC, datetime
+import uuid
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fluxion.models import WebhookConfig, WebhookDeliveryHistory
+from fluxion.models import WebhookConfig, WebhookDeliveryHistory, WebhookOutbox
 from fluxion.services.package_classifier import is_kernel_package
 from fluxion.telemetry import get_tracer
 
@@ -20,6 +21,12 @@ logger = logging.getLogger(__name__)
 WEBHOOK_TIMEOUT = 5.0  # 5 seconds
 MAX_RETRIES = 3
 INITIAL_BACKOFF = 1.0  # 1 second
+RELAY_CLAIM_LIMIT = 100
+RELAY_LEASE_SECONDS = 30
+RELAY_MAX_ATTEMPTS = 3
+WEBHOOK_CLAIM_LIMIT = RELAY_CLAIM_LIMIT
+WEBHOOK_LEASE_SECONDS = RELAY_LEASE_SECONDS
+WEBHOOK_MAX_ATTEMPTS = RELAY_MAX_ATTEMPTS
 
 
 def normalize_ntfy_publish_url(url: str) -> str:
@@ -123,6 +130,139 @@ class WebhookService:
             session: Database session
         """
         self.session = session
+
+    async def claim_pending(self, limit: int = RELAY_CLAIM_LIMIT, lease_seconds: int = RELAY_LEASE_SECONDS) -> list[WebhookOutbox]:
+        """Atomically claim recoverable outbox identities with PostgreSQL leases."""
+        if limit <= 0:
+            return []
+        owner = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        expires = now + timedelta(seconds=lease_seconds)
+
+        result = await self.session.execute(
+            select(WebhookOutbox)
+            .where(
+                WebhookOutbox.status.in_((WebhookOutbox.STATUS_PENDING, WebhookOutbox.STATUS_RETRYABLE,
+                                          WebhookOutbox.STATUS_CLAIMED)),
+                WebhookOutbox.next_attempt_at <= now,
+                (
+                    (WebhookOutbox.status != WebhookOutbox.STATUS_CLAIMED)
+                    | (WebhookOutbox.lease_expires_at <= now)
+                ),
+                (WebhookOutbox.lease_expires_at.is_(None)) |
+                (WebhookOutbox.lease_expires_at <= now),
+            )
+            .with_for_update(skip_locked=True)
+            .order_by(WebhookOutbox.id)
+            .limit(min(limit, RELAY_CLAIM_LIMIT))
+        )
+        rows = list(result.scalars().all())
+        claimed: list[WebhookOutbox] = []
+        for row in rows:
+            revision = row.updated_at
+            claimed_result = await self.session.execute(
+                update(WebhookOutbox)
+                .where(
+                    WebhookOutbox.id == row.id,
+                    WebhookOutbox.updated_at == revision,
+                    WebhookOutbox.status.in_((WebhookOutbox.STATUS_PENDING, WebhookOutbox.STATUS_RETRYABLE,
+                                              WebhookOutbox.STATUS_CLAIMED)),
+                    (WebhookOutbox.lease_owner == row.lease_owner)
+                    | (WebhookOutbox.lease_owner.is_(None)),
+                    (WebhookOutbox.lease_expires_at == row.lease_expires_at)
+                    | (WebhookOutbox.lease_expires_at.is_(None)),
+                )
+                .values(
+                    status=WebhookOutbox.STATUS_CLAIMED,
+                    lease_owner=owner,
+                    lease_expires_at=expires,
+                    updated_at=now,
+                )
+            )
+            if claimed_result.rowcount == 1:
+                claimed.append(row)
+                row.status = WebhookOutbox.STATUS_CLAIMED
+                row.lease_owner = owner
+                row.lease_expires_at = expires
+                row.updated_at = now
+        await self.session.commit()
+        return claimed
+
+    async def relay_once(self, limit: int = RELAY_CLAIM_LIMIT, lease_seconds: int = RELAY_LEASE_SECONDS) -> list[WebhookOutbox]:
+        """Claim at most the bounded limit and deliver each claimed identity once."""
+        claimed = await self.claim_pending(limit=limit, lease_seconds=lease_seconds)
+        for row in claimed:
+            await self._relay_claimed_row(row)
+        return claimed
+
+    async def run_relay(self, limit: int = RELAY_CLAIM_LIMIT, lease_seconds: int = RELAY_LEASE_SECONDS) -> list[WebhookOutbox]:
+        return await self.relay_once(limit=limit, lease_seconds=lease_seconds)
+
+    async def _relay_claimed_row(self, row: WebhookOutbox) -> None:
+        if row.attempt_count >= RELAY_MAX_ATTEMPTS:
+            await self._finish_claim(row, success=False, status_code=None, response_body=None,
+                                      error_message="Maximum relay attempts reached", exhausted=True,
+                                      attempt_count=row.attempt_count)
+            return
+        webhook = await self.session.get(WebhookConfig, row.webhook_config_id)
+        if webhook is None:
+            await self._finish_claim(row, success=False, status_code=None, response_body=None,
+                                      error_message="Webhook configuration not found", exhausted=True)
+            return
+
+        start_attempt = row.attempt_count + 1
+        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+            is_ntfy = is_ntfy_webhook(webhook.url)
+            target_url = normalize_ntfy_publish_url(webhook.url) if is_ntfy else webhook.url
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if webhook.headers_json:
+                headers.update(webhook.headers_json)
+            message_body = None
+            if is_ntfy:
+                title, priority, tags = get_ntfy_notification_metadata(row.event_type)
+                headers["Content-Type"] = "text/plain; charset=utf-8"
+                headers.setdefault("Title", title)
+                headers.setdefault("Priority", priority)
+                headers.setdefault("Tags", tags)
+                message_body = format_ntfy_message(row.payload, row.event_type)
+
+            result = await self._send_request(
+                client, target_url, sanitize_header_values(headers), row.payload,
+                start_attempt, message_body,
+            )
+            success, status_code, response_body, error_message = result
+            await self._log_delivery(row.webhook_config_id, row.event_type, row.payload, status_code,
+                                     response_body, error_message, start_attempt)
+
+        await self._finish_claim(row, success, status_code, response_body, error_message,
+                                 exhausted=start_attempt >= RELAY_MAX_ATTEMPTS,
+                                 attempt_count=start_attempt)
+
+    async def _finish_claim(self, row: WebhookOutbox, success: bool, status_code: int | None,
+                            response_body: str | None, error_message: str | None,
+                            exhausted: bool = False, attempt_count: int | None = None) -> None:
+        now = datetime.now(UTC)
+        attempt = attempt_count if attempt_count is not None else row.attempt_count + 1
+        values: dict = {"attempt_count": attempt, "lease_owner": None,
+                        "lease_expires_at": None, "updated_at": now}
+        if success:
+            values["status"] = WebhookOutbox.STATUS_DELIVERED
+        elif exhausted or attempt >= RELAY_MAX_ATTEMPTS:
+            values["status"] = WebhookOutbox.STATUS_DEAD
+        else:
+            values["status"] = WebhookOutbox.STATUS_RETRYABLE
+            values["next_attempt_at"] = now + timedelta(seconds=INITIAL_BACKOFF * (2 ** (attempt - 1)))
+
+        result = await self.session.execute(
+            update(WebhookOutbox)
+            .where(WebhookOutbox.id == row.id, WebhookOutbox.updated_at == row.updated_at,
+                   WebhookOutbox.lease_owner == row.lease_owner)
+            .values(**values)
+        )
+        if result.rowcount != 1:
+            await self.session.rollback()
+            return
+        await self.session.commit()
 
     async def get_webhooks_for_event(self, event_type: str) -> list[WebhookConfig]:
         """

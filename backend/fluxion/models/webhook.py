@@ -42,6 +42,13 @@ class WebhookConfig(Base):
 class WebhookOutbox(Base):
     """Durable webhook delivery intent committed with package transactions."""
 
+    STATUS_PENDING = "pending"
+    STATUS_RETRYABLE = "retryable"
+    STATUS_CLAIMED = "claimed"
+    STATUS_DELIVERED = "delivered"
+    STATUS_DEAD = "dead"
+    TERMINAL_STATUSES = frozenset({STATUS_DELIVERED, STATUS_DEAD})
+
     __tablename__ = "webhook_outbox"
 
     id: Mapped[int] = mapped_column(primary_key=True)
