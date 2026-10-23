@@ -1,0 +1,210 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 169,
+  "branch": "ai-sdlc/issue-169",
+  "commitSha": "cc5cbcd1a2e6a83d1b064a9586f916ce3f9936c2",
+  "round": 1,
+  "pipelineVersion": "8a97d37",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix adds concurrent, duration-based workload execution for the standard profile, cleanup after partial fixture creation, report generation after cleanup, and configuration comparisons between runs. The exact-cleanup finding from the previous review remains unresolved.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 53,
+          "message": "Count equality does not prove exact fixture restoration or removal of every test-created row. The repeatability and cleanup test also checks only counts, so it would pass if cleanup swapped a pre-run row for a test-created row.",
+          "confidence": 0.92,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_verify_cleanup compares only the before and after counts for each table; the optional verify_cleanup check is absent on the test fixture store.",
+            "failureScenario": "If cleanup leaves a test-created package row but deletes a pre-run package row, the counts match and the runner returns successfully, despite the criterion requiring removal of every test-created row and exact restoration of the pre-run state."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix adds concurrent duration-based execution, handles partial fixture creation failures, and compares configuration fields across runs. The exact-cleanup finding from the previous round remains unresolved.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 53,
+          "message": "Cleanup verification still checks counts rather than confirming that every test-created row was removed and pre-existing rows were preserved.",
+          "confidence": 0.93,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "_verify_cleanup compares only table counts; exact row identity is checked only if the injected fixture store optionally implements verify_cleanup.",
+            "failureScenario": "If cleanup leaves a test-created package row but deletes a pre-existing row, the count returns to its original value and the runner publishes a report despite failing to restore the pre-run state."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The standard profile now runs concurrent requests for its configured duration, and reports are written after cleanup succeeds. The previously reported exact-cleanup gap remains: matching counts can hide leaked test rows.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/scripts/run_ingest_load.py",
+          "line": 53,
+          "message": "Count equality does not prove that cleanup removed every test-created row and restored the exact pre-run fixture state.",
+          "confidence": 0.91,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "_verify_cleanup compares only table counts; exact row verification runs only when the fixture store provides an optional verify_cleanup method.",
+            "failureScenario": "If cleanup leaves a test-created package row but deletes a pre-run package row, the count matches the snapshot and the runner returns successfully with leaked test data."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "backend/tests/test_ingest_load_profile.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
