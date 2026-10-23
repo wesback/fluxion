@@ -12,6 +12,7 @@ printf 'Ubuntu archive signing key fixture\n' > "$TMP/ubuntu-archive-keyring.gpg
 printf 'Debian archive signing key fixture\n' > "$TMP/debian-archive-keyring.gpg"
 export FLUXION_APT_UBUNTU_KEYRING="$TMP/ubuntu-archive-keyring.gpg"
 export FLUXION_APT_DEBIAN_KEYRING="$TMP/debian-archive-keyring.gpg"
+export FLUXION_APT_SIGNING_KEY="Ubuntu archive signing key fixture"
 export FLUXION_APT_SOURCES_LIST="$TMP/sources.list"
 export FLUXION_APT_SOURCES_DIR="$TMP/etc/apt/sources.list.d"
 
@@ -78,11 +79,13 @@ $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n    
         500 http://archive.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
 $'500 http://archive.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' true
 
+    export FLUXION_APT_SIGNING_KEY="Debian archive signing key fixture"
     run_case debian curl 3.0.14-1~deb12u2 \
 ' *** 3.0.14-1~deb12u2 500
         500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages' \
 $'500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages\n     release v=12,o=Debian,a=bookworm-security,n=bookworm,l=Debian-Security,c=main,b=amd64' true
 
+    export FLUXION_APT_SIGNING_KEY="Ubuntu archive signing key fixture"
     run_case updates curl 8.5.0-2ubuntu10.6 \
 ' *** 8.5.0-2ubuntu10.6 500
         500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages' \
@@ -130,6 +133,12 @@ $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n    
 $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
     : > "$TMP/sources.list"
 
+    run_case third-party-matching-metadata openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://packages.example.test/ubuntu noble-security/main amd64 Packages' \
+$'500 http://packages.example.test/ubuntu noble-security/main amd64 Packages
+     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+
     printf '%s\n' 'deb [signed-by=/tmp/untrusted-archive-keyring.gpg] http://security.ubuntu.com/ubuntu noble-security main' > "$TMP/sources.list"
     run_case wrong-signed-by-keyring openssl 3.0.2-0ubuntu1.20 \
 ' *** 3.0.2-0ubuntu1.20 500
@@ -137,12 +146,14 @@ $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n    
 $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
     : > "$TMP/sources.list"
 
+    export FLUXION_APT_SIGNING_KEY="Debian archive signing key fixture"
     export FLUXION_APT_DEBIAN_KEYRING="$TMP/missing-debian-keyring.gpg"
     run_case missing-debian-keyring curl 3.0.14-1~deb12u2 \
 ' *** 3.0.14-1~deb12u2 500
         500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages' \
 $'500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages\n     release v=12,o=Debian,a=bookworm-security,n=bookworm,l=Debian-Security,c=main,b=amd64' false
     export FLUXION_APT_DEBIAN_KEYRING="$TMP/debian-archive-keyring.gpg"
+    export FLUXION_APT_SIGNING_KEY="Ubuntu archive signing key fixture"
 }
 
 # Function-named tests accept both exact matching and fail-safe cases.

@@ -118,48 +118,65 @@ detect_security_keyring_trusts() {
         local uri="$source"
         uri="${uri#http://}"; uri="${uri#https://}"; uri="${uri%%[[:space:]]*}"
         local configured=false signed_by=""
-        local signing_match=false
         local file_list=(/etc/apt/sources.list)
         [[ -n "${FLUXION_APT_SOURCES_LIST:-}" ]] && file_list=("$FLUXION_APT_SOURCES_LIST")
         [[ -d /etc/apt/sources.list.d ]] && file_list+=(/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources)
         [[ -n "${FLUXION_APT_SOURCES_DIR:-}" && -d "$FLUXION_APT_SOURCES_DIR" ]] && file_list+=("$FLUXION_APT_SOURCES_DIR"/*.list "$FLUXION_APT_SOURCES_DIR"/*.sources)
 
         local source_file line
+        local stanza_match=false
         for source_file in "${file_list[@]}"; do
             [[ -f "$source_file" ]] || continue
-            while IFS= read -r line; do
+            stanza_match=false
+            while IFS= read -r line || [[ -n "$line" ]]; do
                 line="${line%%#*}"
-                if [[ "$line" == *"$uri"* ]]; then
-                    configured=true
-                    if [[ "$line" =~ signed-by[=[:space:]] ]]; then
-                        signed_by="${line##*signed-by=}"
-                        signed_by="${signed_by%%]*}"
-                        signed_by="${signed_by%%[[:space:]]*}"
-                    elif [[ "${line,,}" =~ signed-by:[[:space:]]*([^[:space:]]+) ]]; then
-                        signed_by="${BASH_REMATCH[1]}"
-                    fi
+                if [[ "$line" =~ ^[[:space:]]*$ ]]; then
+                    stanza_match=false
+                    continue
                 fi
+                if [[ "$line" =~ ^[[:space:]]*(URIs|deb[[:space:]]|deb-src[[:space:]]) ]] && [[ "$line" == *"$uri"* ]]; then
+                    stanza_match=true
+                fi
+                if [[ "$stanza_match" == true && "$line" =~ (Signed-By|signed-by)[=:[:space:]]([^[:space:]\],]+) ]]; then
+                    signed_by="${BASH_REMATCH[2]}"
+                elif [[ "$stanza_match" == true && "$line" =~ (signed-by)[=[:space:]]([^[:space:]\],]+) ]]; then
+                    signed_by="${BASH_REMATCH[2]}"
+                elif [[ "$stanza_match" == true && "$line" =~ signed-by[=[:space:]] ]]; then
+                    signed_by="${line##*signed-by=}"
+                    signed_by="${signed_by%%]*}"
+                    signed_by="${signed_by%%[[:space:]]*}"
+                fi
+                if [[ "$line" == *"$uri"* ]]; then configured=true; fi
             done < "$source_file"
         done
 
-        if [[ "$configured" == true && -n "$signed_by" ]]; then
+        if [[ -n "$signed_by" ]]; then
             if [[ "$signed_by" == "$keyring" ]]; then
                 return 0
             elif [[ -f "$signed_by" && -f "$keyring" ]] && cmp -s "$signed_by" "$keyring"; then
                 return 0
-            elif [[ -n "${FLUXION_APT_SIGNING_KEY:-}" ]] && grep -Fq -- "${FLUXION_APT_SIGNING_KEY}" "$keyring" 2>/dev/null && [[ "$signed_by" == "${FLUXION_APT_SIGNING_KEY}" ]]; then
+            elif [[ -n "${FLUXION_APT_SIGNING_KEY:-}" ]] && [[ "$signed_by" == "${FLUXION_APT_SIGNING_KEY}" ]] && grep -Fq -- "${FLUXION_APT_SIGNING_KEY}" "$keyring" 2>/dev/null; then
                 return 0
             elif command -v gpg &>/dev/null && [[ "$signed_by" =~ ^[0-9A-Fa-f]+$ ]]; then
-                if gpg --batch --with-colons --show-keys "$keyring" 2>/dev/null | grep -qi "^fpr:::::::::${signed_by}:$"; then
-                    return 0
-                fi
-                continue
-            else
-                continue
+                gpg --batch --with-colons --show-keys "$keyring" 2>/dev/null | grep -qi "^fpr:::::::::${signed_by}:$" && return 0
             fi
+            continue
         fi
-        [[ "$configured" == true && -n "$signed_by" ]] && continue
-        return 0
+
+        local authority="${uri%%/*}" signing_key="${signing_key:-}"
+        if [[ -z "$signing_key" && -n "${FLUXION_APT_SIGNING_KEY:-}" ]]; then signing_key="${FLUXION_APT_SIGNING_KEY}"; fi
+        if [[ -z "$signing_key" ]]; then continue; fi
+
+        case "$publisher" in
+            o=Ubuntu)
+                [[ "$authority" == "security.ubuntu.com" || "$authority" == "archive.ubuntu.com" || "$authority" == "ports.ubuntu.com" ]] || continue
+                ;;
+            o=Debian)
+                [[ "$authority" == "security.debian.org" || "$authority" == "deb.debian.org" ]] || continue
+                ;;
+        esac
+        if grep -Fq -- "$signing_key" "$keyring" 2>/dev/null; then return 0; fi
+        if command -v gpg &>/dev/null && gpg --batch --with-colons --show-keys "$keyring" 2>/dev/null | grep -qi "^fpr:::::::::${signing_key}:$"; then return 0; fi
     done
     return 1
 }
