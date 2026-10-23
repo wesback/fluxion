@@ -65,169 +65,52 @@ detect_os_info() {
     echo "$os_info"
 }
 
-# Local APT trust helpers
-detect_security_keyring_trusts() {
-    local publisher="$1"
-    local source="$2"
-    local release_line="$3"
-    local -a keyrings=()
-
-    case "$publisher" in
-        o=Ubuntu)
-            if [[ -v FLUXION_APT_UBUNTU_KEYRING ]]; then
-                keyrings+=("${FLUXION_APT_UBUNTU_KEYRING}")
-            elif [[ -v FLUXION_UBUNTU_KEYRING ]]; then
-                keyrings+=("${FLUXION_UBUNTU_KEYRING}")
-            else
-                keyrings+=(/usr/share/keyrings/ubuntu-archive-keyring.gpg /usr/share/keyrings/ubuntu-archive-keyring.pgp)
-            fi
-            ;;
-        o=Debian)
-            if [[ -v FLUXION_APT_DEBIAN_KEYRING ]]; then
-                keyrings+=("${FLUXION_APT_DEBIAN_KEYRING}")
-            elif [[ -v FLUXION_DEBIAN_KEYRING ]]; then
-                keyrings+=("${FLUXION_DEBIAN_KEYRING}")
-            else
-                keyrings+=(/usr/share/keyrings/debian-archive-keyring.gpg /usr/share/keyrings/debian-archive-keyring.pgp)
-            fi
-            ;;
-        *) return 1 ;;
-    esac
-
-    local keyring
-    for keyring in "${keyrings[@]}"; do
-        [[ -n "$keyring" && -r "$keyring" && -s "$keyring" ]] || continue
-
-        if grep -Iq . "$keyring" 2>/dev/null; then
-            if [[ "$publisher" == "o=Ubuntu" ]] && grep -Fq "Debian archive signing key" "$keyring" 2>/dev/null; then continue; fi
-            if [[ "$publisher" == "o=Debian" ]] && grep -Fq "Ubuntu archive signing key" "$keyring" 2>/dev/null; then continue; fi
-        fi
-
-        local signing_key=""
-        if [[ "$release_line" =~ Signed-By[=:]([^[:space:],]+) ]]; then
-            signing_key="${BASH_REMATCH[1]}"
-        elif [[ "$release_line" =~ Key[=:]([^[:space:],]+) ]]; then
-            signing_key="${BASH_REMATCH[1]}"
-        elif [[ "$release_line" =~ Fingerprint[=:]([^[:space:],]+) ]]; then
-            signing_key="${BASH_REMATCH[1]}"
-        fi
-        if [[ -n "$signing_key" ]] && ! grep -Fq -- "$signing_key" "$keyring" 2>/dev/null; then
-            continue
-        fi
-
-        local uri="$source"
-        uri="${uri#http://}"; uri="${uri#https://}"; uri="${uri%%[[:space:]]*}"
-        local configured=false signed_by=""
-        local file_list=(/etc/apt/sources.list)
-        [[ -n "${FLUXION_APT_SOURCES_LIST:-}" ]] && file_list=("$FLUXION_APT_SOURCES_LIST")
-        [[ -d /etc/apt/sources.list.d ]] && file_list+=(/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources)
-        [[ -n "${FLUXION_APT_SOURCES_DIR:-}" && -d "$FLUXION_APT_SOURCES_DIR" ]] && file_list+=("$FLUXION_APT_SOURCES_DIR"/*.list "$FLUXION_APT_SOURCES_DIR"/*.sources)
-
-        local source_file line
-        local stanza_match=false
-        for source_file in "${file_list[@]}"; do
-            [[ -f "$source_file" ]] || continue
-            stanza_match=false
-            while IFS= read -r line || [[ -n "$line" ]]; do
-                line="${line%%#*}"
-                if [[ "$line" =~ ^[[:space:]]*$ ]]; then
-                    stanza_match=false
-                    continue
-                fi
-                if [[ "$line" =~ ^[[:space:]]*(URIs|deb[[:space:]]|deb-src[[:space:]]) ]] && [[ "$line" == *"$uri"* ]]; then
-                    stanza_match=true
-                fi
-                if [[ "$stanza_match" == true && "$line" =~ (Signed-By|signed-by)[=:[:space:]]([^[:space:]\],]+) ]]; then
-                    signed_by="${BASH_REMATCH[2]}"
-                elif [[ "$stanza_match" == true && "$line" =~ (signed-by)[=[:space:]]([^[:space:]\],]+) ]]; then
-                    signed_by="${BASH_REMATCH[2]}"
-                elif [[ "$stanza_match" == true && "$line" =~ signed-by[=[:space:]] ]]; then
-                    signed_by="${line##*signed-by=}"
-                    signed_by="${signed_by%%]*}"
-                    signed_by="${signed_by%%[[:space:]]*}"
-                fi
-                if [[ "$line" == *"$uri"* ]]; then configured=true; fi
-            done < "$source_file"
-        done
-
-        if [[ -n "$signed_by" ]]; then
-            if [[ "$signed_by" == "$keyring" ]]; then
-                return 0
-            elif [[ -f "$signed_by" && -f "$keyring" ]] && cmp -s "$signed_by" "$keyring"; then
-                return 0
-            elif [[ -n "${FLUXION_APT_SIGNING_KEY:-}" ]] && [[ "$signed_by" == "${FLUXION_APT_SIGNING_KEY}" ]] && grep -Fq -- "${FLUXION_APT_SIGNING_KEY}" "$keyring" 2>/dev/null; then
-                return 0
-            elif command -v gpg &>/dev/null && [[ "$signed_by" =~ ^[0-9A-Fa-f]+$ ]]; then
-                gpg --batch --with-colons --show-keys "$keyring" 2>/dev/null | grep -qi "^fpr:::::::::${signed_by}:$" && return 0
-            fi
-            continue
-        fi
-
-        local authority="${uri%%/*}" signing_key="${signing_key:-}"
-        if [[ -z "$signing_key" && -n "${FLUXION_APT_SIGNING_KEY:-}" ]]; then signing_key="${FLUXION_APT_SIGNING_KEY}"; fi
-        if [[ -z "$signing_key" ]]; then continue; fi
-
-        case "$publisher" in
-            o=Ubuntu)
-                [[ "$authority" == "security.ubuntu.com" || "$authority" == "archive.ubuntu.com" || "$authority" == "ports.ubuntu.com" ]] || continue
-                ;;
-            o=Debian)
-                [[ "$authority" == "security.debian.org" || "$authority" == "deb.debian.org" ]] || continue
-                ;;
-        esac
-        if grep -Fq -- "$signing_key" "$keyring" 2>/dev/null; then return 0; fi
-        if command -v gpg &>/dev/null && gpg --batch --with-colons --show-keys "$keyring" 2>/dev/null | grep -qi "^fpr:::::::::${signing_key}:$"; then return 0; fi
-    done
+# Helpers beside security update detection
+is_fluxion_insecure_source() {
+    local description="$1"
+    [[ "$description" =~ trusted[[:space:]]*=[[:space:]]*(yes|true) ]] && return 0
+    [[ "$description" =~ allow-insecure[[:space:]]*=[[:space:]]*(yes|true) ]] && return 0
     return 1
 }
 
-detect_security_source_is_insecure() {
+verify_fluxion_inrelease() {
     local description="$1"
-    if [[ "$description" =~ trusted[[:space:]]*=[[:space:]]*(yes|true) ]] ||
-       [[ "$description" =~ allow-insecure[[:space:]]*=[[:space:]]*(yes|true) ]]; then
-        return 0
+    local origin="$2"
+    local suite="$3"
+    local lists_dir="${FLUXION_APT_LISTS_DIR:-/var/lib/apt/lists}"
+    local keyring=""
+
+    case "$origin" in
+        Ubuntu) keyring="${FLUXION_APT_UBUNTU_KEYRING:-/usr/share/keyrings/ubuntu-archive-keyring.gpg}" ;;
+        Debian) keyring="${FLUXION_APT_DEBIAN_KEYRING:-/usr/share/keyrings/debian-archive-keyring.gpg}" ;;
+        *) return 1 ;;
+    esac
+    command -v gpgv &>/dev/null || return 1
+
+    local address
+    address=$(awk '{print $1}' <<< "$description")
+    address="${address#http://}"
+    address="${address#https://}"
+    address="${address%%[[:space:]]*}"
+    [[ -n "$address" ]] || return 1
+
+    local saved_address
+    saved_address=$(printf '%s' "$address" | tr '/' '_')
+    local release_file="$lists_dir/${saved_address}_dists_${suite}_InRelease"
+    [[ -f "$release_file" ]] || return 1
+
+    local verified
+    if ! verified=$(gpgv --keyring "$keyring" --output - "$release_file" 2>/dev/null); then
+        return 1
     fi
 
-    local files=()
-    [[ -n "${FLUXION_APT_SOURCES_LIST:-}" ]] && files+=("$FLUXION_APT_SOURCES_LIST")
-    [[ -n "${FLUXION_APT_SOURCES_DIR:-}" ]] && files+=("$FLUXION_APT_SOURCES_DIR"/*.list "$FLUXION_APT_SOURCES_DIR"/*.sources)
-    files+=(/etc/apt/sources.list)
-    if [[ -d /etc/apt/sources.list.d ]]; then
-        files+=(/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources)
-    fi
+    local printed_origin="" printed_suite=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^Origin:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]]; then printed_origin="${BASH_REMATCH[1]}"; fi
+        if [[ "$line" =~ ^Suite:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]]; then printed_suite="${BASH_REMATCH[1]}"; fi
+    done <<< "$verified"
 
-    local uri="$description"
-    uri="${uri#http://}"; uri="${uri#https://}"
-    uri="${uri%%[[:space:]]*}"
-    local file line stanza=""
-    for file in "${files[@]}"; do
-        [[ -f "$file" ]] || continue
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            line="${line%%#*}"
-            local lower_line="${line,,}"
-            if [[ "$line" == *"$uri"* ]] && [[ "$line" =~ trusted[[:space:]]*=[[:space:]]*(yes|true) || "$line" =~ allow-insecure[[:space:]]*=[[:space:]]*(yes|true) ]]; then
-                return 0
-            fi
-            if [[ "$lower_line" =~ ^[[:space:]]*(trusted|allow-insecure)[[:space:]]*:[[:space:]]*(yes|true)[[:space:]]*$ ]] && [[ "$stanza" == *"$uri"* ]]; then
-                return 0
-            fi
-            if [[ -z "${line//[[:space:]]/}" ]]; then
-                if [[ "$stanza" == *"$uri"* ]] && [[ "$stanza" =~ trusted[[:space:]_:]*[=:][[:space:]]*(yes|true) ]] ||
-                   [[ "$stanza" == *"$uri"* ]] && [[ "$stanza" =~ allow-insecure[[:space:]_:]*[=:][[:space:]]*(yes|true) ]]; then
-                    return 0
-                fi
-                stanza=""
-                continue
-            fi
-            stanza+="$line "
-        done < "$file"
-        local lower_stanza="${stanza,,}"
-        if [[ "$lower_stanza" == *"$uri"* ]] && [[ "$lower_stanza" =~ trusted[[:space:]_:]*[=:][[:space:]]*(yes|true) ]] ||
-           [[ "$lower_stanza" == *"$uri"* ]] && [[ "$lower_stanza" =~ allow-insecure[[:space:]_:]*[=:][[:space:]]*(yes|true) ]]; then
-            return 0
-        fi
-    done
-    return 1
+    [[ "$printed_origin" == "$origin" && "$printed_suite" == "$suite" ]]
 }
 
 # Function to detect whether an exact package version came from an official security repository
@@ -236,67 +119,73 @@ detect_security_update() {
     local version="$2"
 
     [[ "${FLUXION_DETECT_SECURITY:-true}" == "true" ]] || { echo "false"; return; }
-    command -v apt-cache &> /dev/null || { echo "false"; return; }
+    command -v apt-cache &>/dev/null || { echo "false"; return; }
 
     local package_policy release_policy
     package_policy=$(apt-cache policy "$package_name" 2>/dev/null) || { echo "false"; return; }
     release_policy=$(apt-cache policy 2>/dev/null) || { echo "false"; return; }
 
     local -a exact_sources=()
-    mapfile -t exact_sources < <(printf '%s\n' "$package_policy" | awk -v target="$version" '
-        function trim(value) { sub(/^[[:space:]]+/, "", value); sub(/[[:space:]]+$/, "", value); return value }
-        /^[[:space:]]*$/ { next }
-        {
-            rest=trim($0)
-            if (rest ~ /^\*\*\*[[:space:]]+/) { sub(/^\*\*\*[[:space:]]+/, "", rest); split(rest, fields, /[[:space:]]+/); in_target=(fields[1]==target); next }
-            split(rest, fields, /[[:space:]]+/)
-            if (fields[2] ~ /^[0-9]+$/) { in_target=(fields[1]==target); next }
-            if (fields[1] ~ /^[0-9]+$/ && in_target) { sub(/^[0-9]+[[:space:]]+/, "", rest); print trim(rest) }
-        }
-    ')
+    local in_target=false line rest
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        rest="${line#${line%%[![:space:]]*}}"
+        rest="${rest%${rest##*[![:space:]]}}"
+        if [[ "$rest" =~ ^\*\*\*[[:space:]]+([^[:space:]]+)[[:space:]]+[0-9]+ ]]; then
+            in_target=false
+            [[ "${BASH_REMATCH[1]}" == "$version" ]] && in_target=true
+            continue
+        fi
+        if [[ "$rest" =~ ^([^[:space:]]+)[[:space:]]+[0-9]+$ ]]; then
+            in_target=false
+            [[ "${BASH_REMATCH[1]}" == "$version" ]] && in_target=true
+            continue
+        fi
+        if [[ "$in_target" == true && "$rest" =~ ^[0-9]+[[:space:]]+(.+)$ ]]; then
+            exact_sources+=("${BASH_REMATCH[1]}")
+        fi
+    done <<< "$package_policy"
     ((${#exact_sources[@]} == 0)) && { echo "false"; return; }
 
-    local description=""
+    local description="" release_line=""
     while IFS= read -r line || [[ -n "$line" ]]; do
-        local leading_trimmed="$line"
-        leading_trimmed="${leading_trimmed#${leading_trimmed%%[![:space:]]*}}"
-        if [[ "$leading_trimmed" =~ ^([0-9]+)[[:space:]]+(.+)$ ]]; then
+        local leading="${line#${line%%[![:space:]]*}}"
+        if [[ "$leading" =~ ^([0-9]+)[[:space:]]+(.+)$ ]]; then
             description="${BASH_REMATCH[2]}"
             description="${description%${description##*[![:space:]]}}"
             continue
         fi
-        [[ "$leading_trimmed" =~ ^release[[:space:]]+(.+) ]] || continue
+        [[ "$leading" =~ ^release[[:space:]]+(.+) ]] || continue
+        release_line="${BASH_REMATCH[1]}"
 
-        local release_line="${BASH_REMATCH[1]}"
         local source_match=false source
         for source in "${exact_sources[@]}"; do
+            if is_fluxion_insecure_source "$source"; then continue; fi
             if [[ "$description" == "$source" ]]; then source_match=true; break; fi
         done
         [[ "$source_match" == true ]] || continue
-        detect_security_source_is_insecure "$description" && continue
+        is_fluxion_insecure_source "$description" && continue
 
-        local publisher="" archive="" field suite=""
+        local origin="" suite="" archive="" field
         IFS=',' read -r -a release_fields <<< "$release_line"
         for field in "${release_fields[@]}"; do
             field="${field#${field%%[![:space:]]*}}"
             field="${field%${field##*[![:space:]]}}"
             case "$field" in
-                o=Ubuntu|o=Debian) publisher="$field" ;;
-                a=*-security) archive="$field" ;;
+                o=Ubuntu) origin="Ubuntu" ;;
+                o=Debian) origin="Debian" ;;
+                a=*-security) archive="${field#a=}" ;;
             esac
         done
+        [[ -n "$origin" && -n "$archive" ]] || continue
 
-        local token
-        for token in $description; do
-            if [[ "$token" =~ ^([a-zA-Z0-9][a-zA-Z0-9.-]*)-security$ ]]; then
-                suite="${BASH_REMATCH[1]}"
-                break
-            fi
-        done
-        [[ -n "$archive" && ( -z "$suite" || "$archive" == "a=$suite-security" ) ]] || continue
-        if [[ -n "$publisher" && -n "$archive" ]] && detect_security_keyring_trusts "$publisher" "$description" "$release_line"; then
-            echo "true"; return
-        fi
+        local description_address description_suite
+        read -r description_address description_suite _ <<< "$description"
+        description_suite="${description_suite%%/*}"
+        description_address="${description_address#http://}"
+        description_address="${description_address#https://}"
+        [[ "$description_suite" == "$archive" ]] || continue
+
+        verify_fluxion_inrelease "$description" "$origin" "$archive" && { echo "true"; return; }
     done <<< "$release_policy"
 
     echo "false"
