@@ -142,8 +142,7 @@ class WebhookService:
         result = await self.session.execute(
             select(WebhookOutbox)
             .where(
-                WebhookOutbox.status.in_((WebhookOutbox.STATUS_PENDING, WebhookOutbox.STATUS_RETRYABLE,
-                                          WebhookOutbox.STATUS_CLAIMED)),
+                WebhookOutbox.status.in_(tuple(WebhookOutbox.RECOVERABLE_STATUSES)),
                 WebhookOutbox.next_attempt_at <= now,
                 (
                     (WebhookOutbox.status != WebhookOutbox.STATUS_CLAIMED)
@@ -198,6 +197,28 @@ class WebhookService:
     async def run_relay(self, limit: int = RELAY_CLAIM_LIMIT, lease_seconds: int = RELAY_LEASE_SECONDS) -> list[WebhookOutbox]:
         return await self.relay_once(limit=limit, lease_seconds=lease_seconds)
 
+    async def _renew_claim(self, row: WebhookOutbox) -> bool:
+        """Renew the delivery lease before an HTTP attempt to prevent parallel relays."""
+        now = datetime.now(UTC)
+        expires = now + timedelta(seconds=RELAY_LEASE_SECONDS)
+        result = await self.session.execute(
+            update(WebhookOutbox)
+            .where(
+                WebhookOutbox.id == row.id,
+                WebhookOutbox.status == WebhookOutbox.STATUS_CLAIMED,
+                WebhookOutbox.updated_at == row.updated_at,
+                WebhookOutbox.lease_owner == row.lease_owner,
+            )
+            .values(lease_expires_at=expires, updated_at=now)
+        )
+        if result.rowcount != 1:
+            await self.session.rollback()
+            return False
+        await self.session.commit()
+        row.updated_at = now
+        row.lease_expires_at = expires
+        return True
+
     async def _relay_claimed_row(self, row: WebhookOutbox) -> None:
         if row.attempt_count >= RELAY_MAX_ATTEMPTS:
             await self._finish_claim(row, success=False, status_code=None, response_body=None,
@@ -226,17 +247,25 @@ class WebhookService:
                 headers.setdefault("Tags", tags)
                 message_body = format_ntfy_message(row.payload, row.event_type)
 
-            result = await self._send_request(
-                client, target_url, sanitize_header_values(headers), row.payload,
-                start_attempt, message_body,
-            )
-            success, status_code, response_body, error_message = result
-            await self._log_delivery(row.webhook_config_id, row.event_type, row.payload, status_code,
-                                     response_body, error_message, start_attempt)
-
-        await self._finish_claim(row, success, status_code, response_body, error_message,
-                                 exhausted=start_attempt >= RELAY_MAX_ATTEMPTS,
-                                 attempt_count=start_attempt)
+            for attempt in range(start_attempt, RELAY_MAX_ATTEMPTS + 1):
+                if not await self._renew_claim(row):
+                    return
+                result = await self._send_request(
+                    client, target_url, sanitize_header_values(headers), row.payload,
+                    attempt, message_body,
+                )
+                success, status_code, response_body, error_message = result
+                await self._log_delivery(row.webhook_config_id, row.event_type, row.payload, status_code,
+                                         response_body, error_message, attempt)
+                if success:
+                    await self._finish_claim(row, True, status_code, response_body, error_message,
+                                             exhausted=False, attempt_count=attempt)
+                    return
+                if attempt >= RELAY_MAX_ATTEMPTS:
+                    await self._finish_claim(row, False, status_code, response_body, error_message,
+                                             exhausted=True, attempt_count=attempt)
+                    return
+                await asyncio.sleep(INITIAL_BACKOFF * (2 ** (attempt - 1)))
 
     async def _finish_claim(self, row: WebhookOutbox, success: bool, status_code: int | None,
                             response_body: str | None, error_message: str | None,
@@ -263,6 +292,8 @@ class WebhookService:
             await self.session.rollback()
             return
         await self.session.commit()
+        for key, value in values.items():
+            setattr(row, key, value)
 
     async def get_webhooks_for_event(self, event_type: str) -> list[WebhookConfig]:
         """

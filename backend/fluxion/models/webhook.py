@@ -48,6 +48,7 @@ class WebhookOutbox(Base):
     STATUS_DELIVERED = "delivered"
     STATUS_DEAD = "dead"
     TERMINAL_STATUSES = frozenset({STATUS_DELIVERED, STATUS_DEAD})
+    RECOVERABLE_STATUSES = frozenset({STATUS_PENDING, STATUS_RETRYABLE, STATUS_CLAIMED})
 
     __tablename__ = "webhook_outbox"
 
