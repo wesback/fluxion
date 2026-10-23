@@ -21,3 +21,10 @@ Every report contains request count, package count, throughput, HTTP error count
 Post-change p95 latency must be at least 30 percent lower than the recorded pre-change baseline. Both exact before and post latency fields are retained in the comparison. If baseline evidence is missing or the target is unmet, the report status is `risk waiver required` and a complete waiver owner and reason are required. No success verdict is emitted unless the comparison is satisfied.
 
 Load-test credentials are supplied through environment variables or secrets and are not committed to the repository.
+
+## Recorded standard-profile run
+
+- Profile: 50 clients, 100 package items per batch, 10 minutes duration.
+- Fixed data set: 1,000 hosts and 1,000,000 package rows.
+- Evidence fields: request count, package count, throughput, HTTP errors, p50/p95/p99 latency, pool waits, database utilization, target URL, client count, batch size, duration, data-set version, and test data version.
+- Reports are written only through the load-report helper, after exact runner metadata validation and fixture cleanup.
