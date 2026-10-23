@@ -5,7 +5,14 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 HOOK="$ROOT/apt-hooks/99fluxion"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/bin" "$TMP/requests" "$TMP/noapt"
+mkdir -p "$TMP/bin" "$TMP/requests" "$TMP/noapt" "$TMP/etc/apt/sources.list.d"
+: > "$TMP/ubuntu-archive-keyring.gpg"
+: > "$TMP/debian-archive-keyring.gpg"
+printf 'Ubuntu archive signing key fixture\n' > "$TMP/ubuntu-archive-keyring.gpg"
+printf 'Debian archive signing key fixture\n' > "$TMP/debian-archive-keyring.gpg"
+export FLUXION_APT_UBUNTU_KEYRING="$TMP/ubuntu-archive-keyring.gpg"
+export FLUXION_APT_DEBIAN_KEYRING="$TMP/debian-archive-keyring.gpg"
+export FLUXION_APT_SOURCES_LIST="$TMP/sources.list"
 
 cat > "$TMP/bin/apt-cache" <<'APT'
 #!/bin/bash
@@ -94,6 +101,27 @@ $'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n    
 ' *** 3.0.2-0ubuntu1.20 500
         500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
 $'500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble,n=noble,l=Ubuntu,c=main,b=amd64' false
+
+    printf '%s\n' 'deb [trusted=yes] http://security.ubuntu.com/ubuntu noble-security main' > "$TMP/sources.list"
+    run_case trusted-yes openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    : > "$TMP/sources.list"
+
+    printf '%s\n' 'deb [allow-insecure=yes] http://security.ubuntu.com/ubuntu noble-security main' > "$TMP/sources.list"
+    run_case allow-insecure openssl 3.0.2-0ubuntu1.20 \
+' *** 3.0.2-0ubuntu1.20 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages' \
+$'500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages\n     release v=24.04,o=Ubuntu,a=noble-security,n=noble,l=Ubuntu,c=main,b=amd64' false
+    : > "$TMP/sources.list"
+
+    export FLUXION_APT_DEBIAN_KEYRING="$TMP/missing-debian-keyring.gpg"
+    run_case missing-debian-keyring curl 3.0.14-1~deb12u2 \
+' *** 3.0.14-1~deb12u2 500
+        500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages' \
+$'500 http://security.debian.org/debian-security bookworm-security/main amd64 Packages\n     release v=12,o=Debian,a=bookworm-security,n=bookworm,l=Debian-Security,c=main,b=amd64' false
+    export FLUXION_APT_DEBIAN_KEYRING="$TMP/debian-archive-keyring.gpg"
 }
 
 # Function-named tests accept both exact matching and fail-safe cases.
@@ -105,12 +133,8 @@ $'500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages\n     release v
 
     export FLUXION_APT_PACKAGE_POLICY="$TMP/package.policy" FLUXION_APT_RELEASES="$TMP/releases.policy"
     local old_path="$PATH" actual
-    PATH="$TMP/noapt:/usr/bin:/bin"
-    if [[ -n "$(command -v apt-cache 2>/dev/null || true)" ]]; then
-        actual="false"
-    else
-        actual=$(detect_security_update openssl 3.0.2-0ubuntu1.20)
-    fi
+    PATH="$TMP/noapt"
+    actual=$(detect_security_update openssl 3.0.2-0ubuntu1.20)
     PATH="$old_path"
     [[ "$actual" == false ]] || fail "no apt-cache: expected false"
 
