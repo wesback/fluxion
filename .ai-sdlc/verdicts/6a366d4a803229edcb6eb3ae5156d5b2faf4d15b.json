@@ -1,0 +1,234 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 153,
+  "branch": "ai-sdlc/issue-153",
+  "commitSha": "6a366d4a803229edcb6eb3ae5156d5b2faf4d15b",
+  "round": 1,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 1,
+        "suggestion": 0
+      },
+      "summary": "The empty-baseline awk fix and the HTTPS guard address the prior implementation and security findings. The shell tests remain unwired, and the HTTP request acceptance case conflicts with the security behavior.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 111,
+          "message": "The acceptance-criteria tests are still not run by the repository's configured test command or workflows.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The three acceptance-criteria tests run only through this shell script's final loop. The repository's configured frontend test script runs node --test tests/*.test.mjs, and no workflow invokes this shell script.",
+            "failureScenario": "A change can break test_stage_then_report_sends_differences, test_report_request_shape_and_chunks, or test_hook_fail_safe while the configured test command and workflows still pass."
+          }
+        },
+        {
+          "severity": "minor",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 64,
+          "message": "NEEDS-PERSON: Acceptance criterion 2 requires sending the API key to an HTTP URL, while the implementation rejects that request. Decide whether the criterion should require HTTPS or the security behavior should change.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "Acceptance criterion 2 requires a request with X-API-Key for an HTTP API URL. The hook rejects that combination at dnf-hooks/fluxion-dnf-hook:77, and the changed batching test now uses HTTPS.",
+            "failureScenario": "With the acceptance criterion's HTTP URL and API key, report sends no request, contrary to the criterion. The criterion conflicts with the HTTPS security requirement; a person must decide whether to amend the criterion to require HTTPS or change the security behavior."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The empty-baseline fix addresses the prior package-diff defect. The shell tests remain unwired, and the HTTPS change leaves the stated HTTP request criterion unmet.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 98,
+          "message": "The previously reported test-wiring defect remains: the acceptance-criteria tests are not run by the repository's configured test command or workflows.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The shell test runs its cases only through its own final loop. The frontend test script runs node --test tests/*.test.mjs, and no repository workflow invokes test_dnf_hook.sh.",
+            "failureScenario": "A change that breaks test_stage_then_report_sends_differences, test_report_request_shape_and_chunks, or test_hook_fail_safe can pass the configured repository test command because it never runs this file."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 53,
+          "message": "The updated test no longer covers the acceptance criterion's required HTTP URL with an API key, and the implementation rejects that case. NEEDS-PERSON: decide whether to revise the criterion to require HTTPS or change the expected behavior.",
+          "confidence": 0.91,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The changed request-shape test now configures an HTTPS URL. In report_packages, a configured API key with a URL that does not start with https:// causes an early return before curl is called.",
+            "failureScenario": "With the acceptance criterion's HTTP API URL and FLUXION_API_KEY=k1, report sends no request, although the criterion expects a request to the configured endpoint with X-API-Key: k1."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The empty-baseline comparison is fixed, and the hook now refuses to send an API key over a non-HTTPS URL. The shell tests remain unwired, so CI can pass without exercising the acceptance criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 106,
+          "message": "The previously reported test wiring gap remains: the acceptance criteria's shell tests are not run by the repository's configured test command or workflows.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The shell loop runs the three named tests only when this script is invoked. The configured frontend test scripts run Node tests, and no tracked workflow invokes this shell script.",
+            "failureScenario": "A change can break test_stage_then_report_sends_differences, test_report_request_shape_and_chunks, or test_hook_fail_safe while the repository's configured test commands and workflows still pass."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "dnf-hooks/tests/test_dnf_hook.sh"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
