@@ -38,20 +38,30 @@ def _create(store: Any, config: Any) -> None:
         if inspect.isawaitable(value):
             raise LoadExecutionError("Load target unavailable")
 
+def _state_method(store: Any) -> Any:
+    return (getattr(store, "snapshot_fixture_state", None)
+            or getattr(store, "snapshot_rows", None)
+            or getattr(store, "snapshot_state", None)
+            or getattr(store, "snapshot_ids", None)
+            or getattr(store, "fixture_state", None)
+            or getattr(store, "snapshot", None))
+
+def _read_state(store: Any) -> Any:
+    method = _state_method(store)
+    if method is None:
+        return _snapshot(store)
+    value = method() if callable(method) else copy.deepcopy(method)
+    if inspect.isawaitable(value):
+        raise LoadExecutionError("Load target unavailable")
+    return copy.deepcopy(value) if value is not None else _snapshot(store)
+
 def _snapshot_state(store: Any) -> Any:
-    method = (getattr(store, "snapshot_fixture_state", None)
-              or getattr(store, "snapshot_rows", None)
-              or getattr(store, "snapshot_state", None)
-              or getattr(store, "snapshot_ids", None)
-              or getattr(store, "fixture_state", None)
-              or getattr(store, "snapshot", None))
-    if method is not None:
-        value = method()
-        if inspect.isawaitable(value):
-            raise LoadExecutionError("Load target unavailable")
-        if value is not None:
-            return copy.deepcopy(value)
-    return _snapshot(store)
+    state_method = _state_method(store)
+    if state_method is None and not getattr(store, "verify_cleanup", None):
+        raise LoadCleanupError("Load cleanup incomplete: exact fixture state unavailable")
+    if state_method is None:
+        return _snapshot(store)
+    return _read_state(store)
 
 
 def _cleanup(store: Any) -> None:
@@ -72,16 +82,9 @@ def _verify_cleanup(store: Any, before_counts: dict[str, int], before_state: Any
         if after[table] != before_counts[table]:
             raise LoadCleanupError(f"Load cleanup incomplete: {table} {before_counts[table]} != {after[table]}")
 
-    state_method = (getattr(store, "snapshot_fixture_state", None)
-                    or getattr(store, "snapshot_rows", None)
-                    or getattr(store, "snapshot_state", None)
-                    or getattr(store, "snapshot_ids", None))
-    if state_method is not None:
-        after_state = state_method()
-        if inspect.isawaitable(after_state):
-            raise LoadExecutionError("Load target unavailable")
-        if after_state != before_state:
-            raise LoadCleanupError("Load cleanup incomplete: fixture state != pre-run state")
+    after_state = _read_state(store)
+    if after_state != before_state:
+        raise LoadCleanupError("Load cleanup incomplete: fixture state != pre-run state")
 
     method = getattr(store, "verify_cleanup", None)
     if method:

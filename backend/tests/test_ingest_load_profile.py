@@ -118,6 +118,38 @@ def test_load_repeatability_and_cleanup(tmp_path):
     with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
         run_ingest_load(params(tmp_path), environment, FakeClient(), swapped)
 
+    snapshot_store = FakeFixtures()
+    snapshot_store_snapshot = snapshot_store.snapshot_fixture_state
+    snapshot_store.snapshot_fixture_state = None
+    snapshot_store.snapshot = snapshot_store_snapshot
+    def snapshot_swap_cleanup():
+        snapshot_store.counts["package_updates"] = 4
+        snapshot_store.counts["api_keys"] = 1
+        snapshot_store.counts["hosts"] = 2
+        snapshot_store.counts["webhook_configs"] = 1
+        snapshot_store.rows["package_updates"] = {"pre-package-a", "pre-package-b", "pre-package-c", "test-package-leak"}
+        snapshot_store.rows["api_keys"] = {"pre-key-a"}
+        snapshot_store.rows["hosts"] = {"pre-host-a", "pre-host-b"}
+        snapshot_store.rows["webhook_configs"] = {"pre-webhook-a"}
+    snapshot_store.cleanup = snapshot_swap_cleanup
+    with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
+        run_ingest_load(params(tmp_path), environment, FakeClient(), snapshot_store)
+
+    fixture_state_store = FakeFixtures()
+    fixture_state_store_snapshot = fixture_state_store.snapshot_fixture_state
+    fixture_state_store.snapshot_fixture_state = None
+    fixture_state_store.fixture_state = fixture_state_store_snapshot
+    def fixture_state_snapshot_swap():
+        fixture_state_store.counts["package_updates"] = 4
+        fixture_state_store.counts["hosts"] = 2
+        fixture_state_store.counts["api_keys"] = 1
+        fixture_state_store.counts["webhook_configs"] = 1
+        fixture_state_store.rows["package_updates"] = {"pre-package-a", "pre-package-b", "pre-package-c", "test-package-leak"}
+    fixture_state_store.fixture_state = fixture_state_store_snapshot
+    fixture_state_store.cleanup = fixture_state_snapshot_swap
+    with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
+        run_ingest_load(params(tmp_path), environment, FakeClient(), fixture_state_store)
+
     failed = FakeFixtures(fail_table="package_updates")
     with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: package_updates 4 != 8"):
         run_ingest_load(params(tmp_path), environment, FakeClient(), failed)
