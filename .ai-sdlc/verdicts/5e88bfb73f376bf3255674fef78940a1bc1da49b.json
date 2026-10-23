@@ -1,0 +1,216 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 153,
+  "branch": "ai-sdlc/issue-153",
+  "commitSha": "5e88bfb73f376bf3255674fef78940a1bc1da49b",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The report path loses all package changes when the staged inventory is empty. This also prevents the named 150-package batching case from producing its expected requests.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/fluxion-dnf-hook",
+          "line": 54,
+          "message": "An empty staged snapshot causes awk to treat every after-snapshot row as a before entry, so newly installed packages are omitted.",
+          "confidence": 0.97,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "report_packages passes the staged snapshot and after snapshot to awk; the first-file check uses NR==FNR.",
+            "failureScenario": "When the staged snapshot is empty and the after snapshot contains 150 packages, NR equals FNR for every after-snapshot row, so awk treats them all as baseline entries and emits no updates. The report sends no batches, losing the installs."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The empty-baseline path drops all package changes, including the explicit 150-package batching case. The new shell tests also are not invoked by the repository’s configured test command or workflows.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/fluxion-dnf-hook",
+          "line": 48,
+          "message": "An empty staged listing causes report to treat every after entry as preexisting, dropping installed packages instead of reporting them.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "report_packages passes the staged and after files to awk, whose NR==FNR branch distinguishes the first file from the second.",
+            "failureScenario": "If stage succeeds with an empty package listing, NR==FNR remains true while awk reads the after file. Its packages are treated as baseline entries, so report emits no updates; the 150-package case in test_report_request_shape_and_chunks would send no requests."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 98,
+          "message": "The acceptance-criteria tests are not wired into the repository’s test command, so CI does not run them.",
+          "confidence": 0.96,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The test file invokes its three cases only through its final shell loop. The repository’s frontend test script runs node --test tests/*.test.mjs, and the available workflows contain no invocation of this shell script.",
+            "failureScenario": "A PR can leave test_stage_then_report_sends_differences, test_report_request_shape_and_chunks, and test_hook_fail_safe failing or broken while the configured test command never executes them."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook can expose the configured API key to network observers because it accepts HTTP API URLs and sends the key over that connection.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/fluxion-dnf-hook",
+          "line": 98,
+          "message": "A04:2025 Cryptographic Failures: the hook sends X-API-Key over plaintext HTTP when configured with an HTTP URL. Require HTTPS when sending the key, or otherwise prevent the credential from being transmitted without TLS.",
+          "confidence": 0.94,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The configured API URL is passed directly to curl, and the configured API key is sent in the X-API-Key header without requiring HTTPS.",
+            "failureScenario": "With the HTTP API URL used in the acceptance test, a network observer can read the request and capture the API key, then use it to authenticate to the ingest API."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "dnf-hooks/tests/test_dnf_hook.sh"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 153,
+  "branch": "ai-sdlc/issue-153",
+  "commitSha": "065ae84ce53d558a0f5e1f628417f23882bc7023",
+  "round": 1,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The HTTP opt-in behavior and refusal message are now implemented. A scheme-less API URL can bypass the plaintext HTTP guard, and the added opt-in test does not verify the required API key header.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/fluxion-dnf-hook",
+          "line": 81,
+          "message": "The HTTP credential guard can be bypassed with a scheme-less API URL, allowing the API key to be sent over plaintext HTTP.",
+          "confidence": 0.86,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The guard rejects only URLs beginning with lowercase `http://`. The configured URL is then passed to curl, which can treat a URL without a scheme as HTTP.",
+            "failureScenario": "With `FLUXION_API_URL=fluxion.test/api/v1`, an API key configured, and `FLUXION_ALLOW_HTTP` unset, the guard does not reject the URL and curl can send the key over plaintext HTTP. This is A04:2025 Cryptographic Failures."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 111,
+          "message": "Acceptance criterion 2's HTTP opt-in case lacks an assertion for the required API key header.",
+          "confidence": 0.95,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The HTTP opt-in case checks that the captured URL matches, but does not assert the captured `X-API-Key` header. The HTTPS case asserts that header separately.",
+            "failureScenario": "If the hook sends the HTTP opt-in request without `X-API-Key: k1`, this test still passes even though acceptance criterion 2 requires that header."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix adds the HTTP opt-in and exact refusal log, but the URL guard can be bypassed with a mixed-case HTTP scheme. The opt-in test also verifies the request URL without checking its required API key header.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/fluxion-dnf-hook",
+          "line": 81,
+          "message": "A04:2025 Cryptographic Failures: the HTTP refusal check is case-sensitive, allowing a mixed-case HTTP URL to send the API key without the required opt-in.",
+          "confidence": 0.91,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The guard recognizes only a lowercase `http://` prefix. A mixed-case HTTP scheme bypasses it, after which report_packages adds the configured API key to the curl request.",
+            "failureScenario": "With `FLUXION_API_URL=HTTP://fluxion.test/api/v1`, an API key configured, and `FLUXION_ALLOW_HTTP` unset, curl sends the key over plaintext HTTP instead of refusing the request. OWASP A04:2025."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 102,
+          "message": "Acceptance criterion 2's HTTP opt-in case lacks an assertion for the required `X-API-Key: k1` header; add that check to `test_hook_fail_safe`.",
+          "confidence": 0.88,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The HTTP opt-in case checks only the captured URL; it does not assert the captured `X-API-Key` header. The HTTPS request-shape case does not exercise the HTTP opt-in path.",
+            "failureScenario": "If the hook sends the HTTP opt-in request without `X-API-Key: k1`, this test still passes although acceptance criterion 2 requires that header."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The HTTP opt-in is explicitly required by the acceptance criteria, and the hook reads configuration as data and passes values as quoted arguments. I found no security vulnerability in the change.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "dnf-hooks/tests/test_dnf_hook.sh"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

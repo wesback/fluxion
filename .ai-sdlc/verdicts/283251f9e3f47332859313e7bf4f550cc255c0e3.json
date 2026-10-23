@@ -1,0 +1,209 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 153,
+  "branch": "ai-sdlc/issue-153",
+  "commitSha": "283251f9e3f47332859313e7bf4f550cc255c0e3",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook handles package differences and HTTPS requests, but it rejects the explicitly permitted HTTP opt-in and does not emit the required refusal message.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/fluxion-dnf-hook",
+          "line": 76,
+          "message": "The HTTP opt-in behavior and required refusal log message are not implemented.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "report_packages rejects every non-HTTPS URL when FLUXION_API_KEY is set and never checks FLUXION_ALLOW_HTTP from the environment or config. The rejection log also differs from the exact line required by the acceptance criterion.",
+            "failureScenario": "With an HTTP API URL, API key k1, and FLUXION_ALLOW_HTTP=true, report sends no request instead of sending one with X-API-Key: k1. With the opt-in unset, it logs a different message than the required refusal line."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook rejects the explicitly permitted HTTP opt-in case. Its refusal log also does not match the required text, and the named test would not catch that mismatch.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "dnf-hooks/fluxion-dnf-hook",
+          "line": 77,
+          "message": "The hook does not implement the explicit HTTP opt-in required by acceptance criterion 2.",
+          "confidence": 0.98,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "report_packages rejects every non-HTTPS URL when FLUXION_API_KEY is set and never checks FLUXION_ALLOW_HTTP.",
+            "failureScenario": "With an HTTP API URL, API key k1, and FLUXION_ALLOW_HTTP=true in the environment or config, report sends no request, contrary to acceptance criterion 2."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "dnf-hooks/tests/test_dnf_hook.sh",
+          "line": 105,
+          "message": "The named test does not assert the exact HTTP refusal message required by acceptance criterion 2, and the current hook emits different text.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The HTTP refusal case checks only that no request was captured; the generic ERROR assertion covers a later curl failure. The hook logs a different refusal message than the exact line part required by acceptance criterion 2.",
+            "failureScenario": "If the hook emits any other refusal message, test_hook_fail_safe still passes, although the acceptance criterion requires `ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network`."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": true,
+      "findings": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hook reads configuration as data and passes the API key and URL as quoted arguments. When an API key is configured, it refuses non-HTTPS URLs; I found no security vulnerability in the changed code.",
+      "findingList": []
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 2,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "assertion",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "dnf-hooks/tests/test_dnf_hook.sh"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
