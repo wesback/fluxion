@@ -3,6 +3,7 @@ import inspect
 import copy
 import json
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Mapping
@@ -57,7 +58,6 @@ def _state_method(store: Any) -> Any:
     return (getattr(store, "snapshot_fixture_state", None)
             or getattr(store, "snapshot_rows", None)
             or getattr(store, "snapshot_state", None)
-            or getattr(store, "snapshot_ids", None)
             or getattr(store, "fixture_state", None)
             or getattr(store, "snapshot", None))
 
@@ -88,8 +88,15 @@ def _canonical_row_state(value: Any) -> dict[str, Any] | None:
             normalized_rows = []
             for identity, content in sorted(rows.items(), key=lambda item: str(item[0])):
                 normalized_rows.append([copy.deepcopy(identity), copy.deepcopy(content)])
-        elif isinstance(rows, (list, tuple, set, frozenset)):
-            normalized_rows = list(copy.deepcopy(rows))
+        elif isinstance(rows, (list, tuple)):
+            normalized_rows = []
+            for row in rows:
+                if isinstance(row, Mapping) or (isinstance(row, (list, tuple)) and len(row) >= 2):
+                    normalized_rows.append(copy.deepcopy(row))
+                else:
+                    return None
+        elif isinstance(rows, (set, frozenset)):
+            return None
         else:
             return None
         try:
@@ -179,6 +186,7 @@ def run_ingest_load(params: Mapping[str, Any], environ: Mapping[str, str], clien
     latencies: list[float] = []
     url = config.target_url.rstrip("/") + "/updates/batch"
     execution_error: Exception | None = None
+    target_error_event = threading.Event()
 
     batches = params.get("batches_per_client", params.get("batches"))
     if batches is not None and (not isinstance(batches, int) or isinstance(batches, bool) or batches < 1):
@@ -198,21 +206,29 @@ def run_ingest_load(params: Mapping[str, Any], environ: Mapping[str, str], clien
                 else:
                     response = client.request("POST", url, headers={"X-API-Key": key}, json=payload)
                 if inspect.isawaitable(response):
+                    target_error_event.set()
                     return 0, 0, None, "Load target unavailable", 0
             except Exception as exc:
+                target_error_event.set()
                 return 0, 0, (time.perf_counter() - started) * 1000, f"Load target unavailable: {exc}", 0
             latency = (time.perf_counter() - started) * 1000
             status = getattr(response, "status_code", getattr(response, "status", 200))
-            good = 1 if int(status) < 400 else 0
-            bad = 1 if int(status) >= 400 else 0
+            status = int(status)
+            good = 1 if status < 400 else 0
+            bad = 1 if status >= 400 else 0
+            if duration_workload and status >= 500:
+                target_error_event.set()
+                return 0, bad, latency, f"Load target unavailable: HTTP {status}", 1
             return good, bad, latency, None, 1
 
         def send_client(index: int) -> list[tuple[int, int, float | None, str | None, int]]:
             results = []
             deadline = time.monotonic() + config.duration_seconds if duration_workload else None
             repeat_count = batches_per_client if not duration_workload else 1
-            while True:
+            while not target_error_event.is_set():
                 for _ in range(repeat_count):
+                    if target_error_event.is_set():
+                        break
                     results.append(send_one(index))
                 if deadline is None or time.monotonic() >= deadline:
                     break

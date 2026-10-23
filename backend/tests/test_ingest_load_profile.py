@@ -1,4 +1,5 @@
 from pathlib import Path
+import copy
 import sys
 
 import pytest
@@ -41,35 +42,38 @@ class FakeFixtures:
         self.fail_table = fail_table
         self.counts = {"package_updates": 4, "hosts": 2, "api_keys": 1, "webhook_configs": 1}
         self.rows = {
-            "package_updates": {"pre-package-a", "pre-package-b", "pre-package-c", "pre-package-d"},
-            "hosts": {"pre-host-a", "pre-host-b"},
-            "api_keys": {"pre-key-a"},
-            "webhook_configs": {"pre-webhook-a"},
+            "package_updates": {row: {"stable_id": row, "content": row} for row in ("pre-package-a", "pre-package-b", "pre-package-c", "pre-package-d")},
+            "hosts": {row: {"stable_id": row, "content": row} for row in ("pre-host-a", "pre-host-b")},
+            "api_keys": {"pre-key-a": {"stable_id": "pre-key-a", "content": "pre-key-a"}},
+            "webhook_configs": {"pre-webhook-a": {"stable_id": "pre-webhook-a", "content": "pre-webhook-a"}},
         }
     def snapshot_counts(self):
         return dict(self.counts)
     def snapshot_fixture_state(self):
-        return {table: sorted(rows) for table, rows in self.rows.items()}
+        return {table: copy.deepcopy(rows) for table, rows in self.rows.items()}
     def create_fixtures(self, config):
         self.creations += 1
         self.counts["package_updates"] += config.batch_size
         self.counts["api_keys"] += 1
-        self.rows["package_updates"].add(f"test-package-{self.creations}")
-        self.rows["api_keys"].add(f"test-key-{self.creations}")
-        self.rows["hosts"].add(f"test-host-{self.creations}")
-        self.rows["webhook_configs"].add(f"test-webhook-{self.creations}")
+        self.rows["package_updates"][f"test-package-{self.creations}"] = {"stable_id": f"test-package-{self.creations}", "content": "test"}
+        self.rows["api_keys"][f"test-key-{self.creations}"] = {"stable_id": f"test-key-{self.creations}", "content": "test"}
+        self.rows["hosts"][f"test-host-{self.creations}"] = {"stable_id": f"test-host-{self.creations}", "content": "test"}
+        self.rows["webhook_configs"][f"test-webhook-{self.creations}"] = {"stable_id": f"test-webhook-{self.creations}", "content": "test"}
     def cleanup(self):
         if self.fail_table:
             self.counts[self.fail_table] += 1
             return
         for table in self.rows:
-            self.rows[table] = {row for row in self.rows[table] if not row.startswith("test-")}
+            self.rows[table] = {identity: content for identity, content in self.rows[table].items() if not identity.startswith("test-")}
         self.counts["package_updates"] = 4
         self.counts["hosts"] = 2
         self.counts["api_keys"] = 1
         self.counts["webhook_configs"] = 1
     def verify_cleanup(self, before_state):
-        return self.snapshot_fixture_state() == before_state
+        canonical = {}
+        for table, rows in self.snapshot_fixture_state().items():
+            canonical[table] = sorted([[identity, copy.deepcopy(content)] for identity, content in rows.items()], key=lambda row: repr(row))
+        return canonical == before_state
 
 
 def test_load_runner_refuses_before_any_request(tmp_path):
@@ -112,8 +116,12 @@ def test_load_repeatability_and_cleanup(tmp_path):
     def swap_cleanup():
         swapped.counts["package_updates"] = 4
         swapped.counts["api_keys"] = 1
-        swapped.rows["package_updates"].remove("pre-package-d")
-        swapped.rows["package_updates"].add("test-package-leak")
+        swapped.rows["package_updates"] = {
+            "pre-package-a": {"stable_id": "pre-package-a", "content": "pre-package-a"},
+            "pre-package-b": {"stable_id": "pre-package-b", "content": "pre-package-b"},
+            "pre-package-c": {"stable_id": "pre-package-c", "content": "pre-package-c"},
+            "test-package-leak": {"stable_id": "test-package-leak", "content": "leak"},
+        }
     swapped.cleanup = swap_cleanup
     with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
         run_ingest_load(params(tmp_path), environment, FakeClient(), swapped)
@@ -127,13 +135,33 @@ def test_load_repeatability_and_cleanup(tmp_path):
         snapshot_store.counts["api_keys"] = 1
         snapshot_store.counts["hosts"] = 2
         snapshot_store.counts["webhook_configs"] = 1
-        snapshot_store.rows["package_updates"] = {"pre-package-a", "pre-package-b", "pre-package-c", "test-package-leak"}
-        snapshot_store.rows["api_keys"] = {"pre-key-a"}
-        snapshot_store.rows["hosts"] = {"pre-host-a", "pre-host-b"}
-        snapshot_store.rows["webhook_configs"] = {"pre-webhook-a"}
+        snapshot_store.rows["package_updates"] = {
+            row: {"stable_id": row, "content": row}
+            for row in ("pre-package-a", "pre-package-b", "pre-package-c")
+        }
+        snapshot_store.rows["package_updates"]["test-package-leak"] = {"stable_id": "test-package-leak", "content": "leak"}
+        snapshot_store.rows["api_keys"] = {"pre-key-a": {"stable_id": "pre-key-a", "content": "pre-key-a"}}
+        snapshot_store.rows["hosts"] = {row: {"stable_id": row, "content": row} for row in ("pre-host-a", "pre-host-b")}
+        snapshot_store.rows["webhook_configs"] = {"pre-webhook-a": {"stable_id": "pre-webhook-a", "content": "pre-webhook-a"}}
     snapshot_store.cleanup = snapshot_swap_cleanup
     with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
         run_ingest_load(params(tmp_path), environment, FakeClient(), snapshot_store)
+
+    content_changed = FakeFixtures()
+    def content_changed_cleanup():
+        content_changed.counts = {"package_updates": 4, "hosts": 2, "api_keys": 1, "webhook_configs": 1}
+        content_changed.rows["package_updates"]["pre-package-a"] = {"stable_id": "pre-package-a", "content": "changed-content"}
+    content_changed.cleanup = content_changed_cleanup
+    with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
+        run_ingest_load(params(tmp_path), environment, FakeClient(), content_changed)
+
+    id_only_store = FakeFixtures()
+    id_only_store_snapshot = id_only_store.snapshot_fixture_state
+    id_only_store.snapshot_fixture_state = None
+    id_only_store.snapshot_ids = lambda: {table: sorted(rows) for table, rows in id_only_store.rows.items()}
+    with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: exact fixture state unavailable"):
+        run_ingest_load(params(tmp_path), environment, FakeClient(), id_only_store)
+    assert id_only_store.creations == 0
 
     fixture_state_store = FakeFixtures()
     fixture_state_store_snapshot = fixture_state_store.snapshot_fixture_state
@@ -144,7 +172,11 @@ def test_load_repeatability_and_cleanup(tmp_path):
         fixture_state_store.counts["hosts"] = 2
         fixture_state_store.counts["api_keys"] = 1
         fixture_state_store.counts["webhook_configs"] = 1
-        fixture_state_store.rows["package_updates"] = {"pre-package-a", "pre-package-b", "pre-package-c", "test-package-leak"}
+        fixture_state_store.rows["package_updates"] = {
+            row: {"stable_id": row, "content": row}
+            for row in ("pre-package-a", "pre-package-b", "pre-package-c")
+        }
+        fixture_state_store.rows["package_updates"]["test-package-leak"] = {"stable_id": "test-package-leak", "content": "leak"}
     fixture_state_store.fixture_state = fixture_state_store_snapshot
     fixture_state_store.cleanup = fixture_state_snapshot_swap
     with pytest.raises(RuntimeError, match=r"Load cleanup incomplete: fixture state != pre-run state"):
