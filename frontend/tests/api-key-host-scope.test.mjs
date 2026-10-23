@@ -75,12 +75,43 @@ test("patchProxyForwardsHostScopeUpdate", async () => {
 
 function elementType(value) { return typeof value === "function" ? value.name : String(value) }
 
-test("useUpdateAPIKeyInvalidatesAPIKeyList", () => {
+test("useUpdateAPIKeyInvalidatesAPIKeyList", async () => {
   const source = readFileSync(join(root, "lib/hooks/use-admin.ts"), "utf8")
-  const updateHook = source.match(/export function useUpdateAPIKey\(\)[\s\S]*?\n\}/)?.[0] ?? ""
-  assert.match(updateHook, /mutationFn: \(\{ keyId, data \}\) => apiClient\.updateAPIKey\(keyId, data\)/)
-  assert.match(updateHook, /onSuccess: \(\) => \{/)
-  assert.match(updateHook, /queryClient\.invalidateQueries\(\{ queryKey: adminQueryKeys\.apiKeys \}\)/)
+  let mutationOptions
+  let invalidations = []
+  let updateCalls = []
+  const mod = { exports: {} }
+  const mocks = {
+    "@tanstack/react-query": {
+      useQuery: () => ({}),
+      useQueryClient: () => ({ invalidateQueries: (options) => invalidations.push(options) }),
+      useMutation: (options) => { mutationOptions = options; return { mutateAsync: () => {} } },
+    },
+    "../telemetry/api-client": {
+      instrumentedApiClient: {
+        updateAPIKey: async (keyId, data) => { updateCalls.push({ keyId, data }); return { id: keyId, ...data } },
+      },
+      ApiError: class ApiError extends Error {},
+    },
+    "sonner": { toast: { error: () => {}, success: () => {} } },
+  }
+  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
+  runInNewContext(output, {
+    exports: mod.exports,
+    module: mod,
+    require: (name) => { if (!(name in mocks)) throw new Error(`Unexpected dependency: ${name}`); return mocks[name] },
+    console,
+    process,
+  })
+
+  mod.exports.useUpdateAPIKey()
+  assert.ok(mutationOptions)
+  const result = await mutationOptions.mutationFn({ keyId: 7, data: { host_scope: "listed", allowed_hosts: ["node1.example.test"] } })
+  assert.deepEqual(result, { id: 7, host_scope: "listed", allowed_hosts: ["node1.example.test"] })
+  assert.deepEqual(updateCalls, [{ keyId: 7, data: { host_scope: "listed", allowed_hosts: ["node1.example.test"] } }])
+
+  mutationOptions.onSuccess()
+  assert.equal(JSON.stringify(invalidations), JSON.stringify([{ queryKey: ["admin", "api-keys"] }]))
 })
 
 test("apiKeysPageEditsHostScope", async () => {
