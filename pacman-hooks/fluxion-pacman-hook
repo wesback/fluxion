@@ -28,7 +28,7 @@ log_message() {
 
 json_escape() {
     local value="$1"
-    value=${value//\/\\}
+    value=${value//\\/\\\\}
     value=${value//\"/\\\"}
     value=${value//$'\n'/\\n}
     value=${value//$'\r'/\\r}
@@ -56,8 +56,13 @@ main() {
     if [[ "$command_name" == "stage" ]]; then
         [[ -n "$FLUXION_API_URL" ]] || return 0
         mkdir -p "$FLUXION_STATE_DIR" 2>/dev/null || return 0
-        pacman -Q > "$before_file" 2>/dev/null
-        [[ -r "$before_file" ]] || return 0
+        local temp_file="$before_file.tmp.$$"
+        if pacman -Q > "$temp_file" 2>/dev/null; then
+            mv -f "$temp_file" "$before_file" 2>/dev/null || { rm -f "$temp_file" 2>/dev/null; return 0; }
+        else
+            rm -f "$temp_file" 2>/dev/null
+            return 0
+        fi
         return 0
     fi
 
@@ -65,11 +70,14 @@ main() {
     [[ -f "$before_file" ]] || return 0
 
     trap 'rm -f "${FLUXION_STATE_DIR}/pacman-before.list" 2>/dev/null' EXIT
-    [[ -n "$FLUXION_API_URL" ]] || { rm -f "$before_file" 2>/dev/null; return 0; }
+    [[ -n "$FLUXION_API_URL" && -n "$FLUXION_API_KEY" ]] || { rm -f "$before_file" 2>/dev/null; return 0; }
+    [[ "$FLUXION_API_URL" == https://* ]] || { log_message "ERROR" "Refusing to send API key over insecure HTTP"; rm -f "$before_file" 2>/dev/null; return 0; }
     FLUXION_API_URL="${FLUXION_API_URL%/}"
     local listing
-    listing=$(pacman -Q 2>/dev/null)
-    [[ -n "$listing" ]] || listing=""
+    if ! listing=$(pacman -Q 2>/dev/null); then
+        log_message "ERROR" "Failed to list installed packages"
+        return 0
+    fi
 
     declare -A before=() after=()
     local name version
@@ -116,7 +124,7 @@ main() {
         json_updates+="]"
         local payload="{\"hostname\":\"$(json_escape "$hostname_value")\",\"os_info\":\"$(json_escape "$os_info")\",\"updates\":$json_updates}"
         local args=(-X POST -H "Content-Type: application/json" --max-time "${FLUXION_TIMEOUT:-5}" --silent --show-error --fail -d "$payload")
-        [[ -n "$FLUXION_API_KEY" ]] && args+=(-H "X-API-Key: $FLUXION_API_KEY")
+        args+=(-H "X-API-Key: $FLUXION_API_KEY")
         if curl "${args[@]}" "$FLUXION_API_URL/updates/ingest/pacman" >/dev/null 2>&1; then
             log_message "INFO" "Sent $((end-index)) package changes"
         else
