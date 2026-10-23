@@ -142,7 +142,25 @@ test_hook_fail_safe() {
   [[ ! -f "$FLUXION_STATE_DIR/dnf-before.list" ]] || return 1
   [[ ! -e "$TMP/pwned" ]] || return 1
 }
-for spec in 'stage_then_report_sends_differences|test_stage_then_report_sends_differences' 'report_request_shape_and_chunks|test_report_request_shape_and_chunks' 'hook_fail_safe|test_hook_fail_safe'; do
+test_actions_file_registers_stage_and_report() {
+  local actions_file="$(dirname "$0")/../fluxion.actions"
+  local expected expected_copy unexpected
+  mapfile -t expected < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$actions_file")
+  [[ ${#expected[@]} == 2 ]] || return 1
+  [[ ${expected[0]} == 'pre_transaction::::/usr/local/lib/fluxion/fluxion-dnf-hook stage' ]] || return 1
+  [[ ${expected[1]} == 'post_transaction::::/usr/local/lib/fluxion/fluxion-dnf-hook report' ]] || return 1
+
+  expected_copy=$(mktemp)
+  sed '/^post_transaction::::/d' "$actions_file" > "$expected_copy"
+  if grep -Eq '^post_transaction::::' "$expected_copy"; then
+    rm -f "$expected_copy"
+    return 1
+  fi
+  printf 'report action missing\n' >&2
+  rm -f "$expected_copy"
+  return 0
+}
+for spec in 'stage_then_report_sends_differences|test_stage_then_report_sends_differences' 'report_request_shape_and_chunks|test_report_request_shape_and_chunks' 'hook_fail_safe|test_hook_fail_safe' 'actions_file_registers_stage_and_report|test_actions_file_registers_stage_and_report'; do
   name=${spec%%|*}; fn=${spec#*|}
   if "$fn"; then printf 'ok %s\n' "$name"; PASS=$((PASS+1)); else printf 'not ok %s\n' "$name"; FAIL=$((FAIL+1)); fi
 done
