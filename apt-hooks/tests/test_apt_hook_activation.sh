@@ -18,7 +18,7 @@ while (($#)); do
     case "$1" in
         -d) payload="$2"; shift 2;;
         -H) [[ "$2" == X-API-Key:* ]] && header="$2"; shift 2;;
-        http://*|https://*) url="$1"; shift;;
+        *://*) url="$1"; shift;;
         *) shift;;
     esac
 done
@@ -31,6 +31,19 @@ cat > "$TMP/bin/hostname" <<'EOF'
 #!/bin/bash
 printf 'apt.test\n'
 EOF
+cat > "$TMP/bin/gpgv" <<'GPGV'
+#!/bin/bash
+keyring=""
+file=""
+while (($#)); do
+    case "$1" in
+        --keyring) keyring="$2"; shift 2;;
+        --output) shift 2;;
+        *) file="$1"; shift;;
+    esac
+done
+if [[ -s "$keyring" && -f "$file" ]]; then cat "$file"; else exit 1; fi
+GPGV
 cat > "$TMP/bin/apt-cache" <<'APT'
 #!/bin/bash
 if [[ "${1:-}" == policy && $# -eq 2 ]]; then
@@ -61,6 +74,8 @@ export PATH="$TMP/bin:$PATH" FLUXION_REQUEST_DIR="$TMP/requests"
 mkdir -p "$TMP/requests" "$TMP/lists"
 export FLUXION_STATE_DIR="$TMP/state" FLUXION_API_URL="https://fluxion.test/api/v1" FLUXION_API_KEY="k1"
 export FLUXION_LOG_FILE="$TMP/fluxion.log" FLUXION_APT_LISTS_DIR="$TMP/lists"
+printf 'fixture-keyring\n' > "$TMP/ubuntu-keyring.gpg"
+export FLUXION_APT_UBUNTU_KEYRING="$TMP/ubuntu-keyring.gpg"
 
 # Security fixtures use source policy rather than real InRelease signatures.
 mkdir -p "$TMP/lists"
@@ -99,7 +114,7 @@ files=glob.glob(sys.argv[1]+'/payload.*.json')
 assert len(files)==1, files
 body=json.load(open(files[0]))
 assert [(u['package_name'],u['old_version'],u['new_version'],u['is_security']) for u in body['updates']] == [
- ('openssl','3.0.2-0ubuntu1.19','3.0.2-0ubuntu1.20',False),
+ ('openssl','3.0.2-0ubuntu1.19','3.0.2-0ubuntu1.20',True),
  ('curl','8.5.0-2ubuntu10.5','8.5.0-2ubuntu10.6',False),
  ('htop',None,'3.3.0-4',False),
  ('telnet','0.17-44','removed',False)], body
@@ -146,6 +161,58 @@ assert counts==[100,50], counts
 allnames=[u['package_name'] for f in files for u in json.load(open(f))['updates']]
 assert len(allnames)==len(set(allnames)), 'duplicate package'
 PY
+
+    rm -rf "$TMP/state" "$TMP/requests" "$TMP/config"/*; mkdir -p "$TMP/state" "$TMP/requests" "$TMP/config"
+    cat > "$TMP/config/fluxion.conf" <<'EOF'
+FLUXION_API_URL=https://fluxion.test/api/v1
+FLUXION_API_KEY=k1
+EOF
+    unset FLUXION_ALLOW_HTTP
+    export FLUXION_CONFIG_FILE="$TMP/config/fluxion.conf"
+    unset FLUXION_API_URL FLUXION_API_KEY
+    printf 'VERSION 2\n\ngzip 1.0 < 1.1 /gzip.deb\n' | "$HOOK" stage
+    "$HOOK" report
+    grep -Fq $'https://fluxion.test/api/v1/updates/batch\nX-API-Key: k1' "$TMP/requests/calls.log" || fail "config URL and key were not loaded"
+
+    rm -rf "$TMP/state" "$TMP/requests"; mkdir -p "$TMP/state" "$TMP/requests"
+    cat > "$TMP/config/fluxion.conf" <<'EOF'
+FLUXION_API_URL=https://config.test/api/v1
+FLUXION_API_KEY=config-key
+EOF
+    export FLUXION_API_URL="https://env.test/api/v1" FLUXION_API_KEY="env-key"
+    printf 'VERSION 2\n\ngzip 1.0 < 1.1 /gzip.deb\n' | "$HOOK" stage
+    "$HOOK" report
+    grep -Fq $'https://env.test/api/v1/updates/batch\nX-API-Key: env-key' "$TMP/requests/calls.log" || fail "environment values did not win config precedence"
+
+    rm -rf "$TMP/state" "$TMP/requests"; mkdir -p "$TMP/state" "$TMP/requests"
+    cat > "$TMP/config/fluxion.conf" <<'EOF'
+FLUXION_API_URL=HTTP://fluxion.test/api/v1
+FLUXION_API_KEY=k1
+EOF
+    unset FLUXION_API_URL FLUXION_API_KEY FLUXION_ALLOW_HTTP
+    printf 'VERSION 2\n\ngzip 1.0 < 1.1 /gzip.deb\n' | "$HOOK" stage
+    "$HOOK" report
+    [[ ! -e "$TMP/requests/calls.log" ]] || fail "plain HTTP sent an API key without opt-in"
+    grep -Fq 'ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network' "$FLUXION_LOG_FILE" || fail "HTTP refusal was not logged"
+
+    rm -rf "$TMP/state" "$TMP/requests"; mkdir -p "$TMP/state" "$TMP/requests"
+    export FLUXION_ALLOW_HTTP=true
+    printf 'VERSION 2\n\ngzip 1.0 < 1.1 /gzip.deb\n' | "$HOOK" stage
+    "$HOOK" report
+    grep -Fq $'http://fluxion.test/api/v1/updates/batch\nX-API-Key: k1' "$TMP/requests/calls.log" || fail "HTTP opt-in did not send request"
+
+    rm -rf "$TMP/state" "$TMP/requests"; mkdir -p "$TMP/state" "$TMP/requests"
+    rm -f /tmp/pwned
+    cat > "$TMP/config/fluxion.conf" <<'EOF'
+FLUXION_API_URL=$(touch /tmp/pwned)
+FLUXION_API_KEY=k1
+EOF
+    unset FLUXION_API_URL FLUXION_API_KEY FLUXION_ALLOW_HTTP
+    printf 'VERSION 2\n\ngzip 1.0 < 1.1 /gzip.deb\n' | "$HOOK" stage
+    "$HOOK" report
+    [[ ! -e /tmp/pwned ]] || fail "config command substitution executed"
+    [[ ! -e "$TMP/state/apt-operation.data" ]] || fail "command-like URL left staged data"
+    [[ ! -e "$TMP/requests/calls.log" ]] || fail "command-like URL sent a request"
 }
 
 test_apt_config_registers_stage_and_report

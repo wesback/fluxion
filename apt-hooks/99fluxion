@@ -202,6 +202,15 @@ detect_security_update() {
 
 # Function to send a single update to the API
 send_single_update() {
+    [[ -n "${FLUXION_API_URL:-}" ]] || return 0
+    case "${FLUXION_API_URL,,}" in
+        http://*|https://*) ;;
+        *) return 0 ;;
+    esac
+    if [[ "${FLUXION_API_URL,,}" == http://* && -n "${FLUXION_API_KEY:-}" && "${FLUXION_ALLOW_HTTP:-false}" != "true" ]]; then
+        log_message "ERROR" "ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
+        return 0
+    fi
     local hostname="$1"
     local os_info="$2"
     local package_name="$3"
@@ -248,8 +257,12 @@ EOF
 # Function to send batch updates to the API
 send_batch_updates() {
     [[ -n "${FLUXION_API_URL:-}" ]] || return 0
-    if [[ "$FLUXION_API_URL" == http://* && -n "${FLUXION_API_KEY:-}" && "${FLUXION_ALLOW_HTTP:-false}" != "true" ]]; then
-        log_message "ERROR" "refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
+    case "${FLUXION_API_URL,,}" in
+        http://*|https://*) ;;
+        *) return 0 ;;
+    esac
+    if [[ "${FLUXION_API_URL,,}" == http://* && -n "${FLUXION_API_KEY:-}" && "${FLUXION_ALLOW_HTTP:-false}" != "true" ]]; then
+        log_message "ERROR" "ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
         return 0
     fi
 
@@ -356,8 +369,12 @@ report_apt_operations() {
     mv -f "$data_file" "$moved_file" 2>/dev/null || return 0
 
     [[ -n "${FLUXION_API_URL:-}" ]] || { rm -f "$moved_file" 2>/dev/null || true; return 0; }
-    if [[ "$FLUXION_API_URL" == http://* && -n "${FLUXION_API_KEY:-}" && "${FLUXION_ALLOW_HTTP:-false}" != "true" ]]; then
-        log_message "ERROR" "refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
+    case "${FLUXION_API_URL,,}" in
+        http://*|https://*) ;;
+        *) rm -f "$moved_file" 2>/dev/null || true; return 0 ;;
+    esac
+    if [[ "${FLUXION_API_URL,,}" == http://* && -n "${FLUXION_API_KEY:-}" && "${FLUXION_ALLOW_HTTP:-false}" != "true" ]]; then
+        log_message "ERROR" "ERROR: refusing to send the API key over plain HTTP; set FLUXION_ALLOW_HTTP=true only on a trusted network"
         rm -f "$moved_file" 2>/dev/null || true
         return 0
     fi
