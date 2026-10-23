@@ -70,7 +70,6 @@ detect_security_update() {
     local package_name="$1"
     local version="$2"
 
-    # Disabled or unavailable apt-cache => cannot determine
     if [[ "$FLUXION_DETECT_SECURITY" != "true" ]]; then
         echo "false"
         return
@@ -81,36 +80,93 @@ detect_security_update() {
         return
     fi
 
-    local policy_output
-    policy_output=$(apt-cache policy "$package_name" 2>/dev/null || true)
-    if [[ -z "$policy_output" ]]; then
+    local package_policy release_policy
+    if ! package_policy=$(apt-cache policy "$package_name" 2>/dev/null); then
         echo "false"
         return
     fi
 
-    # Try to detect security origin specifically for the installed/new version block first
-    if [[ -n "$version" ]] && [[ "$version" != "-" ]]; then
-        if echo "$policy_output" | awk -v target="$version" '
-            BEGIN { in_target=0; found=0 }
-            /^[[:space:]]+[0-9]/ {
-                in_target = ($1 == target)
-            }
-            in_target && /security|[-]security/ {
-                found=1
-            }
-            END { exit found ? 0 : 1 }
-        '; then
-            echo "true"
-            return
-        fi
+    if ! release_policy=$(apt-cache policy 2>/dev/null); then
+        echo "false"
+        return
     fi
 
-    # Fallback: if policy mentions security at all, consider it a security update candidate
-    if echo "$policy_output" | grep -Eqi '[-]security| security '; then
-        echo "true"
-    else
+    local -a exact_sources=()
+    mapfile -t exact_sources < <(printf '%s\n' "$package_policy" | awk -v target="$version" '
+        function trim(value) {
+            sub(/^[[:space:]]+/, "", value)
+            sub(/[[:space:]]+$/, "", value)
+            return value
+        }
+        /^[[:space:]]*$/ { next }
+        {
+            rest = trim($0)
+
+            if (rest ~ /^\*\*\*[[:space:]]+/) {
+                sub(/^\*\*\*[[:space:]]+/, "", rest)
+                split(rest, fields, /[[:space:]]+/)
+                in_target = (fields[1] == target)
+                next
+            }
+
+            split(rest, fields, /[[:space:]]+/)
+            if (fields[2] ~ /^[0-9]+$/) {
+                in_target = (fields[1] == target)
+                next
+            }
+
+            if (fields[1] ~ /^[0-9]+$/ && in_target) {
+                source = rest
+                sub(/^[0-9]+[[:space:]]+/, "", source)
+                print trim(source)
+            }
+        }
+    ')
+
+    if ((${#exact_sources[@]} == 0)); then
         echo "false"
+        return
     fi
+
+    local description=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        local leading_trimmed="$line"
+        leading_trimmed="${leading_trimmed#${leading_trimmed%%[![:space:]]*}}"
+        if [[ "$leading_trimmed" =~ ^([0-9]+)[[:space:]]+(.+)$ ]]; then
+            description="${BASH_REMATCH[2]}"
+            description="${description%${description##*[![:space:]]}}"
+            continue
+        fi
+
+        if [[ "$leading_trimmed" =~ ^release[[:space:]]+(.+)$ ]]; then
+            local release_line="${BASH_REMATCH[1]}"
+            local source_match=false
+            for source in "${exact_sources[@]}"; do
+                if [[ "$description" == "$source" ]]; then
+                    source_match=true
+                    break
+                fi
+            done
+            [[ "$source_match" == true ]] || continue
+
+            local publisher="" archive="" field
+            IFS=',' read -r -a release_fields <<< "$release_line"
+            for field in "${release_fields[@]}"; do
+                field="${field#${field%%[![:space:]]*}}"
+                field="${field%${field##*[![:space:]]}}"
+                case "$field" in
+                    o=Ubuntu|o=Debian) publisher="$field" ;;
+                    a=*-security) archive="$field" ;;
+                esac
+            done
+            if [[ -n "$publisher" && -n "$archive" ]]; then
+                echo "true"
+                return
+            fi
+        fi
+    done <<< "$release_policy"
+
+    echo "false"
 }
 
 # Function to send a single update to the API
