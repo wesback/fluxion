@@ -1,0 +1,112 @@
+#!/bin/bash
+# Fluxion dnf5 transaction hook
+
+set -u
+
+STATE_DIR="${FLUXION_STATE_DIR:-/var/lib/fluxion}"
+CONFIG_FILE="${FLUXION_CONFIG_FILE:-/etc/fluxion/config}"
+STAGED_FILE="$STATE_DIR/dnf-before.list"
+
+load_config() {
+    local config_key config_value
+    [[ -f "$CONFIG_FILE" ]] || return 0
+    while IFS='=' read -r config_key config_value; do
+        case "$config_key" in
+            FLUXION_API_URL)
+                [[ -n "${FLUXION_API_URL:-}" ]] || FLUXION_API_URL="$config_value"
+                ;;
+            FLUXION_API_KEY)
+                [[ -n "${FLUXION_API_KEY:-}" ]] || FLUXION_API_KEY="$config_value"
+                ;;
+            FLUXION_TIMEOUT)
+                [[ -n "${FLUXION_TIMEOUT:-}" ]] || FLUXION_TIMEOUT="$config_value"
+                ;;
+            FLUXION_LOG_FILE)
+                [[ -n "${FLUXION_LOG_FILE:-}" ]] || FLUXION_LOG_FILE="$config_value"
+                ;;
+        esac
+    done < "$CONFIG_FILE" 2>/dev/null || true
+}
+
+load_config
+FLUXION_API_URL="${FLUXION_API_URL:-}"
+FLUXION_API_KEY="${FLUXION_API_KEY:-}"
+FLUXION_TIMEOUT="${FLUXION_TIMEOUT:-5}"
+FLUXION_LOG_FILE="${FLUXION_LOG_FILE:-/var/log/fluxion-hook.log}"
+
+log_message() {
+    printf '[%s] [%s] %s\n' "$(date -Iseconds 2>/dev/null || true)" "$1" "$2" >> "$FLUXION_LOG_FILE" 2>/dev/null || true
+}
+
+stage_packages() {
+    mkdir -p "$STATE_DIR" 2>/dev/null || return 0
+    local tmp="$STAGED_FILE.tmp.$$"
+    rpm -qa --qf '%{NAME}.%{ARCH} %{NAME} %{EVR}\n' > "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 0; }
+    mv -f "$tmp" "$STAGED_FILE" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+}
+
+report_packages() {
+    [[ -f "$STAGED_FILE" ]] || return 0
+    local after_file="$STATE_DIR/dnf-after.$$.list"
+    local updates_file="$STATE_DIR/dnf-updates.$$.tsv"
+    rm -f "$after_file" "$updates_file" 2>/dev/null || true
+
+    rpm -qa --qf '%{NAME}.%{ARCH} %{NAME} %{EVR}\n' > "$after_file" 2>/dev/null || {
+        rm -f "$after_file" "$STAGED_FILE" 2>/dev/null || true
+        return 0
+    }
+
+    awk 'NR==FNR { b[$1]=$3; bn[$1]=$2; next }
+        { a[$1]=$3; an[$1]=$2 }
+        END {
+            for (id in b) if (!(id in a)) printf "%s\t%s\tremoved\n", bn[id], b[id]
+            for (id in a) if (!(id in b) || b[id] != a[id]) printf "%s\t%s\t%s\n", an[id], (id in b ? b[id] : "null"), a[id]
+        }' "$STAGED_FILE" "$after_file" | LC_ALL=C sort -t ' ' -k1,1 > "$updates_file" 2>/dev/null || true
+
+    rm -f "$after_file" "$STAGED_FILE" 2>/dev/null || true
+    [[ -n "$FLUXION_API_URL" && -s "$updates_file" ]] || { rm -f "$updates_file" 2>/dev/null || true; return 0; }
+
+    local hostname os_info
+    hostname=$(hostname -f 2>/dev/null || hostname 2>/dev/null || printf 'unknown')
+    os_info=''
+    if [[ -r /etc/os-release ]]; then
+        os_info=$(sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null | head -n1 | tr -d '"')
+        [[ -n "$os_info" ]] || os_info='Unknown'
+    fi
+
+    local count start=0 payload
+    count=$(wc -l < "$updates_file" 2>/dev/null | tr -d ' ')
+    count=${count:-0}
+    while [[ "$start" -lt "$count" ]]; do
+        payload=$(python3 - "$updates_file" "$start" "$hostname" "$os_info" <<'PY'
+import json, sys
+path, start, hostname, os_info = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+rows=[]
+with open(path, encoding='utf-8') as source:
+    for index, line in enumerate(source):
+        if index < start:
+            continue
+        if len(rows) >= 100:
+            break
+        parts=line.rstrip('\n').split('\t')
+        if len(parts) == 3:
+            name, old, new=parts
+            rows.append({'package_name':name,'old_version':None if old=='null' else old,'new_version':new,'is_security':False})
+print(json.dumps({'hostname':hostname,'os_info':os_info or None,'package_manager':'dnf','updates':rows}, separators=(',', ':')))
+PY
+        ) || payload=''
+        if [[ -n "$payload" ]]; then
+            local curl_args=(-X POST -H 'Content-Type: application/json' --max-time "$FLUXION_TIMEOUT" --silent --show-error --fail -d "$payload")
+            [[ -n "$FLUXION_API_KEY" ]] && curl_args+=(-H "X-API-Key: $FLUXION_API_KEY")
+            curl "${curl_args[@]}" "${FLUXION_API_URL%/}/updates/ingest/dnf" >/dev/null 2>&1 || log_message ERROR "Failed to send dnf package updates"
+        fi
+        start=$((start + 100))
+    done
+    rm -f "$updates_file" 2>/dev/null || true
+}
+
+case "${1:-}" in
+    stage) stage_packages || true ;;
+    report) report_packages || true ;;
+esac
+exit 0
