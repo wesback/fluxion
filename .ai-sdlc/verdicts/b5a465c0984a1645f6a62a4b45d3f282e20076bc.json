@@ -1,0 +1,252 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 149,
+  "branch": "ai-sdlc/issue-149",
+  "commitSha": "b5a465c0984a1645f6a62a4b45d3f282e20076bc",
+  "round": 0,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The host-scope helper rejects stale hidden host-list text even after an admin selects All hosts. The proxy and page tests inspect source strings rather than exercising the behaviors their acceptance criteria require.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/lib/host-scope.mjs",
+          "line": 18,
+          "message": "Check for the \"all\" scope before validating the host list. All-hosts updates should not be blocked by hidden host-list contents.",
+          "confidence": 0.99,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "buildHostScopeUpdate parses and rejects the textarea before checking whether scope is \"all\". Both the create and edit handlers call it with the selected scope and textarea contents.",
+            "failureScenario": "An admin enters \"*.example.test\" while \"Only these hosts\" is selected, then switches to \"All hosts\" and saves. The hidden textarea value still causes an error, so the admin cannot save the all-hosts scope until clearing it."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 15,
+          "message": "The proxy test does not exercise the acceptance criterion's backend response, error, or missing-key cases. Replace the source-text assertions with route calls using stubbed axios and FLUXION_API_KEY.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "patchProxyForwardsHostScopeUpdate reads the route source and checks for text patterns; it never imports or invokes PATCH with a stubbed axios or environment.",
+            "failureScenario": "If PATCH sends the wrong URL or body, returns the wrong status or JSON, or calls axios when FLUXION_API_KEY is unset, this test can still pass as long as the checked source strings remain."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 24,
+          "message": "The page test does not exercise the criterion's rendered interactions or negative case. Test the page with the stated stub-React approach and assert that invalid input shows the error without calling the mutation.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "apiKeysPageEditsHostScope reads page and helper source text and checks for labels and strings; it does not render the page or trigger the edit/create handlers.",
+            "failureScenario": "If saving an invalid listed scope still calls the mutation, if valid edits send the wrong payload, or if the dialog is not connected to the action, the test can pass while all asserted strings remain in the source."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The helper test exercises the parsing and payload logic. The proxy and page tests only search source text, so they do not verify the behaviors required by the second and third acceptance criteria.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 17,
+          "message": "`patchProxyForwardsHostScopeUpdate` does not exercise the route with stubbed axios or verify any of the acceptance criterion’s response cases. Add a test that invokes PATCH and asserts the success, backend-error, and unset-key results.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The test reads the proxy route as text and checks for strings such as `export async function PATCH` and `axios.patch`; it never imports or invokes the handler.",
+            "failureScenario": "If the route sends the wrong URL or API key, mishandles a 422 response, or calls axios when `FLUXION_API_KEY` is unset, these source-text assertions still pass. The proxy behavior in the second acceptance criterion is therefore untested."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 25,
+          "message": "`apiKeysPageEditsHostScope` does not render the page or verify the table, dialog, create flow, or that invalid input prevents a mutation. Add a test that exercises those behaviors and asserts the specified empty-list error and no mutation call.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The test reads the page and helper files as text and checks for markup strings; it does not render the page or invoke its handlers and mutation hook.",
+            "failureScenario": "If saving an empty listed-host textarea calls the update mutation, or if the table shows the wrong host count, the dialog is not prefilled, or creation omits the selected scope, these assertions can still pass. The UI behavior in the third acceptance criterion is therefore untested."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The PATCH proxy forwards requests using a server-side privileged key without an authorization check in the handler. Its test checks source text rather than the specified forwarding, error, and missing-key behavior.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 17,
+          "message": "The test does not exercise the proxy behavior required by the acceptance criterion, so it passes on broken implementations.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The test reads the route source and checks for strings such as `axios.patch` and `X-API-Key`; it does not invoke the handler or stub axios.",
+            "failureScenario": "If the handler sends the wrong keyId or body, fails to return the backend's 422 status and error, or calls axios when FLUXION_API_KEY is unset, these source-text assertions still pass. The named negative cases are therefore not tested."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/app/api/admin/api-keys/[keyId]/route.ts",
+          "line": 9,
+          "message": "The new proxy route can turn an unauthenticated request into a privileged API-key update. This is broken access control (OWASP A01:2025).",
+          "confidence": 0.78,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The PATCH handler accepts a request, reads its body, and forwards it to the backend with the server-side FLUXION_API_KEY. The handler contains no requester authentication or authorization check.",
+            "failureScenario": "If an unauthenticated caller can reach this route, they can PATCH an API key's host scope; the backend receives the request with the server's privileged key. The handler should reject callers who are not authorized admins."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "build",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/api-key-host-scope.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

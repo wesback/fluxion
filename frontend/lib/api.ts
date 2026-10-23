@@ -125,11 +125,20 @@ export interface APIKeyMetadata {
   created_at: string;
   last_used: string | null;
   is_active: boolean;
+  host_scope?: "all" | "listed";
+  allowed_hosts?: string[];
 }
 
 export interface CreateAPIKeyRequest {
   name: string;
   role?: string;
+  host_scope?: "all" | "listed";
+  allowed_hosts?: string[];
+}
+
+export interface UpdateAPIKeyRequest {
+  host_scope: "all" | "listed";
+  allowed_hosts?: string[];
 }
 
 export interface CreateAPIKeyResponse {
@@ -220,6 +229,7 @@ class ApiClient {
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
       },
     });
 
@@ -339,6 +349,11 @@ class ApiClient {
 
   async createAPIKey(data: CreateAPIKeyRequest): Promise<CreateAPIKeyResponse> {
     const response = await this.client.post<CreateAPIKeyResponse>('/api/admin/api-keys', data);
+    return response.data;
+  }
+
+  async updateAPIKey(keyId: number, data: UpdateAPIKeyRequest): Promise<APIKeyMetadata> {
+    const response = await this.client.patch<APIKeyMetadata>(`/api/admin/api-keys/${keyId}`, data);
     return response.data;
   }
 

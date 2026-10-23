@@ -1,0 +1,216 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 149,
+  "branch": "ai-sdlc/issue-149",
+  "commitSha": "a519341deb73e1b321adfbaf5a51dcbbe1bfbe85",
+  "round": 2,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The proxy and page tests now cover the previously missing body-forwarding and create-flow cases. The PATCH route still relies on spoofable headers instead of requester authorization.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/app/api/admin/api-keys/[keyId]/route.ts",
+          "line": 20,
+          "message": "The header checks do not authenticate or authorize callers, so the privileged update remains reachable by unauthenticated requests (OWASP A01:2025).",
+          "confidence": 0.95,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "PATCH checks only caller-supplied sec-fetch-site, origin, and x-requested-with headers before forwarding the request with the server-side FLUXION_API_KEY; it does not authenticate or authorize the caller.",
+            "failureScenario": "An unauthenticated caller can send those headers with same-origin values and reach the privileged backend PATCH, changing an API key's host scope. This is broken access control (OWASP A01:2025)."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The tests now assert the forwarded request body and exercise the create-flow payload. The PATCH route still allows unauthenticated callers to reach the privileged backend by supplying the expected headers.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/app/api/admin/api-keys/[keyId]/route.ts",
+          "line": 18,
+          "message": "The header checks do not authenticate or authorize callers; an unauthenticated caller can supply matching headers and use this route to update an API key.",
+          "confidence": 0.94,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "PATCH checks request headers but does not authenticate or authorize the caller before forwarding the request with the server-side FLUXION_API_KEY.",
+            "failureScenario": "An unauthenticated caller sends same-origin, Origin, and X-Requested-With header values matching the route. The checks pass and the backend receives the caller's host-scope update with the privileged key. This is broken access control (OWASP A01:2025)."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The added checks reject requests missing the expected browser headers, but those headers are forgeable by direct clients. The PATCH route still forwards an unauthenticated caller's update using the server-side privileged key.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/app/api/admin/api-keys/[keyId]/route.ts",
+          "line": 21,
+          "message": "The header checks do not authenticate or authorize callers; they can be supplied by a direct client. This leaves the privileged API-key update route open to unauthenticated updates (OWASP A01:2025).",
+          "confidence": 0.95,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "PATCH checks request headers but does not authenticate or authorize the caller before forwarding the update with the server-side FLUXION_API_KEY.",
+            "failureScenario": "An unauthenticated caller sends PATCH with sec-fetch-site: same-origin, x-requested-with: XMLHttpRequest, and an Origin matching the request URL. These client-supplied headers pass the checks, so the route forwards the caller's host-scope update to the backend using its privileged key."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "build",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/api-key-host-scope.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

@@ -1,0 +1,258 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 149,
+  "branch": "ai-sdlc/issue-149",
+  "commitSha": "d694bf144ef99a960045afcf6aaf68d79718faec",
+  "round": 1,
+  "pipelineVersion": "e01b5f0",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The prior helper issue is fixed, and the proxy and edit tests now exercise their handlers. The route remains callable without authentication when the optional browser headers are absent, and tests still miss required body-forwarding and create-flow behavior.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/app/api/admin/api-keys/[keyId]/route.ts",
+          "line": 14,
+          "message": "The new host-scope update route has no requester authentication or authorization check; the optional browser headers can be omitted.",
+          "confidence": 0.92,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "PATCH rejects requests only when the optional Sec-Fetch-Site header says cross-site or when an optional Origin header mismatches. If both headers are absent, it forwards the body with the server-side API key.",
+            "failureScenario": "A caller sends PATCH without either header and changes a key's host scope. The route forwards the update to the backend using its privileged key. This is broken access control (OWASP A01:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 44,
+          "message": "The proxy test does not assert that the incoming JSON body is forwarded unchanged.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The stub records the body passed to axios.patch, but the success case asserts only the response, call count, URL suffix, and API-key header.",
+            "failureScenario": "If PATCH forwards an empty or altered body, the stub still returns the same response and this test passes, despite the acceptance criterion requiring the request JSON body to be forwarded."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 69,
+          "message": "The page test does not cover the acceptance criterion's create-flow scope selection and mutation payload.",
+          "confidence": 0.96,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The page test exercises the edit dialog and its invalid-input case, but never opens the create dialog or invokes its create handler.",
+            "failureScenario": "If the create flow omits host_scope or allowed_hosts from the mutation payload, this test still passes, although the acceptance criterion requires creating keys with the selected scope."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix corrects the stale host-list validation and now exercises the proxy and edit-dialog negative path. The privileged proxy remains callable when the new headers are absent, and the tests still leave required create-flow and request-body behavior unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/app/api/admin/api-keys/[keyId]/route.ts",
+          "line": 20,
+          "message": "The new header checks do not require an authenticated or authorized admin; requests that omit both headers still reach the privileged backend.",
+          "confidence": 0.99,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "PATCH rejects cross-site requests only when sec-fetch-site is present and cross-site, and checks origin only when both origin and host are present. If those headers are absent, it forwards the request to the backend with the server-side FLUXION_API_KEY.",
+            "failureScenario": "A caller sends PATCH without sec-fetch-site or origin. The checks are skipped and the caller can update an API key's host scope using the server's privileged key. This is broken access control (OWASP A01:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 69,
+          "message": "The page test still does not cover the acceptance criterion's create flow and submitted host-scope payload.",
+          "confidence": 0.96,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "apiKeysPageEditsHostScope renders the table and exercises the edit dialog's empty-list rejection, but never opens the create dialog or invokes its create handler. The mocked create mutation also does not record its arguments.",
+            "failureScenario": "If the Create dialog omits the host-scope controls or creates a listed key without passing host_scope and allowed_hosts, this test still passes. The third acceptance criterion's create behavior is not covered."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "frontend/tests/api-key-host-scope.test.mjs",
+          "line": 47,
+          "message": "The proxy test does not assert that PATCH forwards the request JSON body, as required by the second acceptance criterion.",
+          "confidence": 0.96,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The proxy test records the arguments passed to axios.patch but asserts neither calls[0].body nor the full forwarded body.",
+            "failureScenario": "If PATCH forwards an empty or altered body instead of the request JSON, the stub still returns the expected response and every current assertion passes."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The new CSRF checks reject some cross-origin browser requests, but they do not authenticate callers. A direct request without the optional headers can still reach the backend with the server-side privileged key.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "frontend/app/api/admin/api-keys/[keyId]/route.ts",
+          "line": 30,
+          "message": "The new PATCH route still allows unauthenticated API-key scope updates when the optional CSRF headers are absent. This is broken access control (OWASP A01:2025).",
+          "confidence": 0.94,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "PATCH rejects cross-site requests only when the optional sec-fetch-site or origin headers indicate a mismatch. It does not authenticate or authorize the caller before forwarding the request with the server-side API key.",
+            "failureScenario": "An unauthenticated caller sends a direct PATCH request without those optional headers. The checks pass and the backend receives the caller's body with the privileged X-API-Key, allowing the caller to change an API key's host scope."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 1,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": true,
+    "redWaived": "",
+    "redKind": "build",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 1,
+    "testFiles": [
+      "frontend/tests/api-key-host-scope.test.mjs"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

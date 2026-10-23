@@ -5,7 +5,7 @@
  * to automatically track all API calls with detailed metrics
  */
 
-import { apiClient as originalApiClient, ApiError, type Stats, type Host, type PackageUpdate, type HostUpdate, type PackageHost, type SecurityFeedResponse, type ListAPIKeysResponse, type CreateAPIKeyRequest, type CreateAPIKeyResponse, type ListWebhooksResponse, type WebhookConfig, type WebhookConfigCreate, type WebhookConfigUpdate, type WebhookTestResponse, type WebhookDeliveryHistory, type KernelFleetResponse, type ActivityResponse, type IngestDiagnosticsResponse, type WebhookCoverageResponse } from '../api';
+import { apiClient as originalApiClient, ApiError, type Stats, type Host, type PackageUpdate, type HostUpdate, type PackageHost, type SecurityFeedResponse, type ListAPIKeysResponse, type CreateAPIKeyRequest, type CreateAPIKeyResponse, type UpdateAPIKeyRequest, type APIKeyMetadata, type ListWebhooksResponse, type WebhookConfig, type WebhookConfigCreate, type WebhookConfigUpdate, type WebhookTestResponse, type WebhookDeliveryHistory, type KernelFleetResponse, type ActivityResponse, type IngestDiagnosticsResponse, type WebhookCoverageResponse } from '../api';
 import { withSpan } from '../telemetry';
 
 /**
@@ -185,6 +185,14 @@ class InstrumentedApiClient {
     });
   }
 
+  async updateAPIKey(keyId: number, data: UpdateAPIKeyRequest): Promise<APIKeyMetadata> {
+    return withSpan('api.call.updateAPIKey', async (span) => {
+      span.setAttribute('api.endpoint', `/api/admin/api-keys/${keyId}`);
+      span.setAttribute('api.method', 'PATCH');
+      return await originalApiClient.updateAPIKey(keyId, data);
+    });
+  }
+
   async deleteAPIKey(keyId: number): Promise<{ message: string }> {
     return withSpan('api.call.deleteAPIKey', async (span) => {
       span.setAttribute('api.endpoint', `/api/admin/api-keys/${keyId}`);
@@ -253,4 +261,4 @@ export const instrumentedApiClient = new InstrumentedApiClient();
 
 // Re-export types and error class
 export { ApiError };
-export type { Stats, Host, PackageUpdate, HostUpdate, PackageHost, SecurityFeedResponse, ListAPIKeysResponse, CreateAPIKeyRequest, CreateAPIKeyResponse, ListWebhooksResponse, WebhookConfig, WebhookConfigCreate, WebhookConfigUpdate, WebhookTestResponse, WebhookDeliveryHistory, KernelFleetResponse, ActivityResponse, IngestDiagnosticsResponse, WebhookCoverageResponse };
+export type { Stats, Host, PackageUpdate, HostUpdate, PackageHost, SecurityFeedResponse, ListAPIKeysResponse, CreateAPIKeyRequest, CreateAPIKeyResponse, UpdateAPIKeyRequest, APIKeyMetadata, ListWebhooksResponse, WebhookConfig, WebhookConfigCreate, WebhookConfigUpdate, WebhookTestResponse, WebhookDeliveryHistory, KernelFleetResponse, ActivityResponse, IngestDiagnosticsResponse, WebhookCoverageResponse };
