@@ -1,6 +1,7 @@
 """Pydantic schemas for webhook configuration endpoints."""
 
 import ipaddress
+import socket
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -27,12 +28,18 @@ def _validate_webhook_url_value(url: str) -> str:
         raise ValueError("Webhook URL must have a valid hostname")
     # Block private/reserved IP addresses to prevent SSRF
     try:
-        addr = ipaddress.ip_address(parsed.hostname)
+        addresses = [ipaddress.ip_address(parsed.hostname)]
     except ValueError:
-        # Not an IP address (it's a hostname), which is fine
-        return url
-    if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
-        raise ValueError("Webhook URL must not point to private or reserved IP addresses")
+        try:
+            addresses = [
+                ipaddress.ip_address(info[4][0])
+                for info in socket.getaddrinfo(parsed.hostname, parsed.port or None, type=socket.SOCK_STREAM)
+            ]
+        except (socket.gaierror, OSError):
+            return url
+    for addr in addresses:
+        if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
+            raise ValueError("Webhook URL must not point to private or reserved IP addresses")
     return url
 
 

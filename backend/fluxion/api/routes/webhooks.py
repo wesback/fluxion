@@ -20,6 +20,11 @@ from fluxion.schemas.webhook import (
     WebhookTestResponse,
 )
 from fluxion.services import WebhookService
+from fluxion.services.webhook_service import protect_webhook_headers
+
+
+def _redacted_headers(headers):
+    return {"[REDACTED]": "[REDACTED]"} if headers else None
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -55,7 +60,7 @@ async def create_webhook(
             url=webhook_data.url,
             enabled=webhook_data.enabled,
             event_types=webhook_data.event_types,
-            headers_json=webhook_data.headers_json,
+            headers_json=protect_webhook_headers(webhook_data.headers_json),
         )
         session.add(webhook)
         await session.commit()
@@ -69,7 +74,7 @@ async def create_webhook(
             url=webhook.url,
             enabled=webhook.enabled,
             event_types=webhook.event_types,
-            headers_json=webhook.headers_json,
+            headers_json=_redacted_headers(webhook.headers_json),
             created_at=webhook.created_at,
             updated_at=webhook.updated_at,
         )
@@ -116,7 +121,7 @@ async def list_webhooks(
                     url=w.url,
                     enabled=w.enabled,
                     event_types=w.event_types,
-                    headers_json=w.headers_json,
+                    headers_json=_redacted_headers(w.headers_json),
                     created_at=w.created_at,
                     updated_at=w.updated_at,
                 )
@@ -174,7 +179,7 @@ async def get_webhook(
             url=webhook.url,
             enabled=webhook.enabled,
             event_types=webhook.event_types,
-            headers_json=webhook.headers_json,
+            headers_json=_redacted_headers(webhook.headers_json),
             created_at=webhook.created_at,
             updated_at=webhook.updated_at,
         )
@@ -236,7 +241,7 @@ async def update_webhook(
         if webhook_data.event_types is not None:
             webhook.event_types = webhook_data.event_types
         if webhook_data.headers_json is not None:
-            webhook.headers_json = webhook_data.headers_json
+            webhook.headers_json = protect_webhook_headers(webhook_data.headers_json)
 
         webhook.updated_at = datetime.now(UTC)
 
@@ -251,7 +256,7 @@ async def update_webhook(
             url=webhook.url,
             enabled=webhook.enabled,
             event_types=webhook.event_types,
-            headers_json=webhook.headers_json,
+            headers_json=_redacted_headers(webhook.headers_json),
             created_at=webhook.created_at,
             updated_at=webhook.updated_at,
         )
