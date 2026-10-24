@@ -2,6 +2,7 @@
 
 import os
 import socket
+import httpx
 import sqlite3
 import logging
 from contextlib import contextmanager
@@ -258,8 +259,13 @@ async def test_relay_history_and_observability_redact_secret_material(tmp_path, 
                 text = secret + " Authorization " + secret
             return Response()
 
+    class FailingRelayClient(RelayClient):
+        async def post(self, url, **kwargs):
+            raise httpx.ConnectError(f"connect failed Authorization: {secret}")
+
+    relay_clients = [RelayClient()]
     relay_metrics = []
-    monkeypatch.setattr(webhook_service, "create_relay_client", lambda url: RelayClient())
+    monkeypatch.setattr(webhook_service, "create_relay_client", lambda url: relay_clients.pop(0) if relay_clients else FailingRelayClient())
     monkeypatch.setattr(webhook_service, "record_webhook_delivery", relay_metrics.append)
 
     trace_output = []
@@ -297,6 +303,25 @@ async def test_relay_history_and_observability_redact_secret_material(tmp_path, 
             history_text = str(histories[0].payload) + str(histories[0].response_body) + str(histories[0].error_message)
             assert secret not in history_text
             assert "Authorization" not in history_text
+
+            failing_row = WebhookOutbox(delivery_id="relay-redaction-failure", webhook_config_id=webhook.id,
+                                        event_type="test", payload={"Authorization": secret, "message": secret})
+            session.add(failing_row)
+            await session.commit()
+            try:
+                with caplog.at_level("DEBUG"):
+                    await WebhookService(session).relay_once()
+            except Exception as exc:
+                captured_exceptions.append(repr(exc))
+
+            all_histories = (await session.execute(select(WebhookDeliveryHistory))).scalars().all()
+            assert len(all_histories) > 1  # the success row plus every failed attempt
+            failure_text = "".join(str(h.payload) + str(h.response_body) + str(h.error_message) for h in all_histories)
+            assert secret not in failure_text
+            assert "Authorization" not in failure_text
+            assert any(h.status_code is None and h.error_message for h in all_histories), "the failing relay must record an error"
+            await session.refresh(failing_row)
+            assert failing_row.status in {WebhookOutbox.STATUS_RETRYABLE, WebhookOutbox.STATUS_DEAD}
 
     observability_text = caplog.text + repr(relay_metrics) + repr(trace_output) + repr(captured_exceptions)
     assert secret not in observability_text
