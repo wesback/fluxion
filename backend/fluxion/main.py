@@ -25,6 +25,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeout
 
 from fluxion.config import settings
 from fluxion.database import close_db, get_engine
+from fluxion.database.connection import get_sessionmaker
 from fluxion.middleware import APIKeyAuthMiddleware
 from fluxion.telemetry import (
     instrument_app,
@@ -108,6 +109,9 @@ async def lifespan(app: FastAPI):
     # Instrument SQLAlchemy
     engine = get_engine()
     instrument_sqlalchemy(engine)
+    from fluxion.services.webhook_service import protect_legacy_webhook_headers
+    async with get_sessionmaker()() as migration_session:
+        await protect_legacy_webhook_headers(migration_session)
 
     # Instrument FastAPI app
     instrument_app(app)
@@ -162,8 +166,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
     # A field validator's ValueError sits in "ctx" and is not JSON-serialisable; returning it made the response a 500.
     errors = [{key: value for key, value in error.items() if key != "ctx"} for error in exc.errors()]
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY if "/admin/webhooks" in request.url.path else status.HTTP_400_BAD_REQUEST
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=status_code,
         content={"detail": "Validation error", "errors": errors},
     )
 

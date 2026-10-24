@@ -92,9 +92,13 @@ class TestWebhookUrlValidation:
         for url, expected in cases:
             if expected is None:
                 assert WebhookConfigCreate(name="test", url=url, event_types=["kernel_update"]).url == url
+                assert WebhookConfigUpdate(url=url).url == url
             else:
-                with pytest.raises(ValueError, match=expected.replace(" ", "\\s+")):
+                pattern = expected.replace(" ", "\\s+")
+                with pytest.raises(ValueError, match=pattern):
                     WebhookConfigCreate(name="test", url=url, event_types=["kernel_update"])
+                with pytest.raises(ValueError, match=pattern):
+                    WebhookConfigUpdate(url=url)
 
     def test_webhook_destination_contract(self):
         """Real schema validation rejects DNS answers that point to private addresses."""

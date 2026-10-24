@@ -39,6 +39,7 @@ _db_query_duration: metrics.Histogram | None = None
 _package_updates_counter: metrics.Counter | None = None
 _package_batch_rows: metrics.Counter | None = None
 _package_batch_transaction: metrics.Histogram | None = None
+_webhook_delivery_counter: metrics.Counter | None = None
 _db_connections: metrics.UpDownCounter | None = None
 _pool_active: metrics.UpDownCounter | None = None
 _pool_idle: metrics.UpDownCounter | None = None
@@ -130,7 +131,7 @@ def _setup_metrics(resource: Resource) -> None:
 
 def _initialize_metrics() -> None:
     """Initialize metric instruments."""
-    global _http_request_counter, _http_request_duration
+    global _http_request_counter, _http_request_duration, _webhook_delivery_counter
     global _db_query_duration, _package_updates_counter
     global _package_batch_rows, _package_batch_transaction, _db_connections
     global _pool_active, _pool_idle, _pool_overflow, _pool_checkout_waits
@@ -177,6 +178,11 @@ def _initialize_metrics() -> None:
     _package_batch_rows = _meter.create_counter(
         name="package_batch_rows_total",
         description="Package batch rows accepted or rejected",
+        unit="1",
+    )
+    _webhook_delivery_counter = _meter.create_counter(
+        name="webhook_delivery_total",
+        description="Total webhook delivery attempts",
         unit="1",
     )
     _package_batch_transaction = _meter.create_histogram(
@@ -262,6 +268,12 @@ def record_http_request(endpoint: str, method: str, status_code: int, duration: 
                 "method": method,
             },
         )
+
+
+def record_webhook_delivery(outcome: str) -> None:
+    """Record a webhook delivery outcome without destination or header attributes."""
+    if _webhook_delivery_counter is not None and outcome in {"delivered", "failed", "destination_rejected"}:
+        _webhook_delivery_counter.add(1, attributes={"outcome": outcome})
 
 
 def record_package_update(hostname: str, count: int = 1) -> None:

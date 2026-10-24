@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.models import WebhookConfig, WebhookDeliveryHistory, WebhookOutbox
 from fluxion.services.package_classifier import is_kernel_package
-from fluxion.telemetry import get_tracer
+from fluxion.telemetry import get_tracer, record_webhook_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,20 @@ async def protect_existing_webhook_headers(session: AsyncSession, webhook: Webho
     session.add(webhook)
     await session.commit()
     return unprotect_webhook_headers(webhook.headers_json)
+
+
+async def protect_legacy_webhook_headers(session: AsyncSession) -> int:
+    """Protect all legacy plaintext headers before rows can remain readable indefinitely."""
+    result = await session.execute(select(WebhookConfig))
+    protected_count = 0
+    for webhook in result.scalars().all():
+        if webhook.headers_json and has_plaintext_webhook_headers(webhook.headers_json):
+            webhook.headers_json = protect_webhook_headers(dict(webhook.headers_json))
+            session.add(webhook)
+            protected_count += 1
+    if protected_count:
+        await session.commit()
+    return protected_count
 
 
 def redact_sensitive_text(text: str | None, webhook_headers: dict[str, str] | None = None) -> str | None:
@@ -435,6 +449,7 @@ class WebhookService:
         try:
             client_context = create_relay_client(webhook.url)
         except ValueError as e:
+            record_webhook_delivery("destination_rejected")
             await self._finish_claim(row, success=False, status_code=None, response_body=None,
                                       error_message=str(e), exhausted=True, attempt_count=row.attempt_count)
             return
@@ -465,13 +480,25 @@ class WebhookService:
                         error_message=str(e), exhausted=True, attempt_count=attempt,
                     )
                     return
-                result = await self._send_request(
-                    client, target_url, sanitize_header_values(headers), row.payload,
-                    attempt, message_body,
-                )
+                tracer = get_tracer()
+                if tracer:
+                    with tracer.start_as_current_span("webhook_relay_delivery") as span:
+                        span.set_attribute("webhook.id", webhook.id)
+                        span.set_attribute("webhook.event_type", row.event_type)
+                        span.set_attribute("webhook.attempt", attempt)
+                        result = await self._send_request(
+                            client, target_url, sanitize_header_values(headers), row.payload,
+                            attempt, message_body,
+                        )
+                else:
+                    result = await self._send_request(
+                        client, target_url, sanitize_header_values(headers), row.payload,
+                        attempt, message_body,
+                    )
                 success, status_code, response_body, error_message = result
                 await self._log_delivery(row.webhook_config_id, row.event_type, row.payload, status_code,
                                          response_body, error_message, attempt)
+                record_webhook_delivery("delivered" if success else "failed")
                 if success:
                     await self._finish_claim(row, True, status_code, response_body, error_message,
                                              exhausted=False, attempt_count=attempt)
@@ -642,11 +669,11 @@ class WebhookService:
                         )
                         await asyncio.sleep(backoff_time)
 
-                except Exception as e:
-                    error_message = f"Unexpected error: {str(e)}"
+                except Exception:
+                    error_message = "Unexpected error while sending webhook"
                     logger.error(
-                        f"Error sending webhook: webhook_id={webhook_config.id}, "
-                        f"attempt={attempt}, error={error_message}"
+                        "Error sending webhook: webhook_id=%s, attempt=%s, error=%s",
+                        webhook_config.id, attempt, error_message
                     )
 
                     # Log failed delivery
