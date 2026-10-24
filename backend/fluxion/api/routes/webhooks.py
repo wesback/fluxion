@@ -79,6 +79,9 @@ async def create_webhook(
             updated_at=webhook.updated_at,
         )
 
+    except RuntimeError:
+        await session.rollback()
+        raise
     except Exception as e:
         await session.rollback()
         logger.error(f"Error creating webhook configuration: {str(e)}", exc_info=True)
@@ -262,6 +265,9 @@ async def update_webhook(
         )
 
     except HTTPException:
+        raise
+    except RuntimeError:
+        await session.rollback()
         raise
     except Exception as e:
         await session.rollback()

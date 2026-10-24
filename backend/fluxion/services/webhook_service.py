@@ -67,16 +67,24 @@ def protect_webhook_headers(headers: dict[str, str] | None) -> dict[str, str] | 
 def unprotect_webhook_headers(headers: dict[str, str] | None) -> dict[str, str]:
     if not headers:
         return {}
-    cipher = _protection_cipher()
+    has_protected_values = any(
+        str(name).startswith(PROTECTED_PREFIX + "name:") or str(value).startswith(PROTECTED_PREFIX)
+        for name, value in headers.items()
+    )
+    cipher = _protection_cipher() if has_protected_values else None
     recovered: dict[str, str] = {}
     for stored_name, value in headers.items():
         try:
-            if stored_name.startswith(PROTECTED_PREFIX + "name:"):
-                encrypted_name = stored_name[len(PROTECTED_PREFIX + "name:"):]
+            if str(stored_name).startswith(PROTECTED_PREFIX + "name:"):
+                if cipher is None:
+                    continue
+                encrypted_name = str(stored_name)[len(PROTECTED_PREFIX + "name:"):]
                 name = cipher.decrypt(encrypted_name.encode()).decode()
             else:
-                name = stored_name
+                name = str(stored_name)
             if str(value).startswith(PROTECTED_PREFIX):
+                if cipher is None:
+                    continue
                 encrypted_value = str(value)[len(PROTECTED_PREFIX):]
                 recovered[name] = cipher.decrypt(encrypted_value.encode()).decode()
             else:
@@ -84,6 +92,28 @@ def unprotect_webhook_headers(headers: dict[str, str] | None) -> dict[str, str]:
         except Exception:
             continue
     return recovered
+
+
+def has_plaintext_webhook_headers(headers: dict[str, str] | None) -> bool:
+    if not headers:
+        return False
+    return any(
+        not str(name).startswith(PROTECTED_PREFIX) or not str(value).startswith(PROTECTED_PREFIX)
+        for name, value in headers.items()
+    )
+
+
+async def protect_existing_webhook_headers(session: AsyncSession, webhook: WebhookConfig) -> dict[str, str]:
+    """Recover legacy plaintext headers for delivery and rewrite them in protected form."""
+    if not webhook.headers_json:
+        return {}
+    if not has_plaintext_webhook_headers(webhook.headers_json):
+        return unprotect_webhook_headers(webhook.headers_json)
+    recovered = dict(webhook.headers_json)
+    webhook.headers_json = protect_webhook_headers(recovered)
+    session.add(webhook)
+    await session.commit()
+    return unprotect_webhook_headers(webhook.headers_json)
 
 
 def redact_sensitive_text(text: str | None, webhook_headers: dict[str, str] | None = None) -> str | None:
@@ -414,7 +444,7 @@ class WebhookService:
             target_url = normalize_ntfy_publish_url(webhook.url) if is_ntfy else webhook.url
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if webhook.headers_json:
-                headers.update(unprotect_webhook_headers(webhook.headers_json))
+                headers.update(await protect_existing_webhook_headers(self.session, webhook))
             message_body = None
             if is_ntfy:
                 title, priority, tags = get_ntfy_notification_metadata(row.event_type)
@@ -541,7 +571,7 @@ class WebhookService:
                     # Prepare headers
                     headers = {"Content-Type": "application/json"}
                     if webhook_config.headers_json:
-                        headers.update(unprotect_webhook_headers(webhook_config.headers_json))
+                        headers.update(await protect_existing_webhook_headers(self.session, webhook_config))
 
                     message_body: str | None = None
                     if is_ntfy:
@@ -937,7 +967,7 @@ class WebhookService:
             )
             headers = {"Content-Type": "application/json"}
             if webhook_config.headers_json:
-                headers.update(unprotect_webhook_headers(webhook_config.headers_json))
+                headers.update(await protect_existing_webhook_headers(self.session, webhook_config))
 
             request_kwargs: dict = {"headers": headers}
             if is_ntfy_webhook(webhook_config.url):
