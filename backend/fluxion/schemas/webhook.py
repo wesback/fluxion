@@ -8,6 +8,10 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+def _canonical_webhook_hostname(hostname: str) -> str:
+    return hostname.rstrip(".").encode("idna").decode("ascii").lower()
+
+
 def _validate_webhook_url_value(url: str) -> str:
     """Validate a webhook URL to prevent SSRF attacks.
 
@@ -35,9 +39,10 @@ def _validate_webhook_url_value(url: str) -> str:
         addresses = [ipaddress.ip_address(hostname)]
     except ValueError:
         try:
+            canonical_hostname = _canonical_webhook_hostname(hostname)
             addresses = [
                 ipaddress.ip_address(info[4][0])
-                for info in socket.getaddrinfo(hostname, parsed.port or None, type=socket.SOCK_STREAM)
+                for info in socket.getaddrinfo(canonical_hostname, parsed.port or None, type=socket.SOCK_STREAM)
             ]
         except (socket.gaierror, OSError):
             return url

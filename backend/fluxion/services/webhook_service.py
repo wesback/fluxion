@@ -36,6 +36,12 @@ WEBHOOK_MAX_ATTEMPTS = RELAY_MAX_ATTEMPTS
 PROTECTED_PREFIX = "fluxion-protected:v1:"
 
 
+def _canonical_hostname(hostname: str) -> str:
+    """Normalize a hostname the same way a network client does before DNS/pinning."""
+    normalized = hostname.rstrip(".").encode("idna").decode("ascii").lower()
+    return normalized
+
+
 def _protection_cipher():
     import os
     from cryptography.fernet import Fernet
@@ -94,11 +100,14 @@ def resolve_relay_destination(url: str) -> tuple[str, str]:
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ValueError("Webhook URL is not an approved destination")
+    raw_hostname = parsed.hostname
     try:
-        addresses = [ipaddress.ip_address(parsed.hostname)]
+        addresses = [ipaddress.ip_address(raw_hostname)]
+        canonical_hostname = raw_hostname
     except ValueError:
+        canonical_hostname = _canonical_hostname(raw_hostname)
         try:
-            answers = socket.getaddrinfo(parsed.hostname, parsed.port or None, type=socket.SOCK_STREAM)
+            answers = socket.getaddrinfo(canonical_hostname, parsed.port or None, type=socket.SOCK_STREAM)
             addresses = [ipaddress.ip_address(info[4][0]) for info in answers]
         except (socket.gaierror, OSError):
             raise ValueError("Webhook destination DNS resolution failed") from None
@@ -107,7 +116,7 @@ def resolve_relay_destination(url: str) -> tuple[str, str]:
     for address in addresses:
         if address.is_private or address.is_loopback or address.is_reserved or address.is_link_local:
             raise ValueError("Webhook URL must not point to private or reserved IP addresses")
-    return parsed.hostname, str(addresses[0])
+    return canonical_hostname, str(addresses[0])
 
 
 def validate_relay_destination(url: str) -> None:
@@ -122,9 +131,8 @@ class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
         self._backend = AutoBackend()
 
     async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
-        pinned_host = self.address if host == self.hostname else host
         return await self._backend.connect_tcp(
-            pinned_host, port, timeout=timeout, local_address=local_address, socket_options=socket_options
+            self.address, port, timeout=timeout, local_address=local_address, socket_options=socket_options
         )
 
     async def connect_unix_socket(self, path, timeout=None):
@@ -417,7 +425,14 @@ class WebhookService:
             for attempt in range(start_attempt, RELAY_MAX_ATTEMPTS + 1):
                 if not await self._renew_claim(row):
                     return
-                resolve_relay_destination(target_url)
+                try:
+                    resolve_relay_destination(target_url)
+                except ValueError as e:
+                    await self._finish_claim(
+                        row, success=False, status_code=None, response_body=None,
+                        error_message=str(e), exhausted=True, attempt_count=attempt,
+                    )
+                    return
                 result = await self._send_request(
                     client, target_url, sanitize_header_values(headers), row.payload,
                     attempt, message_body,
@@ -513,6 +528,7 @@ class WebhookService:
         async with create_relay_client(webhook_config.url) as client:
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
+                    resolve_relay_destination(webhook_config.url)
                     is_ntfy = is_ntfy_webhook(webhook_config.url)
                     target_url = (
                         normalize_ntfy_publish_url(webhook_config.url)
