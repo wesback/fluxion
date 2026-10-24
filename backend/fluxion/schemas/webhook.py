@@ -47,7 +47,7 @@ def _validate_webhook_url_value(url: str) -> str:
         except (socket.gaierror, OSError):
             return url
     for addr in addresses:
-        if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
+        if not addr.is_global:
             raise ValueError("Webhook URL must not point to private or reserved IP addresses")
     return url
 

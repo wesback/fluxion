@@ -1,6 +1,14 @@
 """Tests for webhook functionality."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
+
+os.environ.setdefault("WEBHOOK_SECRET_KEY", "fixture-webhook-secret-key")
+
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -11,6 +19,7 @@ from fluxion.models import WebhookConfig, WebhookDeliveryHistory
 from fluxion.models.base import Base
 from fluxion.services import WebhookService, is_kernel_package
 from fluxion.services.webhook_service import normalize_ntfy_publish_url
+
 from fluxion.services.webhook_service import (
     format_ntfy_message,
     get_ntfy_notification_metadata,
@@ -18,6 +27,17 @@ from fluxion.services.webhook_service import (
     protect_webhook_headers,
     sanitize_header_values,
 )
+
+
+def test_existing_webhook_delivery_suite_passes():
+    backend = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_webhooks.py", "-k", "not test_existing_webhook_delivery_suite_passes"],
+        cwd=backend,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.asyncio

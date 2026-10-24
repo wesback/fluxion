@@ -3,6 +3,9 @@
 import pytest
 import pytest_asyncio
 import socket
+import subprocess
+import sys
+from pathlib import Path
 import sqlalchemy as sa
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -84,6 +87,7 @@ class TestWebhookUrlValidation:
             ("http://192.168.1.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
             ("http://169.254.1.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
             ("http://240.0.0.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
+            ("http://100.64.0.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
         ]
         for url, expected in cases:
             if expected is None:
@@ -161,6 +165,18 @@ class TestWebhookUrlValidation:
         """Test None URL is accepted on update schema (no change)."""
         update = WebhookConfigUpdate(url=None)
         assert update.url is None
+
+
+
+def test_existing_webhook_validation_suite_passes():
+    backend = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_validation.py", "-k", "not test_existing_webhook_validation_suite_passes"],
+        cwd=backend,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 class AsyncOverSync:

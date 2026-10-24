@@ -46,7 +46,9 @@ def _protection_cipher():
     import os
     from cryptography.fernet import Fernet
 
-    source = os.getenv("WEBHOOK_SECRET_KEY") or os.getenv("DATABASE_URL") or "fluxion-webhook-dev-key"
+    source = os.getenv("WEBHOOK_SECRET_KEY")
+    if not source:
+        raise RuntimeError("WEBHOOK_SECRET_KEY is required to protect webhook headers")
     return Fernet(urlsafe_b64encode(sha256(source.encode()).digest()))
 
 
@@ -114,7 +116,7 @@ def resolve_relay_destination(url: str) -> tuple[str, str]:
     if not addresses:
         raise ValueError("Webhook destination DNS resolution failed")
     for address in addresses:
-        if address.is_private or address.is_loopback or address.is_reserved or address.is_link_local:
+        if not address.is_global:
             raise ValueError("Webhook URL must not point to private or reserved IP addresses")
     return canonical_hostname, str(addresses[0])
 

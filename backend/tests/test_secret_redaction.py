@@ -1,8 +1,11 @@
 """Behavior tests for webhook destination and secret protection."""
 
+import os
 import socket
 import sqlite3
 from unittest.mock import patch
+
+os.environ.setdefault("WEBHOOK_SECRET_KEY", "fixture-webhook-secret-key")
 
 import pytest
 from sqlalchemy import select
