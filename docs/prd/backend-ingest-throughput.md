@@ -2,11 +2,11 @@
 prd_id: "PRD-BACKEND-INGEST-THROUGHPUT"
 title: "Backend Ingest Throughput and Webhook Reliability"
 status: "draft"
-version: "0.2.0"
+version: "0.3.0"
 owners: ["Wesley Backelant"]
 reviewers: ["Neo", "Trinity", "Tank", "Dozer"]
 created_date: "2026-10-22"
-last_updated: "2026-10-22"
+last_updated: "2026-10-24"
 product_goal_ids: ["GOAL-001", "GOAL-002", "GOAL-003"]
 product_goal_smart_status: "deferred"
 fr_to_ac_coverage_threshold_pct: 100.0
@@ -101,7 +101,7 @@ The current deployment uses PostgreSQL 18 and Kubernetes-style replicas with SQL
   - Actor: Webhook delivery worker or relay
   - Trigger: Durable webhook intent is pending, is retryable, or encounters an API restart.
   - Expected Outcome: The relay claims bounded work, attempts delivery, records terminal outcomes, retries with backoff, and resumes pending work after restart.
-  - Acceptance Criteria: AC-010, AC-011, AC-012
+  - Acceptance Criteria: AC-010, AC-011, AC-012, AC-019
 - **FR-005: Connection-pool configuration.**
   - Actor: Platform administrator
   - Trigger: Fluxion starts one or more API replicas.
@@ -111,7 +111,7 @@ The current deployment uses PostgreSQL 18 and Kubernetes-style replicas with SQL
   - Actor: Engineering maintainer
   - Trigger: A backend change affects ingestion, database access, webhooks, or connection pooling.
   - Expected Outcome: A repeatable load test sends authenticated batch requests and reports throughput, latency, errors, pool behavior, and database utilization against a fixed setup.
-  - Acceptance Criteria: AC-016, AC-017, AC-018
+  - Acceptance Criteria: AC-016, AC-017, AC-018, AC-020
 
 ## Non-Functional Requirements
 
@@ -131,7 +131,8 @@ The current deployment uses PostgreSQL 18 and Kubernetes-style replicas with SQL
 
 - **NFR-007:** Bulk ingest and load-test endpoints must continue to require the existing API-key authentication and role behavior.
 - **NFR-008:** Webhook queue records must not write secret values from `headers_json` into plaintext delivery logs or traces.
-- **NFR-009:** Load-test credentials and generated API keys must be injected through environment variables or secrets and must not be committed.
+- **NFR-009:** Load-test credentials and generated API keys must be injected through environment variables or secrets and must not be committed. The load runner must refuse to start when a supplied credential or target URL identifies a production environment.
+- **NFR-018:** Webhook destination URLs must be validated with the existing webhook URL validator before each delivery attempt and must reject loopback, link-local, private, reserved, and cloud-metadata addresses.
 
 ### Scalability and Elasticity
 
@@ -241,7 +242,7 @@ flowchart LR
 - **AC-014:** Given a database connection becomes unavailable, when the pool pre-ping detects it, then the API replaces the stale connection and a subsequent valid request succeeds.
   - Covers: FR-005
   - Status: Not Started
-- **AC-015:** Given every configured database connection is occupied for longer than the pool checkout timeout, when another request arrives, then the API returns a bounded pool-error response instead of waiting indefinitely and emits checkout-wait metrics.
+- **AC-015:** Given every configured database connection is occupied for longer than the pool checkout timeout, when another request arrives, then the API returns HTTP 503 with the body `{"detail":"Database connection pool exhausted"}` after the checkout timeout instead of waiting indefinitely, includes no database error or stack text in the response, and emits checkout-wait metrics.
   - Covers: FR-005
   - Status: Not Started
 - **AC-016:** Given the standard load profile executes for 10 minutes against the fixed 1,000-host and 1,000,000-row data set, then the runner produces request count, package count, throughput, HTTP error count, p50 latency, p95 latency, p99 latency, pool waits, and database utilization in machine-readable JSON and human-readable summary output.
@@ -250,7 +251,13 @@ flowchart LR
 - **AC-017:** Given the standard profile is run before and after the implementation, then the post-change p95 latency is at least 30 percent lower or a documented risk waiver records why the target is not met.
   - Covers: FR-006
   - Status: Not Started
-- **AC-018:** Given the standard profile is run twice with identical parameters, then the resulting JSON reports the same configuration and test data version and no test-only package data remains after cleanup.
+- **AC-018:** Given the standard profile is run twice with identical parameters, then the resulting JSON reports the same configuration and test data version and no test-only package data remains after cleanup, where cleanup removes generated package fixtures by the transaction identity that created them.
+  - Covers: FR-006
+  - Status: Not Started
+- **AC-019:** Given a webhook configuration whose URL resolves to a loopback, link-local, private, reserved, or cloud-metadata address, when the relay would deliver to it, then the delivery makes zero HTTP requests and is recorded as failed with a destination-rejected reason, and a configuration with a public address is delivered normally.
+  - Covers: FR-004
+  - Status: Not Started
+- **AC-020:** Given a load-runner invocation whose credential or target URL identifies a production environment, when the runner starts, then it exits with an error before sending any request, and an invocation with test-environment values starts normally.
   - Covers: FR-006
   - Status: Not Started
 
@@ -263,9 +270,9 @@ flowchart LR
 | FR-001 | AC-001, AC-002, AC-003 |
 | FR-002 | AC-004, AC-005, AC-006 |
 | FR-003 | AC-007, AC-008, AC-009 |
-| FR-004 | AC-010, AC-011, AC-012 |
+| FR-004 | AC-010, AC-011, AC-012, AC-019 |
 | FR-005 | AC-013, AC-014, AC-015 |
-| FR-006 | AC-016, AC-017, AC-018 |
+| FR-006 | AC-016, AC-017, AC-018, AC-020 |
 
 Coverage formula: `(count of FR rows with one or more AC links / count of FR rows) * 100`.
 
