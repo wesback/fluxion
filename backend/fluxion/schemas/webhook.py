@@ -21,19 +21,23 @@ def _validate_webhook_url_value(url: str) -> str:
         ValueError: If the URL uses an unsupported scheme, has no hostname,
                     or points to a private/reserved IP address.
     """
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+    except ValueError:
+        raise ValueError("Webhook URL must have a valid hostname") from None
     if parsed.scheme not in ("http", "https"):
         raise ValueError("Webhook URL must use http or https scheme")
-    if not parsed.hostname:
+    if not hostname:
         raise ValueError("Webhook URL must have a valid hostname")
     # Block private/reserved IP addresses to prevent SSRF
     try:
-        addresses = [ipaddress.ip_address(parsed.hostname)]
+        addresses = [ipaddress.ip_address(hostname)]
     except ValueError:
         try:
             addresses = [
                 ipaddress.ip_address(info[4][0])
-                for info in socket.getaddrinfo(parsed.hostname, parsed.port or None, type=socket.SOCK_STREAM)
+                for info in socket.getaddrinfo(hostname, parsed.port or None, type=socket.SOCK_STREAM)
             ]
         except (socket.gaierror, OSError):
             return url

@@ -12,6 +12,7 @@ from hashlib import sha256
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
+import httpcore
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,9 +51,7 @@ def protect_webhook_headers(headers: dict[str, str] | None) -> dict[str, str] | 
     protected: dict[str, str] = {}
     for name, value in headers.items():
         protected_name = PROTECTED_PREFIX + "name:" + cipher.encrypt(str(name).encode()).decode()
-        protected_value = str(value)
-        if not protected_value.startswith(PROTECTED_PREFIX):
-            protected_value = PROTECTED_PREFIX + cipher.encrypt(protected_value.encode()).decode()
+        protected_value = PROTECTED_PREFIX + cipher.encrypt(str(value).encode()).decode()
         protected[protected_name] = protected_value
     return protected
 
@@ -91,7 +90,7 @@ def redact_sensitive_text(text: str | None, webhook_headers: dict[str, str] | No
     return redacted
 
 
-def validate_relay_destination(url: str) -> None:
+def resolve_relay_destination(url: str) -> tuple[str, str]:
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ValueError("Webhook URL is not an approved destination")
@@ -99,12 +98,44 @@ def validate_relay_destination(url: str) -> None:
         addresses = [ipaddress.ip_address(parsed.hostname)]
     except ValueError:
         try:
-            addresses = [ipaddress.ip_address(info[4][0]) for info in socket.getaddrinfo(parsed.hostname, parsed.port or None, type=socket.SOCK_STREAM)]
+            answers = socket.getaddrinfo(parsed.hostname, parsed.port or None, type=socket.SOCK_STREAM)
+            addresses = [ipaddress.ip_address(info[4][0]) for info in answers]
         except (socket.gaierror, OSError):
             raise ValueError("Webhook destination DNS resolution failed") from None
+    if not addresses:
+        raise ValueError("Webhook destination DNS resolution failed")
     for address in addresses:
         if address.is_private or address.is_loopback or address.is_reserved or address.is_link_local:
             raise ValueError("Webhook URL must not point to private or reserved IP addresses")
+    return parsed.hostname, str(addresses[0])
+
+
+def validate_relay_destination(url: str) -> None:
+    resolve_relay_destination(url)
+
+
+class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self, hostname: str, address: str):
+        from httpcore._backends.auto import AutoBackend
+        self.hostname = hostname
+        self.address = address
+        self._backend = AutoBackend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        pinned_host = self.address if host == self.hostname else host
+        return await self._backend.connect_tcp(
+            pinned_host, port, timeout=timeout, local_address=local_address, socket_options=socket_options
+        )
+
+    async def connect_unix_socket(self, path, timeout=None):
+        return await self._backend.connect_unix_socket(path, timeout=timeout)
+
+
+def create_relay_client(url: str) -> httpx.AsyncClient:
+    hostname, address = resolve_relay_destination(url)
+    transport = httpx.AsyncHTTPTransport(trust_env=False)
+    transport._pool._network_backend = _PinnedNetworkBackend(hostname, address)
+    return httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT, transport=transport)
 
 
 
@@ -362,13 +393,13 @@ class WebhookService:
 
         start_attempt = row.attempt_count + 1
         try:
-            validate_relay_destination(webhook.url)
+            client_context = create_relay_client(webhook.url)
         except ValueError as e:
             await self._finish_claim(row, success=False, status_code=None, response_body=None,
                                       error_message=str(e), exhausted=True, attempt_count=row.attempt_count)
             return
 
-        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+        async with client_context as client:
             is_ntfy = is_ntfy_webhook(webhook.url)
             target_url = normalize_ntfy_publish_url(webhook.url) if is_ntfy else webhook.url
             headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -386,6 +417,7 @@ class WebhookService:
             for attempt in range(start_attempt, RELAY_MAX_ATTEMPTS + 1):
                 if not await self._renew_claim(row):
                     return
+                resolve_relay_destination(target_url)
                 result = await self._send_request(
                     client, target_url, sanitize_header_values(headers), row.payload,
                     attempt, message_body,
@@ -478,7 +510,7 @@ class WebhookService:
         except ValueError as e:
             return False, None, None, str(e)
 
-        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+        async with create_relay_client(webhook_config.url) as client:
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
                     is_ntfy = is_ntfy_webhook(webhook_config.url)
@@ -664,6 +696,28 @@ class WebhookService:
                 headers_json = webhook.headers_json
             response_body = redact_sensitive_text(response_body, headers_json)
             error_message = redact_sensitive_text(error_message, headers_json)
+            sensitive = unprotect_webhook_headers(headers_json)
+
+            def redact_payload(value):
+                if isinstance(value, dict):
+                    return {
+                        ("[REDACTED]" if key in sensitive else key):
+                        redact_payload(item)
+                        for key, item in value.items()
+                    }
+                if isinstance(value, list):
+                    return [redact_payload(item) for item in value]
+                if isinstance(value, str):
+                    redacted = value
+                    for name, secret in sensitive.items():
+                        if name:
+                            redacted = redacted.replace(name, "[REDACTED]")
+                        if secret:
+                            redacted = redacted.replace(secret, "[REDACTED]")
+                    return redacted
+                return value
+
+            payload = redact_payload(payload)
             history = WebhookDeliveryHistory(
                 webhook_config_id=webhook_config_id,
                 event_type=event_type,
@@ -857,7 +911,7 @@ class WebhookService:
         except ValueError as e:
             return False, None, None, str(e), 0
 
-        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+        async with create_relay_client(webhook_config.url) as client:
             target_url = (
                 normalize_ntfy_publish_url(webhook_config.url)
                 if is_ntfy_webhook(webhook_config.url)

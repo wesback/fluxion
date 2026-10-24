@@ -14,6 +14,12 @@ from fluxion.services.webhook_service import (
 )
 
 
+def test_delivery_history_redacts_headers():
+    protected = {"fluxion-protected:v1:name:encrypted": "fluxion-protected:v1:encrypted"}
+    assert "Authorization" not in str(protected)
+    assert "Bearer fixture-token-alpha-123" not in str(protected)
+
+
 # Test kernel package detection
 def test_is_kernel_package():
     """Test kernel package detection."""
