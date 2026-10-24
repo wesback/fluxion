@@ -22,6 +22,7 @@ DEPENDENCY_SNAPSHOT = {
     "pydantic-settings": {"version": "2.16.0", "prerelease": False, "requires_python": ">=3.11"},
     "bcrypt": {"version": "5.0.0", "prerelease": False, "requires_python": ">=3.8"},
     "httpx": {"version": "0.28.1", "prerelease": False, "requires_python": ">=3.8"},
+    "cryptography": {"version": "46.0.7", "prerelease": False, "requires_python": ">=3.8"},
     "opentelemetry-api": {"version": "1.45.1", "prerelease": False, "requires_python": ">=3.10"},
     "opentelemetry-sdk": {"version": "1.45.1", "prerelease": False, "requires_python": ">=3.10"},
     "opentelemetry-instrumentation-fastapi": {
@@ -85,9 +86,7 @@ def _canonical_name(name: str) -> str:
 
 def _requirements(lines: list[str]) -> dict[str, Requirement]:
     parsed = [
-        Requirement(line)
-        for line in lines
-        if line.strip() and not line.lstrip().startswith("#")
+        Requirement(line) for line in lines if line.strip() and not line.lstrip().startswith("#")
     ]
     return {_canonical_name(requirement.name): requirement for requirement in parsed}
 
