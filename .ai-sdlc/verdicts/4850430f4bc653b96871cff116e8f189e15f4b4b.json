@@ -1,0 +1,319 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 131,
+  "branch": "ai-sdlc/issue-131",
+  "commitSha": "4850430f4bc653b96871cff116e8f189e15f4b4b",
+  "round": 2,
+  "pipelineVersion": "f97c2ad-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The security fixes for the publicly derivable key and shared address space are present. The previously reported production relay, observability, and persisted-history test gaps remain.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 43,
+          "message": "The named destination test still does not exercise production relay delivery or prove it sends zero requests when the relay's DNS recheck rejects a destination.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "`test_ssrf_destination_rejection` calls `WebhookService.test_webhook`; it does not exercise the production outbox path in `_relay_claimed_row`.",
+            "failureScenario": "If `_relay_claimed_row` stops rechecking DNS before sending, this test still passes because it only exercises `test_webhook`. A background relay could then send a request to a private destination, violating the destination criterion."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 84,
+          "message": "The named secret-redaction test still omits assertions over captured logs, metrics, exceptions, traces, and relay errors required by the criterion.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "`test_webhook_secret_redaction_contract` checks stored configuration and outbound headers through `test_webhook`, but captures no logs, metrics, exceptions, traces, or relay errors.",
+            "failureScenario": "If relay or telemetry code emits the fixture secret or `Authorization` header name, this test still passes. The M-08 observability redaction requirement is therefore not verified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 111,
+          "message": "The named history test still bypasses production relay delivery, so it cannot verify that the relay persists only redacted delivery history.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "`test_secret_fixture_never_in_history` invokes `_log_delivery` directly instead of delivering through the production relay and then inspecting persisted history.",
+            "failureScenario": "If production relay delivery stops persisting redacted history, this test still passes because it directly calls the history helper. The delivery-history criterion remains unproven."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The latest delta closes the shared-address validation gap and removes the source-visible fallback encryption key. The previously reported production relay, observability, and history test gaps remain.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 43,
+          "message": "The destination criterion remains unproven for production relay delivery: the named test checks only `test_webhook`, not the outbox relay and its zero-request behavior.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "`test_ssrf_destination_rejection` calls `WebhookService.test_webhook`; it does not exercise the production outbox relay path in `_relay_claimed_row`.",
+            "failureScenario": "If `_relay_claimed_row` stops checking DNS before sending, this test still passes while the outbox relay can send a request to a rejected destination."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 84,
+          "message": "The secret-redaction criterion still lacks assertions over captured observability output and relay errors, as required by M-08.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "`test_webhook_secret_redaction_contract` checks stored configuration and headers sent by `test_webhook`, but captures no logs, metrics, exceptions, traces, or relay errors.",
+            "failureScenario": "If relay delivery or telemetry records the `Authorization` header name or fixture secret, the test still passes, leaving the secret-redaction criterion unverified (OWASP A09:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 111,
+          "message": "The history criterion remains unproven through the production relay path; the named test directly calls `_log_delivery` instead of delivering and then inspecting persisted history.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "`test_secret_fixture_never_in_history` calls `_log_delivery` directly rather than triggering production relay delivery.",
+            "failureScenario": "If production relay delivery stops persisting redacted history, this test still passes because it invokes the history helper directly."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 4,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The shared-address destination check and configured-key requirement are fixed in this round. Existing stored credentials remain plaintext, and the previously reported relay-path, observability, and history test gaps remain.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 60,
+          "message": "Existing webhook configurations are not converted to protected form. Protect or migrate stored headers so credentials already present at upgrade are not left plaintext.",
+          "confidence": 0.96,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "Existing webhook rows can contain plaintext header names and values. unprotect_webhook_headers returns those values unchanged, and no migration or rewrite protects existing rows.",
+            "failureScenario": "After upgrading an installation with an existing Authorization header, its value remains readable in the database until that header is replaced. This violates the protected-storage requirement (OWASP A04:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 25,
+          "message": "The destination test still does not exercise the production outbox relay path or prove zero requests there, as required by the destination criterion.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_ssrf_destination_rejection calls WebhookService.test_webhook; it does not exercise the production outbox relay path in _relay_claimed_row.",
+            "failureScenario": "If the outbox relay stops checking the destination before sending, this test still passes, so a rejected private destination could receive a relay request."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 48,
+          "message": "The named secret-redaction test still does not check captured logs, metrics, exceptions, traces, or relay errors for secret material.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_webhook_secret_redaction_contract checks persisted headers and outbound request headers, but captures no logs, metrics, exceptions, or traces and does not inspect relay errors.",
+            "failureScenario": "If telemetry or a relay error records the Authorization header name or fixture secret, this test still passes despite the secret-redaction criterion."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 83,
+          "message": "The history test still bypasses production relay delivery and cannot prove the relay persists only redacted delivery history.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_secret_fixture_never_in_history calls _log_delivery directly instead of exercising production relay delivery.",
+            "failureScenario": "If relay delivery stops persisting redacted history, this test still passes because it invokes the history helper directly."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 4,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/tests/test_secret_redaction.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_dependency_versions.py",
+      "backend/tests/test_secret_redaction.py",
+      "backend/tests/test_validation.py",
+      "backend/tests/test_webhooks.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

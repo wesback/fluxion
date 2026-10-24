@@ -1,0 +1,264 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 131,
+  "branch": "ai-sdlc/issue-131",
+  "commitSha": "512521a81519a1a57a03ffd3b6443557925d0150",
+  "round": 1,
+  "pipelineVersion": "d128747-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The connection pin can be missed when an internationalized hostname is normalized before the backend compares it, leaving a DNS rebinding path. The added tests also remain helper-level checks and do not prove the specified route, relay, or delivery-history behavior.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 112,
+          "message": "The DNS pin is bypassable when HTTPX normalizes the hostname differently from parsed.hostname. Canonicalize both values identically before comparison and ensure the connection uses the validated address.",
+          "confidence": 0.85,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "create_relay_client saves parsed.hostname as the pin, while HTTPX normalizes internationalized hostnames before passing them to _PinnedNetworkBackend.connect_tcp. The string comparison can therefore fail, causing the backend to connect using the hostname and resolve it again.",
+            "failureScenario": "A controlled internationalized hostname resolves to a public IP during validation, then to a private IP when the backend resolves it for connection. The comparison fails, the relay connects to the private address, and the destination check is bypassed (OWASP A10:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 17,
+          "message": "The named behavior tests still do not exercise the production route and relay paths required by the acceptance criteria. In particular, the SSRF test never sends through the relay, and the history tests never persist or inspect delivery history.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_ssrf_destination_rejection calls validate_relay_destination directly; its CountingClient is never used. The secret contract tests call protection and redaction helpers directly, and test_secret_fixture_never_in_history never invokes the relay or writes delivery history. test_delivery_history_redacts_headers similarly checks only a hard-coded dictionary.",
+            "failureScenario": "The relay can stop using the destination validator or persist unredacted delivery history while these tests still pass, so the acceptance criteria's real relay, route, and history behaviors remain unverified."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The address pinning fix still has a DNS rebinding path for internationalized hostnames. The added destination, secret, and history tests mostly exercise helpers or constructed data rather than the production relay and persistence paths.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 125,
+          "message": "The pinned connection can be bypassed for internationalized hostnames because the backend compares the raw parsed hostname with HTTPX's IDNA-normalized hostname. Normalize both names consistently or pin the address independently of that comparison.",
+          "confidence": 0.87,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "resolve_relay_destination validates the Unicode hostname and returns it for comparison. HTTPX converts internationalized hostnames to IDNA ASCII before connect_tcp, so the comparison can fail and the backend falls back to resolving the hostname again.",
+            "failureScenario": "A hostname such as `bücher.example` resolves to a public IP during validation and to a private IP during HTTPX's later lookup. Because the ASCII hostname does not equal the Unicode hostname, the request connects to the private address. This leaves DNS rebinding possible (OWASP A10:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 30,
+          "message": "The named SSRF test does not exercise the production relay path or its counting fake HTTP client, so it cannot prove that a rejected destination receives zero requests.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "`test_ssrf_destination_rejection` calls only `validate_relay_destination`; its `CountingClient` is never instantiated, and no relay delivery method runs.",
+            "failureScenario": "If `_relay_claimed_row` stops checking the destination or sends a request after validation fails, this test still passes. The destination acceptance criterion requires exercising relay delivery and asserting zero requests."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 36,
+          "message": "The named secret and history tests do not exercise configuration persistence, outbound delivery, captured logs or telemetry, or persisted delivery history, so the acceptance criteria they name remain unproven.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "`test_webhook_secret_redaction_contract` tests only `protect_webhook_headers`, `unprotect_webhook_headers`, and `redact_sensitive_text`; `test_secret_fixture_never_in_history` also calls only helpers. The added history test in `test_webhooks.py` checks a locally constructed dictionary.",
+            "failureScenario": "If the webhook route persists plaintext headers or `_log_delivery` stops redacting delivery history, all these tests still pass. The secret and history criteria require the real route, relay service, and persisted fields to be exercised."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The network backend's exact hostname comparison can miss HTTPX's IDNA canonicalization and fall back to a fresh DNS lookup. The secret-redaction test exercises helpers only, leaving the named route, persistence, relay, and observability behavior unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 125,
+          "message": "The connection pin can be bypassed when HTTPX canonicalizes a hostname differently from urlsplit. Normalize hostnames to the same IDNA form before comparing and pinning.",
+          "confidence": 0.89,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The relay resolves and validates parsed.hostname, then pins the connection only when httpcore's host string exactly equals that value. HTTPX can convert a Unicode hostname to its IDNA ASCII form before passing it to the network backend, so the equality check can miss and AutoBackend will resolve the hostname again.",
+            "failureScenario": "A webhook uses an internationalized hostname whose Unicode form resolves to a public IP during validation. If its ASCII IDNA form resolves to a private IP when AutoBackend connects, the comparison fails and the relay connects to that private address. This leaves the SSRF check vulnerable to DNS rebinding (OWASP A10:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 34,
+          "message": "The named secret-redaction test still does not exercise the production route and relay paths specified by the criterion, so it passes if those paths persist or expose the secret.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The named secret-redaction test calls protect_webhook_headers, unprotect_webhook_headers, and redact_sensitive_text directly. It does not exercise the webhook route, persistence, relay delivery, or captured logs and telemetry required by the acceptance criterion.",
+            "failureScenario": "If the route stops protecting headers before persistence, this test still passes because it directly calls the protection helper. The same test also cannot detect the fixture secret appearing in route logs, relay errors, or delivery history."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 4,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/tests/test_secret_redaction.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_secret_redaction.py",
+      "backend/tests/test_validation.py",
+      "backend/tests/test_webhooks.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

@@ -1,19 +1,24 @@
 """Webhook service for sending notifications on package updates."""
 
 import asyncio
+import ipaddress
 import logging
+import socket
 import time
 import uuid
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
+import httpcore
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fluxion.models import WebhookConfig, WebhookDeliveryHistory, WebhookOutbox
 from fluxion.services.package_classifier import is_kernel_package
-from fluxion.telemetry import get_tracer
+from fluxion.telemetry import get_tracer, record_webhook_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +32,165 @@ RELAY_MAX_ATTEMPTS = 3
 WEBHOOK_CLAIM_LIMIT = RELAY_CLAIM_LIMIT
 WEBHOOK_LEASE_SECONDS = RELAY_LEASE_SECONDS
 WEBHOOK_MAX_ATTEMPTS = RELAY_MAX_ATTEMPTS
+
+PROTECTED_PREFIX = "fluxion-protected:v1:"
+
+
+def _canonical_hostname(hostname: str) -> str:
+    """Normalize a hostname the same way a network client does before DNS/pinning."""
+    normalized = hostname.rstrip(".").encode("idna").decode("ascii").lower()
+    return normalized
+
+
+def _protection_cipher():
+    import os
+    from cryptography.fernet import Fernet
+
+    source = os.getenv("WEBHOOK_SECRET_KEY")
+    if not source:
+        raise RuntimeError("WEBHOOK_SECRET_KEY is required to protect webhook headers")
+    return Fernet(urlsafe_b64encode(sha256(source.encode()).digest()))
+
+
+def protect_webhook_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
+    if headers is None:
+        return None
+    cipher = _protection_cipher()
+    protected: dict[str, str] = {}
+    for name, value in headers.items():
+        protected_name = PROTECTED_PREFIX + "name:" + cipher.encrypt(str(name).encode()).decode()
+        protected_value = PROTECTED_PREFIX + cipher.encrypt(str(value).encode()).decode()
+        protected[protected_name] = protected_value
+    return protected
+
+
+def unprotect_webhook_headers(headers: dict[str, str] | None) -> dict[str, str]:
+    if not headers:
+        return {}
+    has_protected_values = any(
+        str(name).startswith(PROTECTED_PREFIX + "name:") or str(value).startswith(PROTECTED_PREFIX)
+        for name, value in headers.items()
+    )
+    cipher = _protection_cipher() if has_protected_values else None
+    recovered: dict[str, str] = {}
+    for stored_name, value in headers.items():
+        try:
+            if str(stored_name).startswith(PROTECTED_PREFIX + "name:"):
+                if cipher is None:
+                    continue
+                encrypted_name = str(stored_name)[len(PROTECTED_PREFIX + "name:"):]
+                name = cipher.decrypt(encrypted_name.encode()).decode()
+            else:
+                name = str(stored_name)
+            if str(value).startswith(PROTECTED_PREFIX):
+                if cipher is None:
+                    continue
+                encrypted_value = str(value)[len(PROTECTED_PREFIX):]
+                recovered[name] = cipher.decrypt(encrypted_value.encode()).decode()
+            else:
+                recovered[name] = str(value)
+        except Exception:
+            continue
+    return recovered
+
+
+def has_plaintext_webhook_headers(headers: dict[str, str] | None) -> bool:
+    if not headers:
+        return False
+    return any(
+        not str(name).startswith(PROTECTED_PREFIX) or not str(value).startswith(PROTECTED_PREFIX)
+        for name, value in headers.items()
+    )
+
+
+async def protect_existing_webhook_headers(session: AsyncSession, webhook: WebhookConfig) -> dict[str, str]:
+    """Recover legacy plaintext headers for delivery and rewrite them in protected form."""
+    if not webhook.headers_json:
+        return {}
+    if not has_plaintext_webhook_headers(webhook.headers_json):
+        return unprotect_webhook_headers(webhook.headers_json)
+    recovered = dict(webhook.headers_json)
+    webhook.headers_json = protect_webhook_headers(recovered)
+    session.add(webhook)
+    await session.commit()
+    return unprotect_webhook_headers(webhook.headers_json)
+
+
+async def protect_legacy_webhook_headers(session: AsyncSession) -> int:
+    """Protect all legacy plaintext headers before rows can remain readable indefinitely."""
+    result = await session.execute(select(WebhookConfig))
+    protected_count = 0
+    for webhook in result.scalars().all():
+        if webhook.headers_json and has_plaintext_webhook_headers(webhook.headers_json):
+            webhook.headers_json = protect_webhook_headers(dict(webhook.headers_json))
+            session.add(webhook)
+            protected_count += 1
+    if protected_count:
+        await session.commit()
+    return protected_count
+
+
+def redact_sensitive_text(text: str | None, webhook_headers: dict[str, str] | None = None) -> str | None:
+    if text is None:
+        return None
+    redacted = text
+    for name, value in unprotect_webhook_headers(webhook_headers).items():
+        if name:
+            redacted = redacted.replace(name, "[REDACTED]")
+        if value:
+            redacted = redacted.replace(value, "[REDACTED]")
+    return redacted
+
+
+def resolve_relay_destination(url: str) -> tuple[str, str]:
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("Webhook URL is not an approved destination")
+    raw_hostname = parsed.hostname
+    try:
+        addresses = [ipaddress.ip_address(raw_hostname)]
+        canonical_hostname = raw_hostname
+    except ValueError:
+        canonical_hostname = _canonical_hostname(raw_hostname)
+        try:
+            answers = socket.getaddrinfo(canonical_hostname, parsed.port or None, type=socket.SOCK_STREAM)
+            addresses = [ipaddress.ip_address(info[4][0]) for info in answers]
+        except (socket.gaierror, OSError):
+            raise ValueError("Webhook destination DNS resolution failed") from None
+    if not addresses:
+        raise ValueError("Webhook destination DNS resolution failed")
+    for address in addresses:
+        if not address.is_global:
+            raise ValueError("Webhook URL must not point to private or reserved IP addresses")
+    return canonical_hostname, str(addresses[0])
+
+
+def validate_relay_destination(url: str) -> None:
+    resolve_relay_destination(url)
+
+
+class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self, hostname: str, address: str):
+        from httpcore._backends.auto import AutoBackend
+        self.hostname = hostname
+        self.address = address
+        self._backend = AutoBackend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        return await self._backend.connect_tcp(
+            self.address, port, timeout=timeout, local_address=local_address, socket_options=socket_options
+        )
+
+    async def connect_unix_socket(self, path, timeout=None):
+        return await self._backend.connect_unix_socket(path, timeout=timeout)
+
+
+def create_relay_client(url: str) -> httpx.AsyncClient:
+    hostname, address = resolve_relay_destination(url)
+    transport = httpx.AsyncHTTPTransport(trust_env=False)
+    transport._pool._network_backend = _PinnedNetworkBackend(hostname, address)
+    return httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT, transport=transport)
+
 
 
 def normalize_ntfy_publish_url(url: str) -> str:
@@ -79,10 +243,7 @@ def sanitize_header_values(headers: dict[str, str]) -> dict[str, str]:
         except UnicodeEncodeError:
             ascii_value = header_value.encode("ascii", errors="ignore").decode("ascii").strip()
             header_value = ascii_value or "notification"
-            logger.warning(
-                "Sanitized non-ASCII webhook header value: key=%s",
-                header_key,
-            )
+            logger.warning("Sanitized a non-ASCII webhook header value")
 
         sanitized_headers[header_key] = header_value
 
@@ -285,12 +446,20 @@ class WebhookService:
             return
 
         start_attempt = row.attempt_count + 1
-        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+        try:
+            client_context = create_relay_client(webhook.url)
+        except ValueError as e:
+            record_webhook_delivery("destination_rejected")
+            await self._finish_claim(row, success=False, status_code=None, response_body=None,
+                                      error_message=str(e), exhausted=True, attempt_count=row.attempt_count)
+            return
+
+        async with client_context as client:
             is_ntfy = is_ntfy_webhook(webhook.url)
             target_url = normalize_ntfy_publish_url(webhook.url) if is_ntfy else webhook.url
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if webhook.headers_json:
-                headers.update(webhook.headers_json)
+                headers.update(await protect_existing_webhook_headers(self.session, webhook))
             message_body = None
             if is_ntfy:
                 title, priority, tags = get_ntfy_notification_metadata(row.event_type)
@@ -303,13 +472,33 @@ class WebhookService:
             for attempt in range(start_attempt, RELAY_MAX_ATTEMPTS + 1):
                 if not await self._renew_claim(row):
                     return
-                result = await self._send_request(
-                    client, target_url, sanitize_header_values(headers), row.payload,
-                    attempt, message_body,
-                )
+                try:
+                    resolve_relay_destination(target_url)
+                except ValueError as e:
+                    await self._finish_claim(
+                        row, success=False, status_code=None, response_body=None,
+                        error_message=str(e), exhausted=True, attempt_count=attempt,
+                    )
+                    return
+                tracer = get_tracer()
+                if tracer:
+                    with tracer.start_as_current_span("webhook_relay_delivery") as span:
+                        span.set_attribute("webhook.id", webhook.id)
+                        span.set_attribute("webhook.event_type", row.event_type)
+                        span.set_attribute("webhook.attempt", attempt)
+                        result = await self._send_request(
+                            client, target_url, sanitize_header_values(headers), row.payload,
+                            attempt, message_body,
+                        )
+                else:
+                    result = await self._send_request(
+                        client, target_url, sanitize_header_values(headers), row.payload,
+                        attempt, message_body,
+                    )
                 success, status_code, response_body, error_message = result
                 await self._log_delivery(row.webhook_config_id, row.event_type, row.payload, status_code,
                                          response_body, error_message, attempt)
+                record_webhook_delivery("delivered" if success else "failed")
                 if success:
                     await self._finish_claim(row, True, status_code, response_body, error_message,
                                              exhausted=False, attempt_count=attempt)
@@ -390,10 +579,15 @@ class WebhookService:
             Tuple of (success, status_code, response_body, error_message)
         """
         tracer = get_tracer()
+        try:
+            validate_relay_destination(webhook_config.url)
+        except ValueError as e:
+            return False, None, None, str(e)
 
-        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+        async with create_relay_client(webhook_config.url) as client:
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
+                    resolve_relay_destination(webhook_config.url)
                     is_ntfy = is_ntfy_webhook(webhook_config.url)
                     target_url = (
                         normalize_ntfy_publish_url(webhook_config.url)
@@ -404,7 +598,7 @@ class WebhookService:
                     # Prepare headers
                     headers = {"Content-Type": "application/json"}
                     if webhook_config.headers_json:
-                        headers.update(webhook_config.headers_json)
+                        headers.update(await protect_existing_webhook_headers(self.session, webhook_config))
 
                     message_body: str | None = None
                     if is_ntfy:
@@ -475,11 +669,11 @@ class WebhookService:
                         )
                         await asyncio.sleep(backoff_time)
 
-                except Exception as e:
-                    error_message = f"Unexpected error: {str(e)}"
+                except Exception:
+                    error_message = "Unexpected error while sending webhook"
                     logger.error(
-                        f"Error sending webhook: webhook_id={webhook_config.id}, "
-                        f"attempt={attempt}, error={error_message}"
+                        "Error sending webhook: webhook_id=%s, attempt=%s, error=%s",
+                        webhook_config.id, attempt, error_message
                     )
 
                     # Log failed delivery
@@ -544,9 +738,9 @@ class WebhookService:
         except httpx.TimeoutException:
             return False, None, None, f"Request timeout after {WEBHOOK_TIMEOUT}s"
         except httpx.RequestError as e:
-            return False, None, None, f"Request error: {str(e)}"
+            return False, None, None, "Webhook request failed"
         except Exception as e:
-            return False, None, None, f"Unexpected error: {str(e)}"
+            return False, None, None, "Webhook request failed unexpectedly"
 
     async def _log_delivery(
         self,
@@ -571,6 +765,34 @@ class WebhookService:
             attempt_number: Attempt number
         """
         try:
+            headers_json = None
+            webhook = await self.session.get(WebhookConfig, webhook_config_id)
+            if webhook is not None:
+                headers_json = webhook.headers_json
+            response_body = redact_sensitive_text(response_body, headers_json)
+            error_message = redact_sensitive_text(error_message, headers_json)
+            sensitive = unprotect_webhook_headers(headers_json)
+
+            def redact_payload(value):
+                if isinstance(value, dict):
+                    return {
+                        ("[REDACTED]" if key in sensitive else key):
+                        redact_payload(item)
+                        for key, item in value.items()
+                    }
+                if isinstance(value, list):
+                    return [redact_payload(item) for item in value]
+                if isinstance(value, str):
+                    redacted = value
+                    for name, secret in sensitive.items():
+                        if name:
+                            redacted = redacted.replace(name, "[REDACTED]")
+                        if secret:
+                            redacted = redacted.replace(secret, "[REDACTED]")
+                    return redacted
+                return value
+
+            payload = redact_payload(payload)
             history = WebhookDeliveryHistory(
                 webhook_config_id=webhook_config_id,
                 event_type=event_type,
@@ -759,8 +981,12 @@ class WebhookService:
             }
 
         start_time = time.time()
+        try:
+            validate_relay_destination(webhook_config.url)
+        except ValueError as e:
+            return False, None, None, str(e), 0
 
-        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+        async with create_relay_client(webhook_config.url) as client:
             target_url = (
                 normalize_ntfy_publish_url(webhook_config.url)
                 if is_ntfy_webhook(webhook_config.url)
@@ -768,7 +994,7 @@ class WebhookService:
             )
             headers = {"Content-Type": "application/json"}
             if webhook_config.headers_json:
-                headers.update(webhook_config.headers_json)
+                headers.update(await protect_existing_webhook_headers(self.session, webhook_config))
 
             request_kwargs: dict = {"headers": headers}
             if is_ntfy_webhook(webhook_config.url):
@@ -801,7 +1027,7 @@ class WebhookService:
                 return False, None, None, error_msg, delivery_time_ms
             except httpx.RequestError as e:
                 delivery_time_ms = int((time.time() - start_time) * 1000)
-                return False, None, None, f"Request error: {str(e)}", delivery_time_ms
+                return False, None, None, "Webhook request failed", delivery_time_ms
             except Exception as e:
                 delivery_time_ms = int((time.time() - start_time) * 1000)
-                return False, None, None, f"Unexpected error: {str(e)}", delivery_time_ms
+                return False, None, None, "Webhook request failed unexpectedly", delivery_time_ms
