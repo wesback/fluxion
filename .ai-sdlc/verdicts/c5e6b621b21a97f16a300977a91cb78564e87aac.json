@@ -1,0 +1,223 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 130,
+  "branch": "ai-sdlc/issue-130",
+  "commitSha": "c5e6b621b21a97f16a300977a91cb78564e87aac",
+  "round": 1,
+  "pipelineVersion": "d128747-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The retry test now invokes relay code, but its database fake accepts invalid lease updates, and the restart test never observes delivery attempts. Those gaps leave the named relay acceptance criteria unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_webhook_relay.py",
+          "line": 143,
+          "message": "The named relay tests still do not verify the production claim and send path against the database predicates. Exercise relay_once with a fake that enforces the update conditions, and assert HTTP attempts and persisted state for the criteria.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The retry test calls _relay_claimed_row directly on a pending row. Its RelaySession fake reports successful updates without enforcing the SQL predicates, so _renew_claim succeeds even though production requires the row to be claimed. The restart test calls claim_pending but never runs the relay or observes HTTP sends.",
+            "failureScenario": "If the relay fails to claim rows, sends terminal rows, or cannot renew a real claimed row, these tests can still pass because the fake accepts updates that PostgreSQL would reject and the restart test asserts only row statuses. The named acceptance criteria therefore remain unverified."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix adds a retry-path test that sends three mocked responses, but the tests for single in-flight delivery and bounded retries still bypass the relay behavior their acceptance criteria require.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_webhook_relay.py",
+          "line": 100,
+          "message": "The named tests still leave key acceptance behavior unverified: test_bounded_claim_and_single_inflight_delivery does not run workers or count HTTP attempts, and test_retry_bound_and_terminal_dead_letter bypasses the relay retry loop. Exercise those production paths and assert the request count, concurrency outcome, and backoff sequence.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The updated bounded-claim test calls claim_pending twice but never invokes relay_once or observes an HTTP attempt. The dead-letter test calls _finish_claim directly for three supplied attempt numbers, without exercising the retry loop or backoff.",
+            "failureScenario": "If relay_once sends the same identity from two workers, or the retry loop makes a fourth request or skips the required one- and two-second backoffs, these tests still pass. The named tests therefore do not verify the concurrency and retry-bound behaviors in their acceptance criteria."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The retry limit is not durable across process restarts, and the retry-bound test does not exercise that path. The remaining changes show no additional security vulnerability.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 268,
+          "message": "Persist failed attempts before backoff or otherwise ensure the attempt limit survives restarts. A crash during backoff leaves the retry count unchanged, so lease recovery can exceed the configured three attempts.",
+          "confidence": 0.94,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "After a failed request, the relay sleeps and continues without persisting the attempt count; the count is only written by _finish_claim on success or the final failure.",
+            "failureScenario": "If the process stops after a failed request during the backoff, the row retains its old attempt_count. After the lease expires, a restarted relay begins again at attempt 1. Repeating this can send more than three requests for one identity."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_webhook_relay.py",
+          "line": 206,
+          "message": "The previously reported test gap remains for the retry-bound criterion: this test does not exercise the relay's retry loop or prove the limit survives restart.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_retry_bound_and_terminal_dead_letter creates its own three-iteration loop and calls _finish_claim directly; it never sends requests through the relay or tests restart recovery.",
+            "failureScenario": "If the relay retries indefinitely or exceeds three attempts after a restart, this test still passes because its attempt count is fixed by the test's own range."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 2,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_webhook_relay.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
