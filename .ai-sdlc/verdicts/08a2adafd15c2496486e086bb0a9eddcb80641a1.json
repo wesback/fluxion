@@ -1,0 +1,313 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 131,
+  "branch": "ai-sdlc/issue-131",
+  "commitSha": "08a2adafd15c2496486e086bb0a9eddcb80641a1",
+  "round": 1,
+  "pipelineVersion": "f97c2ad-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The destination filter can accept shared non-public address space, and header protection uses a publicly derivable fallback key when configuration is absent.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 117,
+          "message": "The destination filter does not require addresses to be public. Shared address space such as 100.64.0.0/10 can pass the listed checks and reach the relay.",
+          "confidence": 0.94,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "resolve_relay_destination accepts an address unless Python classifies it as private, loopback, reserved, or link-local, then pins the relay connection to that address.",
+            "failureScenario": "A webhook targets 100.100.100.200 in the shared 100.64.0.0/10 range. That address can pass these checks, so the relay can send a request to a non-public destination. This leaves an SSRF path (OWASP A01:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 49,
+          "message": "The fixed fallback makes protected webhook headers decryptable with a key embedded in the source. Require a configured secret key and fail closed when it is absent.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "_protection_cipher falls back to a fixed source-visible string when WEBHOOK_SECRET_KEY and DATABASE_URL are unset, then derives the Fernet key from that string.",
+            "failureScenario": "A deployment with neither environment variable set protects configured headers using a key anyone can derive from the repository. A reader of the stored configuration can recover those credentials, defeating secret protection (OWASP A04:2025)."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 6,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The latest delta contains no code or test changes that resolve the previously reported findings. The hard-coded encryption fallback and non-public destination gap remain, as do the named relay, observability, history, and suite-test gaps.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 44,
+          "message": "The previously reported hard-coded fallback key remains. Require a secret key and fail closed when it is absent.",
+          "confidence": 0.98,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_protection_cipher uses the source-visible string `fluxion-webhook-dev-key` when WEBHOOK_SECRET_KEY and DATABASE_URL are unset, then derives the Fernet key from that string.",
+            "failureScenario": "In a deployment with neither environment variable set, a reader of the repository can derive the key and decrypt persisted webhook headers, defeating secret protection (OWASP A04:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 106,
+          "message": "The previously reported non-public address gap remains. Require resolved destinations to be globally reachable or explicitly reject shared address space.",
+          "confidence": 0.94,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "resolve_relay_destination rejects addresses classified as private, loopback, reserved, or link-local, but does not require an address to be globally reachable.",
+            "failureScenario": "A webhook resolves to 100.100.100.200 in the shared 100.64.0.0/10 range. If Python classifies it as neither private, reserved, nor link-local, validation accepts it and the pinned relay sends a request to that non-public destination (OWASP A01:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 23,
+          "message": "The previously reported destination test gap remains: the named test does not exercise the production outbox relay or prove it makes zero requests for a rejected destination.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_ssrf_destination_rejection exercises WebhookService.test_webhook; it does not run the production outbox relay path in _relay_claimed_row.",
+            "failureScenario": "If _relay_claimed_row stops checking the destination before sending, this test still passes, and the outbox relay can send a request to a rejected destination."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 48,
+          "message": "The previously reported observability test gap remains. Capture and assert the required logs, metrics, exceptions, traces, and relay errors exclude the secret material.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_webhook_secret_redaction_contract checks persisted configuration and outbound headers but does not capture logs, metrics, exceptions, traces, or relay errors.",
+            "failureScenario": "If a relay or telemetry path records the Authorization header name or fixture secret, the test still passes despite the M-08 redaction requirement (OWASP A09:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 83,
+          "message": "The previously reported history test gap remains. Exercise production relay delivery before inspecting persisted delivery-history fields.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_secret_fixture_never_in_history calls _log_delivery directly instead of exercising production relay delivery.",
+            "failureScenario": "If production relay delivery stops persisting redacted history, this test still passes because it invokes the history helper directly."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_validation.py",
+          "line": 1,
+          "message": "The previously reported existing-suite criterion gap remains: add the named validation and delivery suite cases so they run their respective test modules.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The named test_existing_webhook_validation_suite_passes and test_existing_webhook_delivery_suite_passes cases are absent from the change.",
+            "failureScenario": "A failure in an existing validation or webhook delivery test would not be detected by the acceptance criterion's named suite cases because those cases are not present to run the modules."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The previously reported shared-address SSRF path and publicly derivable fallback encryption key remain unresolved.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 106,
+          "message": "The destination filter still accepts some non-public addresses. Require resolved addresses to be globally routable before allowing relay delivery. OWASP A01:2025.",
+          "confidence": 0.95,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "resolve_relay_destination rejects addresses only when is_private, is_loopback, is_reserved, or is_link_local is true, then pins the relay connection to an accepted address.",
+            "failureScenario": "A caller configures a webhook to 100.100.100.200 in the shared 100.64.0.0/10 range. Python may classify it as neither private, reserved, nor link-local, so validation accepts it and the relay sends a request to a non-public destination. OWASP A01:2025 Broken Access Control (SSRF)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 44,
+          "message": "The source-visible fallback key remains. Require a secret key and fail closed when it is unavailable. OWASP A04:2025.",
+          "confidence": 0.98,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_protection_cipher derives its key from WEBHOOK_SECRET_KEY or DATABASE_URL, then falls back to the source-visible literal `fluxion-webhook-dev-key`.",
+            "failureScenario": "A deployment with neither environment variable set protects configured headers using a key derivable from the source. Anyone with the stored webhook configuration can decrypt those values, defeating the secret-protection requirement. OWASP A04:2025 Cryptographic Failures."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 4,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/tests/test_secret_redaction.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_dependency_versions.py",
+      "backend/tests/test_secret_redaction.py",
+      "backend/tests/test_validation.py",
+      "backend/tests/test_webhooks.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

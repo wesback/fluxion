@@ -1,0 +1,301 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 131,
+  "branch": "ai-sdlc/issue-131",
+  "commitSha": "efcca8ef0d97160951d1612358c0d59e375ed9b2",
+  "round": 0,
+  "pipelineVersion": "f97c2ad-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The destination implementation pins its outbound connection to a validated address, but the added tests do not cover the specified production route and relay behaviors. The secret and history tests also omit required observability checks or bypass production relay delivery.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 23,
+          "message": "The destination test does not prove the acceptance criterion for the production outbox relay or create/update routes. Exercise those paths and assert the specified rejection and zero-request behavior.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "`test_ssrf_destination_rejection` exercises `WebhookService.test_webhook`; it does not invoke the production outbox relay path. It also tests schema models rather than the create/update routes.",
+            "failureScenario": "If `_relay_claimed_row` stops rechecking DNS, or a create/update route stops returning HTTP 400 for a private destination, this test still passes. The destination acceptance criterion requires those paths to reject the destination and assert zero requests."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 48,
+          "message": "The secret-redaction test does not verify the required logs, metrics, exceptions, traces, or relay errors. Capture and inspect those outputs so a leak fails the test.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "`test_webhook_secret_redaction_contract` checks persisted configuration and outbound headers, but captures no logs, metrics, exceptions, or traces and does not inspect relay errors.",
+            "failureScenario": "If the fixture secret or Authorization header name is emitted in logs, telemetry, an exception, or a relay error, this test still passes. The secret-redaction criterion requires those exposures to be absent."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 83,
+          "message": "The history test bypasses the production relay path, so it cannot prove that relay delivery persists only redacted history. Exercise relay delivery before inspecting the temporary database.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "`test_secret_fixture_never_in_history` calls `_log_delivery` directly, rather than exercising production relay delivery and then inspecting the persisted history.",
+            "failureScenario": "If the production relay stops calling `_log_delivery` with redacted fields, this test still passes because it invokes the helper directly. The delivery-history criterion requires testing the production relay service."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 4,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The change adds destination checks and header protection, but the protection key has a publicly derivable fallback. The new tests also leave the background relay and required observability redaction unverified, and the named existing-suite checks are absent.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 44,
+          "message": "The fallback Fernet key is hard-coded and publicly derivable. Require a secret key for protecting webhook headers instead of silently using the literal fallback.",
+          "confidence": 0.98,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_protection_cipher derives its Fernet key from WEBHOOK_SECRET_KEY, then DATABASE_URL, and otherwise uses the literal fallback in this file.",
+            "failureScenario": "If a deployment has neither environment variable set, configured header values are encrypted with a key anyone who can read the repository can derive, so the stored values are recoverable. This defeats the secret-protection requirement (OWASP A02:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 27,
+          "message": "The SSRF test does not exercise the production outbox relay path or prove that it sends zero requests to a rejected destination.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_ssrf_destination_rejection calls WebhookService.test_webhook; it does not exercise the outbox relay path in _relay_claimed_row, which has its own DNS recheck and send logic.",
+            "failureScenario": "If _relay_claimed_row stops checking DNS before sending, this test still passes because it only tests test_webhook. The background relay could then send a request to a private destination, violating the destination criterion."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 49,
+          "message": "The named secret-redaction test does not verify the criterion's required logs, metrics, exceptions, traces, or relay errors.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "test_webhook_secret_redaction_contract checks persisted configuration and headers sent by test_webhook, but captures no logs, metrics, exceptions, or traces. The history test calls _log_delivery directly.",
+            "failureScenario": "If a relay or telemetry path records the configured Authorization header or fixture secret, these tests still pass. The criterion requires those captured observability outputs and relay errors to exclude the secret material."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_validation.py",
+          "line": 1,
+          "message": "The named suite cases required by the existing-tests criterion are missing, so the acceptance criterion's specified checks are not run.",
+          "confidence": 0.97,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The diff adds test_webhook_url_contract_table and test_webhook_destination_contract, but no test_existing_webhook_validation_suite_passes; the corresponding test_webhooks.py suite wrapper is also absent.",
+            "failureScenario": "The acceptance criterion names test_existing_webhook_validation_suite_passes and test_existing_webhook_delivery_suite_passes, but those cases are not present to run the respective existing modules. A regression in an existing webhook or validation test would not be detected by those named checks."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The relay can accept some non-public destination addresses, and secret protection has a source-visible fallback key. Both paths can expose internal services or configured webhook credentials.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 106,
+          "message": "The destination filter does not require addresses to be public. Shared IPv4 space such as 100.64.0.0/10 can pass these checks, allowing relay requests to reach non-public services.",
+          "confidence": 0.94,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "resolve_relay_destination permits an address unless is_private, is_loopback, is_reserved, or is_link_local is true. The relay then pins its HTTP connection to the accepted address.",
+            "failureScenario": "A caller configures a webhook to 100.100.100.200, an address in the shared 100.64.0.0/10 range used by Alibaba's metadata service. That address is not necessarily classified by Python as private, reserved, or link-local, so validation can accept it and the relay can send a request to it. OWASP A01:2025."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 44,
+          "message": "The fixed fallback makes protected webhook headers decryptable with a key embedded in the source. Require a secret key and fail closed when it is absent.",
+          "confidence": 0.87,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "_protection_cipher derives the Fernet key from WEBHOOK_SECRET_KEY, then DATABASE_URL, and finally the fixed string fluxion-webhook-dev-key.",
+            "failureScenario": "A deployment without WEBHOOK_SECRET_KEY and DATABASE_URL uses the fixed, source-visible fallback key. Anyone who obtains the stored webhook configuration can derive that key and decrypt the protected header names and values. OWASP A04:2025."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 4,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/tests/test_secret_redaction.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_dependency_versions.py",
+      "backend/tests/test_secret_redaction.py",
+      "backend/tests/test_validation.py",
+      "backend/tests/test_webhooks.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

@@ -2,6 +2,10 @@
 
 import pytest
 import pytest_asyncio
+import socket
+import subprocess
+import sys
+from pathlib import Path
 import sqlalchemy as sa
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -13,6 +17,7 @@ import fluxion.api.routes.updates as updates_module
 from fluxion.models.base import Base
 from fluxion.schemas.package_update import BatchPackageUpdateRequest, PackageUpdateRequest
 from fluxion.schemas.webhook import WebhookConfigCreate, WebhookConfigUpdate
+from unittest.mock import patch
 
 
 class TestHostnameValidation:
@@ -71,6 +76,38 @@ class TestHostnameValidation:
 
 class TestWebhookUrlValidation:
     """Tests for webhook URL validation."""
+
+    def test_webhook_url_contract_table(self):
+        cases = [
+            ("https://example.com/webhook", None),
+            ("https://ntfy.sh/fluxion-alerts", None),
+            ("ftp://example.com/file", "Webhook URL must use http or https scheme"),
+            ("https:///missing-host", "Webhook URL must have a valid hostname"),
+            ("http://127.0.0.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
+            ("http://192.168.1.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
+            ("http://169.254.1.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
+            ("http://240.0.0.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
+            ("http://100.64.0.1/hook", "Webhook URL must not point to private or reserved IP addresses"),
+        ]
+        for url, expected in cases:
+            if expected is None:
+                assert WebhookConfigCreate(name="test", url=url, event_types=["kernel_update"]).url == url
+                assert WebhookConfigUpdate(url=url).url == url
+            else:
+                pattern = expected.replace(" ", "\\s+")
+                with pytest.raises(ValueError, match=pattern):
+                    WebhookConfigCreate(name="test", url=url, event_types=["kernel_update"])
+                with pytest.raises(ValueError, match=pattern):
+                    WebhookConfigUpdate(url=url)
+
+    def test_webhook_destination_contract(self):
+        """Real schema validation rejects DNS answers that point to private addresses."""
+        dns_answers = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
+        with patch("fluxion.schemas.webhook.socket.getaddrinfo", return_value=dns_answers):
+            with pytest.raises(ValueError, match="private or reserved IP addresses"):
+                WebhookConfigCreate(name="test", url="https://private.example/hook", event_types=["kernel_update"])
+            with pytest.raises(ValueError, match="private or reserved IP addresses"):
+                WebhookConfigUpdate(url="https://private.example/hook")
 
     def test_valid_https_url(self):
         """Test valid HTTPS URL."""
@@ -132,6 +169,18 @@ class TestWebhookUrlValidation:
         """Test None URL is accepted on update schema (no change)."""
         update = WebhookConfigUpdate(url=None)
         assert update.url is None
+
+
+
+def test_existing_webhook_validation_suite_passes():
+    backend = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_validation.py", "-k", "not test_existing_webhook_validation_suite_passes"],
+        cwd=backend,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 class AsyncOverSync:

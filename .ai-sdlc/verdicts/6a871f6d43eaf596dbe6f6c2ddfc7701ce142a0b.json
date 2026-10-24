@@ -1,0 +1,234 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 131,
+  "branch": "ai-sdlc/issue-131",
+  "commitSha": "6a871f6d43eaf596dbe6f6c2ddfc7701ce142a0b",
+  "round": 2,
+  "pipelineVersion": "d128747-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The IDNA pinning change now connects to the validated address, closing the previously reported rebinding path. The background relay’s destination check still lacks a test that exercises that delivery path.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 40,
+          "message": "The previously reported relay-path test gap remains: the SSRF test does not exercise the production background relay path or prove its zero-request behavior.",
+          "confidence": 0.97,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_ssrf_destination_rejection calls WebhookService.test_webhook with a mocked client. It never exercises the background relay delivery path, which separately validates destinations in _relay_claimed_row before sending.",
+            "failureScenario": "If _relay_claimed_row stops checking DNS before sending, this test still passes because it only exercises test_webhook; a private destination could then receive a background relay request."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The DNS pinning change addresses the previously reported hostname-normalization bypass. The updated tests cover persistence and direct test-webhook delivery, but leave the outbox relay's DNS recheck and the required observability redaction unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 40,
+          "message": "The named SSRF test does not exercise the outbox relay path or its pre-send DNS recheck, as required by the destination criterion. A regression in relay delivery could pass this test.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "`test_ssrf_destination_rejection` invokes `WebhookService.test_webhook`, while the production outbox relay uses `_relay_claimed_row`.",
+            "failureScenario": "If `_relay_claimed_row` stops rechecking DNS before sending, this test still passes because it exercises only the separate test-webhook path; the relay could send to a newly private DNS address undetected."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 81,
+          "message": "The named secret-redaction test does not verify that header names and values stay out of captured logs, metrics, exceptions, traces, and relay errors, as required by the secret-redaction criterion.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The test checks protected database values and the outbound headers through `test_webhook`, but captures no logs, metrics, exceptions, or traces; it also does not exercise the relay error path.",
+            "failureScenario": "If relay tracing or error logging starts recording the configured Authorization name or secret, the test still passes, so the secret-redaction criterion's observability requirements are unverified."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The hostname canonicalization and unconditional address pinning address the prior DNS rebinding finding. The secret-redaction test still does not cover the required logs, metrics, exceptions, traces, or relay errors.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 49,
+          "message": "The named secret-redaction test does not verify the M-08 requirement that header names and values stay out of logs, metrics, exceptions, traces, and relay errors. Add assertions over captured observability output so a leak fails the test.",
+          "confidence": 0.99,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "`test_webhook_secret_redaction_contract` checks stored headers and the fake client's outbound headers, but does not capture logs, metrics, exceptions, or traces, or inspect relay errors.",
+            "failureScenario": "If a later change records the recovered Authorization header or fixture secret in telemetry or logs, this test still passes. The M-08 acceptance criterion requires those exposures to be absent. OWASP A09:2025."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 4,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/tests/test_secret_redaction.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_secret_redaction.py",
+      "backend/tests/test_validation.py",
+      "backend/tests/test_webhooks.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

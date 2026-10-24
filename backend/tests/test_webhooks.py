@@ -1,17 +1,67 @@
 """Tests for webhook functionality."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
+
+os.environ.setdefault("WEBHOOK_SECRET_KEY", "fixture-webhook-secret-key")
+
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 from fluxion.main import app
+from fluxion.models import WebhookConfig, WebhookDeliveryHistory
+from fluxion.models.base import Base
 from fluxion.services import WebhookService, is_kernel_package
 from fluxion.services.webhook_service import normalize_ntfy_publish_url
+
 from fluxion.services.webhook_service import (
     format_ntfy_message,
     get_ntfy_notification_metadata,
     is_ntfy_webhook,
+    protect_webhook_headers,
     sanitize_header_values,
 )
+
+
+def test_existing_webhook_delivery_suite_passes():
+    backend = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_webhooks.py", "-k", "not test_existing_webhook_delivery_suite_passes"],
+        cwd=backend,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.asyncio
+async def test_delivery_history_redacts_headers(tmp_path):
+    secret = "fixture-token-alpha-123"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/history.sqlite")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as session:
+        webhook = WebhookConfig(name="secret", url="https://public.example/hook", enabled=True,
+                                event_types=["test"],
+                                headers_json=protect_webhook_headers({"Authorization": secret}))
+        session.add(webhook)
+        await session.commit()
+        await session.refresh(webhook)
+        await WebhookService(session)._log_delivery(
+            webhook.id, "test", {"message": secret}, 204, secret, secret, 1)
+        history = (await session.execute(select(WebhookDeliveryHistory))).scalars().one()
+        serialized = str(history.payload) + str(history.response_body) + str(history.error_message)
+        assert secret not in serialized
+        assert "Authorization" not in serialized
+        assert "headers_json" not in serialized
+    await engine.dispose()
 
 
 # Test kernel package detection

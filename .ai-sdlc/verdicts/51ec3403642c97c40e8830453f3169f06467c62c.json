@@ -1,0 +1,319 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 131,
+  "branch": "ai-sdlc/issue-131",
+  "commitSha": "51ec3403642c97c40e8830453f3169f06467c62c",
+  "round": 1,
+  "pipelineVersion": "f97c2ad-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-2",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-3",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    },
+    {
+      "step": "fix-1",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The relay tests now cover DNS changes and redacted persisted history, but legacy credentials can remain plaintext indefinitely, and the named destination and observability tests still omit required production paths and outputs.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 103,
+          "message": "Existing webhook credentials remain plaintext until a relay delivery happens. Protect legacy rows during migration or another upgrade path so they are not left readable when no delivery occurs.",
+          "confidence": 0.96,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "protect_existing_webhook_headers rewrites legacy plaintext headers only when the relay calls it. No migration or other path protects existing rows before delivery.",
+            "failureScenario": "An installation with a stored plaintext Authorization header upgrades and receives no webhook deliveries. The credential remains readable in the database indefinitely, contrary to the protected-storage requirement. OWASP A04:2025."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 52,
+          "message": "The named destination test still does not exercise the production create and update routes. A route regression could accept a non-global hostname while this test passes.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_webhook_routes_and_relay_reject_non_global_destinations constructs WebhookConfigCreate and WebhookConfigUpdate models to check validation; it does not invoke the production create or update route handlers.",
+            "failureScenario": "If either route stops validating or rejecting a non-global hostname, this test still passes because it only tests schema construction. The destination acceptance criterion's required production route behavior remains unproven."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 163,
+          "message": "The named observability test still checks logs only. It must also exercise and inspect captured metrics, exceptions, traces, and relay errors for the configured header name and secret.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "test_relay_history_and_observability_redact_secret_material captures caplog output and persisted history, but does not capture metrics, exceptions, or traces; its fake client succeeds, so it does not inspect relay errors.",
+            "failureScenario": "If a metric, trace, exception, or failed relay error includes the configured Authorization name or secret, the test still passes. The M-08 observability requirement is not fully verified (OWASP A09:2025)."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The latest changes add an outbox relay test and legacy-header protection, but the named tests still leave production route rejection, route-to-relay header delivery, and several required observability outputs unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 57,
+          "message": "The destination test does not exercise the production create and update routes or assert their specified HTTP 422 responses. A route regression could pass this test.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The named test constructs WebhookConfigCreate and WebhookConfigUpdate directly; it does not send requests through the production create and update routes.",
+            "failureScenario": "If either route stops rejecting a hostname that resolves to a private address, these assertions still pass because they exercise schema validation only. The required HTTP 422 route behavior would go undetected."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 143,
+          "message": "The secret contract test does not verify exact configured headers through production outbox relay delivery. Its manual test_webhook assertion cannot catch a regression in the relay path.",
+          "confidence": 0.98,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The secret contract test calls WebhookService.test_webhook, the manual delivery path. It does not enqueue and deliver through the production outbox relay.",
+            "failureScenario": "If outbox delivery sends a stored header incorrectly, this test still passes because only the separate manual test path sends a request. The required route-to-relay header behavior is unverified."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 199,
+          "message": "The observability test checks logs and history but omits the criterion's metrics, exceptions, and traces. Leaks through those outputs would not fail the test.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The relay test captures caplog and inspects persisted history, but it does not capture or assert metrics, exceptions, or traces.",
+            "failureScenario": "If the relay emits the fixture secret or Authorization header name in a metric, exception, or trace, the test still passes because those outputs are not captured or checked."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The fix adds relay path coverage and redacts successful delivery history, but legacy plaintext credentials can remain stored indefinitely and the named tests still leave production route rejection and several observability outputs unverified.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 106,
+          "message": "Legacy plaintext credentials remain exposed until that webhook is delivered. Protect existing rows before they can remain stored in plaintext.",
+          "confidence": 0.94,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "Legacy plaintext headers are rewritten only when protect_existing_webhook_headers runs during delivery. Existing rows are not migrated when the application starts or when they are read.",
+            "failureScenario": "An installation upgrades with a disabled webhook or one that receives no events. Its existing Authorization value stays plaintext in the database indefinitely, where a database reader can recover it. This leaves the previously reported storage exposure unresolved (OWASP A04:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 57,
+          "message": "The destination test still does not exercise the production create and update routes or assert their specified HTTP 422 responses.",
+          "confidence": 0.95,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The destination test constructs WebhookConfigCreate and WebhookConfigUpdate directly, then exercises the relay. It does not call the production create or update routes with rejected DNS answers.",
+            "failureScenario": "If a route stops applying the validated schema or otherwise accepts a hostname resolving to a private address, this test still passes because it only tests schema construction and relay rejection. The named acceptance criterion requires testing the production routes."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 199,
+          "message": "The relay redaction test checks logs and history but leaves metrics, exceptions, traces, and relay errors untested as required by the criterion.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The redaction test captures caplog and inspects persisted history after successful relay delivery, but it captures no metrics, exceptions, or traces and does not exercise a relay error.",
+            "failureScenario": "If a trace or metric records the Authorization header or fixture secret, or an error path logs either value, this test still passes. The M-08 observability redaction criterion remains unverified."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-red",
+      "reviewers-pass",
+      "approval-tier-auto"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 1,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 1
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "security-review",
+    "complexityScore": 4,
+    "needsHuman": true,
+    "securitySensitive": true,
+    "securityPaths": [
+      "backend/tests/test_secret_redaction.py"
+    ],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": true,
+    "red": false,
+    "redWaived": "",
+    "redKind": "",
+    "greenKind": "",
+    "greenExit": 0,
+    "redExit": 2,
+    "testFiles": [
+      "backend/tests/test_dependency_versions.py",
+      "backend/tests/test_secret_redaction.py",
+      "backend/tests/test_validation.py",
+      "backend/tests/test_webhooks.py"
+    ],
+    "testUser": "tester",
+    "reason": ""
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}

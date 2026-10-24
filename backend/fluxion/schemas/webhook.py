@@ -1,10 +1,15 @@
 """Pydantic schemas for webhook configuration endpoints."""
 
 import ipaddress
+import socket
 from datetime import datetime
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _canonical_webhook_hostname(hostname: str) -> str:
+    return hostname.rstrip(".").encode("idna").decode("ascii").lower()
 
 
 def _validate_webhook_url_value(url: str) -> str:
@@ -20,19 +25,30 @@ def _validate_webhook_url_value(url: str) -> str:
         ValueError: If the URL uses an unsupported scheme, has no hostname,
                     or points to a private/reserved IP address.
     """
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+    except ValueError:
+        raise ValueError("Webhook URL must have a valid hostname") from None
     if parsed.scheme not in ("http", "https"):
         raise ValueError("Webhook URL must use http or https scheme")
-    if not parsed.hostname:
+    if not hostname:
         raise ValueError("Webhook URL must have a valid hostname")
     # Block private/reserved IP addresses to prevent SSRF
     try:
-        addr = ipaddress.ip_address(parsed.hostname)
+        addresses = [ipaddress.ip_address(hostname)]
     except ValueError:
-        # Not an IP address (it's a hostname), which is fine
-        return url
-    if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
-        raise ValueError("Webhook URL must not point to private or reserved IP addresses")
+        try:
+            canonical_hostname = _canonical_webhook_hostname(hostname)
+            addresses = [
+                ipaddress.ip_address(info[4][0])
+                for info in socket.getaddrinfo(canonical_hostname, parsed.port or None, type=socket.SOCK_STREAM)
+            ]
+        except (socket.gaierror, OSError):
+            return url
+    for addr in addresses:
+        if not addr.is_global:
+            raise ValueError("Webhook URL must not point to private or reserved IP addresses")
     return url
 
 

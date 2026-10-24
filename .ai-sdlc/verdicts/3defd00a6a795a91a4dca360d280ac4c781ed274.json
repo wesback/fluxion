@@ -1,0 +1,257 @@
+{
+  "schema": "ep-pipeline/verdicts/v1",
+  "repo": "wesback/fluxion",
+  "issue": 131,
+  "branch": "ai-sdlc/issue-131",
+  "commitSha": "3defd00a6a795a91a4dca360d280ac4c781ed274",
+  "round": 0,
+  "pipelineVersion": "d128747-dirty",
+  "tokenKind": "app",
+  "writers": [
+    {
+      "step": "implement",
+      "harness": "copilot",
+      "version": "1.0.95",
+      "model": "mai-code-2-flash"
+    }
+  ],
+  "reviewers": [
+    {
+      "agentId": "code-reviewer-codex",
+      "reviewType": "critic",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The destination check can be bypassed through DNS rebinding, and a prefix-shaped configured value can remain plaintext in storage. The acceptance criteria’s named behavior tests are also missing from the supplied change.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 91,
+          "message": "The relay check is vulnerable to DNS rebinding because it does not bind the connection to the addresses it validated. Resolve and validate the destination used by the actual connection.",
+          "confidence": 0.94,
+          "category": "logic-error",
+          "evidence": {
+            "codePathTraced": "validate_relay_destination resolves and checks a hostname, then the HTTP client resolves that hostname again when connecting.",
+            "failureScenario": "A DNS server returns a public IP for the validation lookup and 127.0.0.1 for the connection lookup; validation passes and the relay sends a request to loopback. This violates M-09. OWASP A01:2025."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 54,
+          "message": "The prefix check lets user-supplied plaintext bypass encryption. Distinguish trusted ciphertext from input values so every configured value is protected before persistence.",
+          "confidence": 0.99,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "protect_webhook_headers skips encryption for any configured value beginning with PROTECTED_PREFIX; unprotect_webhook_headers then attempts to decrypt the suffix.",
+            "failureScenario": "A user configures a header value beginning with `fluxion-protected:v1:`. The value is stored verbatim in headers_json, and delivery history or database readers can see it; delivery also drops the header if the suffix is not a valid Fernet token. This violates the protected-storage criterion. OWASP A04:2025."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 1,
+          "message": "The change adds none of the named behavior tests, including `test_webhook_destination_contract`, `test_ssrf_destination_rejection`, `test_webhook_secret_redaction_contract`, `test_delivery_history_redacts_headers`, `test_secret_fixture_never_in_history`, or `test_webhook_url_contract_table`. Add tests tied to the corresponding acceptance criteria.",
+          "confidence": 0.98,
+          "category": "other",
+          "evidence": {
+            "codePathTraced": "The supplied change adds no test files, while the acceptance criteria name behavior tests for destination rejection, secret redaction, persisted history, and URL validation.",
+            "failureScenario": "A regression can remove destination checks or persist plaintext secrets while the named behavior tests are absent from this change, so no test in the change proves those criteria."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "test-reviewer-codex",
+      "reviewType": "testing",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The relay’s DNS check can be bypassed by DNS rebinding, and header values with a particular prefix are stored without encryption. The acceptance criteria’s named destination and secret-redaction tests are also absent.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 365,
+          "message": "The relay checks DNS answers but does not bind the outgoing connection to an approved address. A DNS change between validation and connection can still direct the request to a blocked destination.",
+          "confidence": 0.98,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "The relay resolves and checks the hostname in validate_relay_destination, then passes the original hostname to httpx, which resolves it again when connecting.",
+            "failureScenario": "A hostname resolves to a public address during validation and to a private address during the HTTP connection; the relay sends a request to the private address. This leaves the SSRF check vulnerable to DNS rebinding (OWASP A01:2025)."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 54,
+          "message": "Header values with the protection prefix bypass encryption and are persisted as supplied.",
+          "confidence": 0.97,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "protect_webhook_headers skips encryption for any value beginning with PROTECTED_PREFIX; the route stores that value directly in headers_json.",
+            "failureScenario": "A caller configures a header value beginning with `fluxion-protected:v1:`; that value is persisted without encryption, contrary to the criterion that configuration values are stored only in protected form."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/tests/test_secret_redaction.py",
+          "line": 1,
+          "message": "The acceptance criteria name behavior tests that are missing, including the required destination and secret-redaction contract tests. The changed behavior therefore has no test coverage tied to those criteria.",
+          "confidence": 0.99,
+          "category": "testing",
+          "evidence": {
+            "codePathTraced": "The diff changes schema validation, route persistence, relay DNS checks, secret recovery, and delivery-history redaction, but the named test file and its contract tests are absent from the repository.",
+            "failureScenario": "If secret redaction is removed or a hostname resolving to a blocked address is sent a request, none of the named tests `test_webhook_destination_contract`, `test_ssrf_destination_rejection`, `test_webhook_secret_redaction_contract`, or `test_secret_fixture_never_in_history` runs to detect the regression."
+          }
+        }
+      ]
+    },
+    {
+      "agentId": "security-reviewer",
+      "reviewType": "security",
+      "harness": "codex",
+      "harnessVersion": "0.162.0",
+      "model": "gpt-6-luna",
+      "approved": false,
+      "findings": {
+        "critical": 0,
+        "major": 2,
+        "minor": 0,
+        "suggestion": 0
+      },
+      "summary": "The relay's hostname validation can be bypassed through DNS rebinding, and header values beginning with the protection prefix are persisted without encryption.",
+      "findingList": [
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 50,
+          "message": "Values with the reserved protection prefix bypass encryption, exposing matching configured secrets in persisted webhook configuration. OWASP A02:2025 Cryptographic Failures.",
+          "confidence": 0.98,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "protect_webhook_headers stores values beginning with PROTECTED_PREFIX unchanged; the same prefix is later treated as an encryption marker by unprotect_webhook_headers.",
+            "failureScenario": "A caller configures an Authorization value beginning with fluxion-protected:v1:. That value is persisted in plaintext, violating the requirement that header secrets be stored only in protected form. On delivery, decryption can also fail and silently omit the header."
+          }
+        },
+        {
+          "severity": "major",
+          "file": "backend/fluxion/services/webhook_service.py",
+          "line": 364,
+          "message": "The DNS check is separate from the connection, so DNS rebinding can bypass destination validation and reach private services. Bind the validated address to the outbound connection. OWASP A10:2025 Server-Side Request Forgery.",
+          "confidence": 0.91,
+          "category": "security",
+          "evidence": {
+            "codePathTraced": "validate_relay_destination resolves and checks a hostname, then httpx.AsyncClient later resolves the hostname again when sending the request.",
+            "failureScenario": "A controlled DNS hostname returns a public address during validation and a private or loopback address during HTTPX resolution. The relay then sends a request to that forbidden address despite the recheck."
+          }
+        }
+      ]
+    }
+  ],
+  "independence": {
+    "ok": true,
+    "violations": [],
+    "implementerHarnesses": [
+      "copilot"
+    ]
+  },
+  "gate": {
+    "name": "ep-merge-gate",
+    "allowed": false,
+    "failed": [
+      "tdd-green",
+      "tdd-red",
+      "reviewers-pass"
+    ],
+    "results": [
+      {
+        "gate": "semgrep-changed-files",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "tdd-green",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "tdd-red",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "diff-coverage",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "reviewers-pass",
+        "enforcement": "hard-mandatory",
+        "verdict": "fail"
+      },
+      {
+        "gate": "three-reviewers",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "harness-independence",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      },
+      {
+        "gate": "approval-tier-auto",
+        "enforcement": "hard-mandatory",
+        "verdict": "pass"
+      }
+    ],
+    "metrics": {
+      "tdd-green": 0,
+      "tdd-red": 0,
+      "diff-coverage": 1,
+      "reviewer-failures": 3,
+      "independence-violations": 0,
+      "human-approval-required": 0
+    },
+    "reviewerCount": 3
+  },
+  "approvalTier": {
+    "tier": "auto",
+    "complexityScore": 1,
+    "needsHuman": false,
+    "securitySensitive": false,
+    "securityPaths": [],
+    "isInfraChange": false,
+    "infraPaths": []
+  },
+  "tdd": {
+    "green": false,
+    "red": false,
+    "reason": "no test files added or changed in this branch"
+  },
+  "semgrep": {
+    "blocking": [],
+    "elsewhere": 3,
+    "total": 53,
+    "ran": true,
+    "version": "1.178.0",
+    "config": "p-default-2026-10-11.yml",
+    "configSha256": "974409ed18b020a7e2a06400828a0003f584320c2cbb09d0e776bc04cf8de9db"
+  }
+}
