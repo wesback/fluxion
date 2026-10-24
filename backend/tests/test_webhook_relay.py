@@ -38,8 +38,13 @@ class ExecuteResult:
 
 
 class RelaySession:
-    def __init__(self, rows=None, config=None, mutate_owner=False):
+    def __init__(self, rows=None, config=None, mutate_owner=False, select_parties=0):
         self.rows = list(rows or [])
+        self.select_parties = select_parties
+        self.selects_done = 0
+        self.select_gate = asyncio.Event()
+        self.select_snapshots = []
+        self.write_results = []
         self.config = config
         self.mutate_owner = mutate_owner
         self.commits = 0
@@ -48,19 +53,41 @@ class RelaySession:
     async def execute(self, statement, *args, **kwargs):
         text = str(statement)
         if text.lstrip().upper().startswith("SELECT"):
-            self.claim_attempts += 1
-            await REAL_ASYNCIO_SLEEP(0)
-            now = datetime.now(UTC)
-            recoverable = [
-                row for row in self.rows
-                if row.status == WebhookOutbox.STATUS_PENDING
-                or (row.status == WebhookOutbox.STATUS_RETRYABLE
-                    and row.next_attempt_at <= now)
-                or (row.status == WebhookOutbox.STATUS_CLAIMED
-                    and (row.lease_expires_at is None or row.lease_expires_at <= now))
-            ]
-            return ScalarResult(recoverable[:RELAY_CLAIM_LIMIT])
+            return await self._select()
+        result = self._write(statement)
+        self.write_results.append(result.rowcount)
+        return result
 
+    async def _select(self):
+        self.claim_attempts += 1
+        now = datetime.now(UTC)
+        recoverable = [
+            row for row in self.rows
+            if row.status == WebhookOutbox.STATUS_PENDING
+            or (row.status == WebhookOutbox.STATUS_RETRYABLE
+                and row.next_attempt_at <= now)
+            or (row.status == WebhookOutbox.STATUS_CLAIMED
+                and (row.lease_expires_at is None or row.lease_expires_at <= now))
+        ]
+        # Each worker reads its own copy, as separate database sessions do, so a later
+        # claim by another worker cannot change the revision this worker will write against.
+        snapshot = [self._copy(row) for row in recoverable[:RELAY_CLAIM_LIMIT]]
+        self.select_snapshots.append([row.delivery_id for row in snapshot])
+        if self.select_parties:
+            # Every worker reads its candidates before any worker writes a claim.
+            self.selects_done += 1
+            if self.selects_done >= self.select_parties:
+                self.select_gate.set()
+            await asyncio.wait_for(self.select_gate.wait(), timeout=5)
+        else:
+            await REAL_ASYNCIO_SLEEP(0)
+        return ScalarResult(snapshot)
+
+    @staticmethod
+    def _copy(row):
+        return WebhookOutbox(**{column.name: getattr(row, column.name) for column in WebhookOutbox.__table__.columns})
+
+    def _write(self, statement):
         params = statement.compile().params
         if self.mutate_owner and "lease_owner" in params:
             for row in self.rows:
@@ -126,13 +153,18 @@ async def test_bounded_claim_and_single_inflight_delivery(monkeypatch):
                         updated_at=now)
     config = WebhookConfig(id=1, name="test", url="https://example.com/hook", enabled=True,
                            event_types=["test"])
-    session = RelaySession([row], config)
+    session = RelaySession([row], config, select_parties=2)
     first_service = WebhookService(session)
     second_service = WebhookService(session)
     attempted = []
 
     async def send(*args, **kwargs):
         attempted.append(row.delivery_id)
+        # Stay in flight so the second worker's claim write lands while the lease is held.
+        assert row.status == WebhookOutbox.STATUS_CLAIMED, ("before", len(attempted), session.write_results)
+        for _ in range(20):
+            await REAL_ASYNCIO_SLEEP(0)
+        assert row.status == WebhookOutbox.STATUS_CLAIMED, ("after", len(attempted), session.write_results)
         return True, 204, "", None
 
     async def log_delivery(*args, **kwargs):
@@ -156,6 +188,12 @@ async def test_bounded_claim_and_single_inflight_delivery(monkeypatch):
     assert second == []
     assert attempted == ["same"]
     assert row.status == WebhookOutbox.STATUS_DELIVERED
+    # Both workers selected the same pending identity before either claim write ran.
+    assert session.select_snapshots == [["same"], ["same"]]
+    assert session.claim_attempts == 2
+    # The first claim write succeeded; the second was rejected by the claim predicates.
+    assert session.write_results[0] == 1
+    assert 0 in session.write_results
 
 
 @pytest.mark.asyncio
